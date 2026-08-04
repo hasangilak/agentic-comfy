@@ -1,0 +1,30 @@
+{
+  "beats": [
+    {
+      "action": "The pink paper piglet trots slowly from the left edge across the foreground and stops near a cluster of tall paper wildflowers, sniffing a giant yellow paper blossom.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion art style with distinct physical paper textures, crisp cut edges, and subtle realistic depth shadows between overlapping cardstock layers. The central character is a tiny, cheerful piglet made of pastel pink textured cardstock, featuring a round chubby body, a small oval snout with two dark pink punched holes, glossy black pin-head eyes, small triangular ears, tiny rosy-pink blushed cheek cutouts, short stubby legs, and a tight curly tail. The color palette features rich emerald greens, sage, warm ochre, chestnut brown, soft sky blue, and blush pink. Vertical 9:16 framing, beautifully lit with soft ambient studio illumination. No text, dialogue bubbles, icons, or watermarks. Beat 1 opening frame: The piglet stands at the entrance of the sunlit paper forest clearing, surrounded by tall layered green paper trees and ochre grass cutouts, facing a cluster of tall yellow paper wildflowers.",
+      "n": 1,
+      "scene": "A sunlit clearing at the edge of a dense paper-cutout forest with towering paper trees."
+    },
+    {
+      "action": "The pink paper piglet steps carefully under a heavy hanging paper fern leaf, nudging it aside with its snout to peek through the thicket.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion art style with distinct physical paper textures, crisp cut edges, and subtle realistic depth shadows between overlapping cardstock layers. The central character is a tiny, cheerful piglet made of pastel pink textured cardstock, featuring a round chubby body, a small oval snout with two dark pink punched holes, glossy black pin-head eyes, small triangular ears, tiny rosy-pink blushed cheek cutouts, short stubby legs, and a tight curly tail. The color palette features rich emerald greens, sage, warm ochre, chestnut brown, soft sky blue, and blush pink. Vertical 9:16 framing, beautifully lit with soft ambient studio illumination. No text, dialogue bubbles, icons, or watermarks. Beat 2 opening frame: The piglet approaches a dense paper grove, standing in front of a low-hanging sage green paper fern leaf suspended between chestnut brown paper tree trunks.",
+      "n": 2,
+      "scene": "A shadowy forest grove flanked by tall, overlapping dark green paper tree trunks."
+    },
+    {
+      "action": "The pink paper piglet slides joyfully down the sloped paper hill layer on its belly, landing softly in a patch of soft green paper moss.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion art style with distinct physical paper textures, crisp cut edges, and subtle realistic depth shadows between overlapping cardstock layers. The central character is a tiny, cheerful piglet made of pastel pink textured cardstock, featuring a round chubby body, a small oval snout with two dark pink punched holes, glossy black pin-head eyes, small triangular ears, tiny rosy-pink blushed cheek cutouts, short stubby legs, and a tight curly tail. The color palette features rich emerald greens, sage, warm ochre, chestnut brown, soft sky blue, and blush pink. Vertical 9:16 framing, beautifully lit with soft ambient studio illumination. No text, dialogue bubbles, icons, or watermarks. Beat 3 opening frame: The piglet stands at the crest of a curved green paper hill, looking down toward a mossy paper embankment.",
+      "n": 3,
+      "scene": "A steep gentle slope made of layered paper hilltops leading down toward a sparkling paper stream."
+    },
+    {
+      "action": "The pink paper piglet waddles up to the edge of the blue paper pond, dips its snout into the calm paper water surface, creating gentle expanding paper ripple rings.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion art style with distinct physical paper textures, crisp cut edges, and subtle realistic depth shadows between overlapping cardstock layers. The central character is a tiny, cheerful piglet made of pastel pink textured cardstock, featuring a round chubby body, a small oval snout with two dark pink punched holes, glossy black pin-head eyes, small triangular ears, tiny rosy-pink blushed cheek cutouts, short stubby legs, and a tight curly tail. The color palette features rich emerald greens, sage, warm ochre, chestnut brown, soft sky blue, and blush pink. Vertical 9:16 framing, beautifully lit with soft ambient studio illumination. No text, dialogue bubbles, icons, or watermarks. Beat 4 opening frame: The piglet stands on the bank of a shimmering oval sky-blue paper pond surrounded by mint green paper lily pads and pink paper lotus blossoms.",
+      "n": 4,
+      "scene": "A secluded forest clearing surrounding a tranquil, shimmering sky-blue paper pond."
+    }
+  ],
+  "style_bible": "Handcrafted multi-layered paper-cutout stop-motion art style with distinct physical paper textures, crisp cut edges, and subtle realistic depth shadows between overlapping cardstock layers. The central character is a tiny, cheerful piglet made of pastel pink textured cardstock, featuring a round chubby body, a small oval snout with two dark pink punched holes, glossy black pin-head eyes, small triangular ears, tiny rosy-pink blushed cheek cutouts, short stubby legs, and a tight curly tail. The color palette features rich emerald greens, sage, warm ochre, chestnut brown, soft sky blue, and blush pink. Vertical 9:16 framing, beautifully lit with soft ambient studio illumination. No text, dialogue bubbles, icons, or watermarks.",
+  "title": "The Paper Piglet's Forest Discovery"
+}

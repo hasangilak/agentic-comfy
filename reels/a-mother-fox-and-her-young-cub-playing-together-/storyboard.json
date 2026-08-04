@@ -1,0 +1,30 @@
+{
+  "beats": [
+    {
+      "action": "The mother fox gently nudges a round paper ball forward with her snout toward her cub.",
+      "asset_prompt": "Handcrafted layered paper-cutout stop-motion visual style with physical depth, soft drop shadows between layers, vertical 9:16 composition. The scene features a mother fox and her small young cub, both crafted as vibrant orange paper cutouts with cream paper chest fur, bushy paper tails, and thin dark brown ink outlines. They inhabit a handcrafted layered paper jungle with a warm cream paper sky, rolling green paper hills, tall cut-paper trees with orange and green leaves, and delicate cut-paper flowers. The mother fox stands gracefully on the left near a patch of green paper grass, leaning slightly forward, while her small cub crouches attentively on the right facing her. Locked-off full shot, vertical 9:16 framing, no text, no watermarks.",
+      "n": 1,
+      "scene": "A sunlit paper glade among tall cut-paper trees with orange and green leaves."
+    },
+    {
+      "action": "The young cub leaps playfully over a small mound of paper flowers toward the mother fox.",
+      "asset_prompt": "Handcrafted layered paper-cutout stop-motion visual style with physical depth, soft drop shadows between layers, vertical 9:16 composition. The scene features a mother fox and her small young cub, both crafted as vibrant orange paper cutouts with cream paper chest fur, bushy paper tails, and thin dark brown ink outlines. They inhabit a handcrafted layered paper jungle with a warm cream paper sky, rolling green paper hills, tall cut-paper trees with orange and green leaves, and delicate cut-paper flowers. The small cub stands poised beside a cluster of red and yellow paper flowers in the foreground, while the mother fox watches lovingly from behind a low paper hill. Locked-off full shot, vertical 9:16 framing, no text, no watermarks.",
+      "n": 2,
+      "scene": "A meadow of colorful cut-paper flowers under the warm cream paper sky."
+    },
+    {
+      "action": "The mother fox gently lowers her head and licks the young cub's forehead.",
+      "asset_prompt": "Handcrafted layered paper-cutout stop-motion visual style with physical depth, soft drop shadows between layers, vertical 9:16 composition. The scene features a mother fox and her small young cub, both crafted as vibrant orange paper cutouts with cream paper chest fur, bushy paper tails, and thin dark brown ink outlines. They inhabit a handcrafted layered paper jungle with a warm cream paper sky, rolling green paper hills, tall cut-paper trees with orange and green leaves, and delicate cut-paper flowers. The mother fox sits comfortably beneath a thick paper tree trunk on rolling green hills, with her small cub nestled closely against her side. Locked-off full shot, vertical 9:16 framing, no text, no watermarks.",
+      "n": 3,
+      "scene": "Under the shade of a massive paper tree with vibrant orange cut leaves."
+    },
+    {
+      "action": "The cub curls up against the mother fox's side as the mother fox rests her chin over the cub.",
+      "asset_prompt": "Handcrafted layered paper-cutout stop-motion visual style with physical depth, soft drop shadows between layers, vertical 9:16 composition. The scene features a mother fox and her small young cub, both crafted as vibrant orange paper cutouts with cream paper chest fur, bushy paper tails, and thin dark brown ink outlines. They inhabit a handcrafted layered paper jungle with a warm cream paper sky, rolling green paper hills, tall cut-paper trees with orange and green leaves, and delicate cut-paper flowers. On a gentle green paper hill top under the warm cream sky, the mother fox lies resting, wrapped partially around her small cub lying right beside her. Locked-off full shot, vertical 9:16 framing, no text, no watermarks.",
+      "n": 4,
+      "scene": "A hilltop view overlooking rolling green paper hills and paper jungle foliage."
+    }
+  ],
+  "style_bible": "Handcrafted layered paper-cutout stop-motion visual style with physical depth, soft drop shadows between layers, vertical 9:16 composition. The scene features a mother fox and her small young cub, both crafted as vibrant orange paper cutouts with cream paper chest fur, bushy paper tails, and thin dark brown ink outlines. They inhabit a handcrafted layered paper jungle with a warm cream paper sky, rolling green paper hills, tall cut-paper trees with orange and green leaves, and delicate cut-paper flowers.",
+  "title": "Paper Jungle Foxes"
+}

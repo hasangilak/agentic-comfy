@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# uv / tooling caches
+.uv-cache/
+.uv-tools/
+.uv-bin/
+.pycache/
+
+# Generated video and frames. Renders are reproducible from a storyboard plus the
+# source art, and a single 60s reel is ~25 MB -- keep them out of history.
+out/
+reels/*/*
+!reels/*/storyboard.json
+
+# Transient scratch written next to a run
+.agy_schema.json
+concat.txt
+
+# Local-only editor and permission state
+.claude/settings.local.json
+.DS_Store
