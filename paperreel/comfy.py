@@ -55,6 +55,54 @@ def client(url: str | None = None, *, timeout: float = 300.0) -> httpx.Client:
     )
 
 
+CLIENT_ID = "paper-reel"
+
+
+def progress_listener(on_progress, *, log=print, stop=None) -> None:
+    """Republish ComfyUI's per-step sampling progress. Runs in a thread; never raises.
+
+    ComfyUI pushes {"type": "progress", "data": {"value": n, "max": m}} over /ws for the
+    client_id that queued the prompt, which is where the UI's "step 5/8" comes from.
+
+    This is best-effort by design. A WebSocket through Modal's auth proxy is the one
+    unproven link in the chain, so a failure here degrades to the per-beat timing that
+    /history polling already provides rather than taking the render down with it.
+    """
+    try:
+        from websocket import WebSocketApp  # websocket-client
+    except ImportError:
+        log("[ws] websocket-client not installed; per-step progress disabled")
+        return
+
+    url = config.BACKEND_URL.replace("https://", "wss://").replace("http://", "ws://")
+    headers = [f"{key}: {value}" for key, value in modal_auth_headers().items()]
+
+    def on_message(_ws, raw):
+        try:
+            message = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        data = message.get("data") or {}
+        if message.get("type") == "progress" and data.get("max"):
+            on_progress(int(data.get("value", 0)), int(data["max"]))
+
+    def on_error(_ws, error):
+        log(f"[ws] progress stream unavailable ({error}); falling back to timing")
+
+    socket = WebSocketApp(
+        f"{url}/ws?clientId={CLIENT_ID}",
+        header=headers,
+        on_message=on_message,
+        on_error=on_error,
+    )
+    if stop is not None:
+        stop.append(socket.close)
+    try:
+        socket.run_forever(reconnect=5)
+    except Exception as error:  # a dead socket must never kill a paid render
+        log(f"[ws] progress listener stopped ({error})")
+
+
 def build_graph(*, first_frame: str | None, prompt: str, length: int,
                 steps: int, seed: int, last_frame: str | None = None,
                 filename_prefix: str = "video/reel") -> dict:
@@ -146,9 +194,22 @@ def upload_image(http: httpx.Client, path: Path, *, subfolder: str = "reel") -> 
     return f"{body.get('subfolder', '')}/{body['name']}".lstrip("/")
 
 
-def run_graph(http: httpx.Client, graph: dict, *, poll: float = 5.0, log=print) -> list[dict]:
+class Cancelled(RuntimeError):
+    """The caller asked us to stop mid-render."""
+
+
+def interrupt(http: httpx.Client) -> None:
+    """Stop the running graph. Called before teardown so no half-written file lands."""
+    try:
+        http.post("/interrupt")
+    except httpx.HTTPError:
+        pass  # we are tearing the container down regardless
+
+
+def run_graph(http: httpx.Client, graph: dict, *, poll: float = 5.0, log=print,
+              should_stop=None) -> list[dict]:
     """Queue a graph and block until it produces outputs."""
-    response = http.post("/prompt", json={"client_id": "paper-reel", "prompt": graph})
+    response = http.post("/prompt", json={"client_id": CLIENT_ID, "prompt": graph})
     if response.is_error:
         raise SystemExit(f"ComfyUI rejected the graph:\n{response.text}")
     prompt_id = response.json()["prompt_id"]
@@ -158,6 +219,9 @@ def run_graph(http: httpx.Client, graph: dict, *, poll: float = 5.0, log=print) 
     strikes = 0
     while True:
         time.sleep(poll)
+        if should_stop is not None and should_stop():
+            interrupt(http)
+            raise Cancelled(f"cancelled after {int(time.monotonic() - started)}s")
         # A dead container answers with an HTML error page, not JSON. Tolerate a few
         # in a row (a restart is survivable) but don't spin forever on a corpse.
         try:

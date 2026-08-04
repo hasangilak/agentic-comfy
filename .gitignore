@@ -14,6 +14,15 @@ __pycache__/
 out/
 reels/*/*
 !reels/*/storyboard.json
+# Deleting a reel in the studio moves it here rather than unlinking it, because a
+# rendered reel cost real money and a mis-click should not be final.
+reels/.trash/
+
+# Studio frontend
+studio/node_modules/
+studio/dist/
+studio/.vite/
+*.tsbuildinfo
 
 # Transient scratch written next to a run
 .agy_schema.json

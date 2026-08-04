@@ -58,6 +58,23 @@ RATE_PER_SEC = (
     + MEM_RATE_PER_GIB_SEC * CONTAINER_GIB
 )
 
+# ## Predicting render time
+#
+# Fitted through the two proven measurements of steady-state per-beat render time on
+# RTX PRO 6000 at 8 steps:
+#
+#   124 frames -> 89s     (382 container-seconds for 4 beats, minus overhead)
+#   243 frames -> 259s    (1036 container-seconds for 4 beats, minus overhead)
+#
+# The intercept is NEGATIVE, which is the whole story: time grows faster than linearly
+# with frame count, so a longer clip costs more per second of finished video. Do not
+# "optimise" by making clips longer.
+SECONDS_PER_FRAME = 1.4286
+RENDER_INTERCEPT = -88.1
+# Boot from a warm image plus the one-time model load off the Volume. Paid once per
+# container no matter how many beats ride along, which is the argument for batching.
+CONTAINER_OVERHEAD_SECONDS = 42.0
+
 # ## Deployment
 APP_NAME = "comfyui-minimax-h3"
 APP_FILE = ROOT / "comfyui_minimax_h3.py"
@@ -117,3 +134,23 @@ def build_prompt(action: str, *, mute: bool = False) -> str:
 
 def estimate_cost(container_seconds: float) -> float:
     return container_seconds * RATE_PER_SEC
+
+
+def predict_render_seconds(frames: int, *, steps: int = DEFAULT_STEPS) -> float:
+    """How long one beat should take, before it starts.
+
+    Scaled linearly by step count off the 8-step measurements. Rough for other step
+    counts -- only 8 and 20 were ever measured -- but the UI recalibrates from the first
+    completed beat, so the initial guess only has to be in the right neighbourhood.
+    """
+    predicted = SECONDS_PER_FRAME * frames + RENDER_INTERCEPT
+    return max(20.0, predicted) * (steps / DEFAULT_STEPS)
+
+
+def predict_batch_seconds(frame_counts: list[int], *, steps: int = DEFAULT_STEPS) -> float:
+    """Wall-clock for a batch, including the once-per-container overhead."""
+    if not frame_counts:
+        return 0.0
+    return CONTAINER_OVERHEAD_SECONDS + sum(
+        predict_render_seconds(f, steps=steps) for f in frame_counts
+    )

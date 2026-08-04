@@ -1,0 +1,81 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+/* A dark room for looking at video. Paper-warm accents, because that is the medium. */
+@theme {
+  --color-ink: #0d0d10;
+  --color-panel: #16161b;
+  --color-edge: #26262e;
+  --color-paper: #e8dcc8;
+  --color-warm: #d99a4e;
+  --color-live: #4ade80;
+  --color-stale: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-ink);
+  color: #d4d4d8;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* React Flow's own chrome, tinted to match. */
+.react-flow__background {
+  background: var(--color-ink);
+}
+.react-flow__controls-button {
+  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-edge);
+  fill: #a1a1aa;
+}
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: var(--color-edge);
+  border: 1px solid #3f3f46;
+}
+.react-flow__node.selected > div {
+  outline: 2px solid var(--color-warm);
+  outline-offset: 1px;
+}
+.react-flow__attribution {
+  display: none;
+}
+
+textarea,
+input {
+  font-family: inherit;
+}
+
+textarea::-webkit-scrollbar,
+.thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+textarea::-webkit-scrollbar-thumb,
+.thin::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+
+@keyframes pulse-ring {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: pulse-ring 1.6s ease-in-out infinite;
+}

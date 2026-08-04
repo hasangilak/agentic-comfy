@@ -52,7 +52,37 @@ flag afterwards:
 PAPERREEL_PUBLIC=1 uvx modal deploy comfyui_minimax_h3.py
 ```
 
-## Make a reel
+## The studio
+
+A node canvas: talk to agy, get a script and a chain of shots, render when you're ready.
+
+```bash
+cd studio && npm install && npm run build && cd ..
+uv run studio.py                                       # http://127.0.0.1:8787
+```
+
+The board is a fixed chain — a script node, a row of sequence nodes, a reel node — so
+there is no way to wire it wrong. The **wire between two beats is the frame handoff**:
+
+- **solid green** — this beat continues from the previous clip's last frame. Continuous
+  motion, costs no image quota.
+- **dashed amber** — this beat opens on its own still. A clean cut, costs one image.
+
+Editing a beat marks it `edited` and everything chained below it `follows a change`, and
+the render button re-prices itself. It renders **only what's dirty**, so fixing one beat in
+a four-beat reel costs $0.28 rather than $1.13. Clips attach to their nodes as each beat
+finishes, so beat 1 is watchable while beat 4 is still sampling.
+
+Agy can rewrite, re-time, reorder, add and remove beats, and write the caption — all free.
+It cannot render. Spending money stays a human action.
+
+The server runs locally because it shells out to `agy` and `modal`; the browser never talks
+to Modal, so the proxy tokens stay on your machine.
+
+For frontend development, run `npm run dev` in `studio/` alongside `uv run studio.py` and
+use the Vite URL — it proxies the API through.
+
+## Make a reel from the CLI
 
 ```bash
 # 1. plan — free
@@ -127,11 +157,22 @@ paperreel/media.py      chroma-key cutout, compositing, stitching  (local, free)
 paperreel/comfy.py      ComfyUI client + the 15-node H3 graph
 paperreel/planner.py    agy: storyboard and asset generation
 paperreel/pipeline.py   app lifecycle + chained batch rendering
+paperreel/board.py      the board document; state derived from disk
+paperreel/agent.py      agy conversation -> board operations
+paperreel/jobs.py       one worker, one container, one event stream
+paperreel/render.py     rendering with per-beat telemetry
+paperreel/api.py        HTTP + SSE for the studio
 comfyui_minimax_h3.py   the Modal GPU app
+studio.py               the studio server
+studio/                 React + TypeScript + React Flow canvas
 storyboard.py           CLI: full reel
 reel.py                 CLI: single clip
 minimax_h3.py           alternative: full-precision BF16 on 4×H200 via SGLang
 ```
+
+`reels/<slug>/storyboard.json` is the only database, and beat state is *derived* from what
+is on disk rather than stored. Hand-edit the JSON, drop in your own PNG, or run
+`storyboard.py`, and the canvas reflects it — the CLI and the studio cannot drift apart.
 
 `minimax_h3.py` is an unrelated, lossless path — faster per clip but roughly 8× the
 hourly rate. Kept for reference; the pipeline above does not use it.
@@ -143,10 +184,13 @@ hourly rate. Kept for reference; the pipeline above does not use it.
 - **Character consistency across independent scenes is untested.** `--scenes` needs one
   asset per beat and relies on a shared `style_bible` to keep the character stable;
   only chained mode has been validated.
-- **No job API yet.** Rendering blocks for minutes, so a UI needs submit/poll rather
-  than request/response.
 - **Container may be over-provisioned** at 8 cores / 64 GiB — that's 23% of the bill
   and was never measured against actual usage.
+- **The studio's per-step progress is unverified against a live render.** ComfyUI's `/ws`
+  through Modal's auth proxy has not been exercised yet; if it fails, the phase strip and
+  per-beat timing still work from `/history` polling, only the `step 5/8` detail is lost.
+- **Cost readouts are estimates**, derived from wall clock × $0.001089/s rather than
+  Modal's billing API, and they exclude the scale-down tail. Expect them to read slightly low.
 
 ## License
 

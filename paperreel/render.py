@@ -1,0 +1,208 @@
+"""Rendering a board, with the telemetry the studio needs.
+
+Differs from pipeline.render_beats in three ways that only matter to a UI:
+
+  * phase transitions are reported (deploy, boot, per beat, stitch, stop), because a single
+    progress bar across stages of wildly different length would be a lie;
+  * each clip is downloaded and announced the moment its beat finishes, so beat 1 is
+    watchable while beat 4 is still sampling;
+  * every completed beat records what it was rendered from, which is what lets the canvas
+    mark downstream beats stale later.
+
+Cancellation and teardown are the load-bearing parts. The container is stopped in a
+`finally`, and a cancel interrupts ComfyUI before the app goes away so no partial file lands.
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from datetime import datetime, timezone
+
+from . import board as board_mod
+from . import comfy, config, media, pipeline
+from .jobs import Job, Runner
+
+
+def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner) -> dict:
+    """Render exactly these beats on one warm container."""
+    ordered = [n for n in board.cascade(beats)]
+    if not ordered:
+        return {"beats": [], "cost": 0.0}
+
+    steps = board.steps()
+    frames = {n: config.frame_count(board.seconds_for(board.beat(n))) for n in ordered}
+    over = [n for n, count in frames.items() if count > config.PROVEN_MAX_FRAMES]
+    if over:
+        runner.log(job, f"[warn] beats {over} exceed the proven {config.PROVEN_MAX_FRAMES} "
+                        "frames; a 362-frame render has failed on this card before")
+
+    # Validate the whole chain up front. Discovering a missing first frame three beats in
+    # means having paid for three beats to learn it.
+    for n in ordered:
+        beat = board.beat(n)
+        if board.source_for(beat) == board_mod.SOURCE_ASSET:
+            if not board.asset_path(n).exists():
+                raise FileNotFoundError(f"beat {n} needs its own still ({board.asset_path(n).name})")
+        else:
+            upstream = board.upstream(n)
+            if upstream is None:
+                raise ValueError(f"beat {n} is set to continue from the previous beat, but "
+                                 "it is the first beat; give it its own still instead")
+            if upstream["n"] not in ordered and not board.video_path(upstream["n"]).exists():
+                raise FileNotFoundError(
+                    f"beat {n} continues from beat {upstream['n']}, which has not been "
+                    "rendered yet; include it in the render"
+                )
+
+    runner.update(job, beat_total=len(ordered), phase="deploying")
+    runner.container.mark("deploying")
+    runner.publish_container()
+
+    # The websocket carries per-step sampling progress. `current` lets the callback label
+    # each tick with the beat being sampled without threading state through comfy.py.
+    current = {"beat": None}
+    closers: list = []
+
+    def on_progress(value: int, maximum: int) -> None:
+        job.step, job.step_max = value, maximum
+        runner.publish({"type": "progress", "job_id": job.id, "beat": current["beat"],
+                        "step": value, "step_max": maximum})
+
+    listener = threading.Thread(
+        target=comfy.progress_listener,
+        args=(on_progress,),
+        kwargs={"log": lambda line: runner.log(job, line), "stop": closers},
+        daemon=True,
+    )
+
+    rendered: list[int] = []
+    container_seconds = 0.0
+    boot_started = time.monotonic()
+
+    try:
+        with pipeline.gpu_app(True, log=lambda line: runner.log(job, line)):
+            runner.update(job, phase="booting")
+            with comfy.client(timeout=900.0) as http:
+                comfy.wake(http, log=lambda line: runner.log(job, line))
+                runner.container.mark("warm")
+                runner.publish_container()
+                listener.start()
+                overhead = time.monotonic() - boot_started
+                container_seconds += overhead
+                runner.log(job, f"[app] warm after {overhead:.0f}s (boot + model load, "
+                                "paid once for the whole batch)")
+
+                for index, n in enumerate(ordered, start=1):
+                    if job.cancelling:
+                        break
+                    beat = board.beat(n)
+                    current["beat"] = n
+                    runner.update(
+                        job, phase="rendering", beat=n, beat_index=index,
+                        step=0, step_max=steps, beat_started_at=time.time(),
+                    )
+
+                    frame = _first_frame(board, n)
+                    runner.log(job, f"[render] beat {n}: {frames[n]} frames, {steps} steps, "
+                                    f"first frame from {board.source_for(beat)}")
+                    started = time.monotonic()
+                    outputs = comfy.run_graph(
+                        http,
+                        comfy.build_graph(
+                            first_frame=comfy.upload_image(http, frame),
+                            prompt=config.build_prompt(
+                                beat.get("action", ""), mute=bool(board.data.get("mute"))
+                            ),
+                            length=frames[n], steps=steps, seed=board.seed_for(beat),
+                        ),
+                        poll=2.0,
+                        log=lambda line: runner.log(job, line),
+                        should_stop=lambda: job.cancelling,
+                    )
+                    elapsed = time.monotonic() - started
+                    container_seconds += elapsed
+
+                    comfy.download(http, comfy.only_video(outputs), board.video_path(n))
+                    _record(board, n, elapsed, frames[n], steps)
+                    rendered.append(n)
+                    # Announce immediately: the browser attaches this clip to its node and
+                    # the user can watch it while the rest of the batch renders.
+                    runner.publish_board(board.slug)
+                    runner.log(job, f"[render] beat {n} done in {elapsed:.0f}s "
+                                    f"(~${config.estimate_cost(elapsed):.2f})")
+
+                if job.cancelling:
+                    comfy.interrupt(http)
+                    runner.log(job, "[cancel] stopping the container")
+    finally:
+        if closers:
+            closers[0]()
+        runner.container.mark("cold")
+        runner.publish_container()
+
+    board.data["last_render"] = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "beats": rendered,
+        "container_seconds": round(container_seconds, 1),
+        "cost": round(config.estimate_cost(container_seconds), 4),
+    }
+    board.save()
+
+    reel = None
+    if rendered and not job.cancelling:
+        runner.update(job, phase="stitching")
+        reel = _stitch(board, runner, job)
+
+    runner.log(job, f"[done] {len(rendered)} beats, {container_seconds:.0f} container-seconds "
+                    f"~= ${config.estimate_cost(container_seconds):.2f}")
+    return {
+        "beats": rendered,
+        "container_seconds": round(container_seconds, 1),
+        "cost": round(config.estimate_cost(container_seconds), 4),
+        "reel": str(reel) if reel else None,
+    }
+
+
+def _first_frame(board: board_mod.Board, n: int):
+    """Produce the exact opening frame this beat renders from.
+
+    This is where the wire on the canvas becomes real: "asset" fits the beat's own still
+    onto the generation grid, "chain" pulls the last frame out of the previous clip.
+    """
+    beat = board.beat(n)
+    target = board.frame_path(n)
+    if board.source_for(beat) == board_mod.SOURCE_ASSET:
+        return media.fit_frame(board.asset_path(n), target)
+    upstream = board.upstream(n)
+    return media.last_frame(board.video_path(upstream["n"]), target)
+
+
+def _record(board: board_mod.Board, n: int, elapsed: float, frames: int, steps: int) -> None:
+    """Stamp a beat with what it was made from, so staleness can be detected later."""
+    beat = board.beat(n)
+    beat["render"] = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "frames": frames,
+        "steps": steps,
+        "seed": board.seed_for(beat),
+        "seconds": round(frames / config.FPS, 2),
+        "render_seconds": round(elapsed, 1),
+        "cost": round(config.estimate_cost(elapsed), 4),
+        # Computed after the file lands, so a chained beat hashes the clip it truly follows.
+        "fingerprint": board.render_fingerprint(beat),
+        "own": board.own_fingerprint(beat),
+    }
+    board.save()
+
+
+def _stitch(board: board_mod.Board, runner: Runner, job: Job):
+    """Assemble the deliverable, but only when every beat actually has a clip."""
+    clips = [board.video_path(b["n"]) for b in board.ordered_beats()]
+    missing = [p.name for p in clips if not p.exists()]
+    if missing:
+        runner.log(job, f"[stitch] skipped: still missing {', '.join(missing)}")
+        return None
+    reel = media.stitch(clips, board.reel_path, mute=bool(board.data.get("mute")))
+    runner.log(job, f"[stitch] {len(clips)} clips -> {reel.name}")
+    return reel
