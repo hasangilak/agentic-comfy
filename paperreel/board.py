@@ -194,8 +194,13 @@ class Board:
     def seed_for(self, beat: dict) -> int:
         return int(self.data.get("seed") or 1101) + beat["n"]
 
-    def render_fingerprint(self, beat: dict) -> str:
-        """What this beat WOULD be rendered from right now."""
+    def render_fingerprint(self, beat: dict, *, frames: int | None = None) -> str:
+        """What this beat WOULD be rendered from right now.
+
+        `frames` overrides the length, so a draft pass can stamp what it ACTUALLY rendered
+        rather than what the board asks for. Without that, a 5s draft would record the
+        fingerprint of the 10s final and the canvas would call it finished.
+        """
         source = self.source_for(beat)
         if source == SOURCE_ASSET:
             frame_id = file_hash(self.asset_path(beat["n"]))
@@ -206,7 +211,7 @@ class Board:
             frame_id = file_hash(self.video_path(up["n"])) if up else ""
         return fingerprint(
             beat.get("action", ""),
-            config.frame_count(self.seconds_for(beat)),
+            frames if frames is not None else config.frame_count(self.seconds_for(beat)),
             self.steps(),
             self.seed_for(beat),
             bool(self.data.get("mute")),
@@ -260,10 +265,10 @@ class Board:
             return READY
         return PLANNED
 
-    def own_fingerprint(self, beat: dict) -> str:
+    def own_fingerprint(self, beat: dict, *, frames: int | None = None) -> str:
         return fingerprint(
             beat.get("action", ""),
-            config.frame_count(self.seconds_for(beat)),
+            frames if frames is not None else config.frame_count(self.seconds_for(beat)),
             self.steps(),
             self.seed_for(beat),
             bool(self.data.get("mute")),
@@ -312,6 +317,15 @@ class Board:
         }
 
     def spent(self) -> float:
+        """Everything this board has cost, cumulative across renders.
+
+        Prefers the recorded container seconds, which include the model load and the gaps
+        between beats. Falls back to summing per-beat costs for boards rendered before that
+        was tracked -- which reads about 10% low.
+        """
+        seconds = self.data.get("spend_seconds")
+        if seconds:
+            return round(config.estimate_cost(float(seconds)), 4)
         return round(sum((b.get("render") or {}).get("cost", 0.0) for b in self.beats), 4)
 
     # ## Serialisation for the canvas

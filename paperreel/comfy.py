@@ -58,7 +58,7 @@ def client(url: str | None = None, *, timeout: float = 300.0) -> httpx.Client:
 CLIENT_ID = "paper-reel"
 
 
-def progress_listener(on_progress, *, log=print, stop=None) -> None:
+def progress_listener(on_progress, *, log=print, closers=None, stop_event=None) -> None:
     """Republish ComfyUI's per-step sampling progress. Runs in a thread; never raises.
 
     ComfyUI pushes {"type": "progress", "data": {"value": n, "max": m}} over /ws for the
@@ -67,6 +67,12 @@ def progress_listener(on_progress, *, log=print, stop=None) -> None:
     This is best-effort by design. A WebSocket through Modal's auth proxy is the one
     unproven link in the chain, so a failure here degrades to the per-beat timing that
     /history polling already provides rather than taking the render down with it.
+
+    `stop_event` is what makes it stop: reconnecting forever against a container that has
+    been torn down would spam the log and outlive the render that started it. `closers`
+    collects the socket's close callable so the caller can interrupt a blocking connect --
+    checked as a list, since the caller may reach the teardown before this thread has even
+    constructed the socket.
     """
     try:
         from websocket import WebSocketApp  # websocket-client
@@ -86,8 +92,14 @@ def progress_listener(on_progress, *, log=print, stop=None) -> None:
         if message.get("type") == "progress" and data.get("max"):
             on_progress(int(data.get("value", 0)), int(data["max"]))
 
+    stopping = lambda: stop_event is not None and stop_event.is_set()  # noqa: E731
+    complained = False
+
     def on_error(_ws, error):
-        log(f"[ws] progress stream unavailable ({error}); falling back to timing")
+        nonlocal complained
+        if not (stopping() or complained):
+            complained = True  # once, not once per reconnect
+            log(f"[ws] progress stream unavailable ({error}); falling back to timing")
 
     socket = WebSocketApp(
         f"{url}/ws?clientId={CLIENT_ID}",
@@ -95,10 +107,16 @@ def progress_listener(on_progress, *, log=print, stop=None) -> None:
         on_message=on_message,
         on_error=on_error,
     )
-    if stop is not None:
-        stop.append(socket.close)
+    if closers is not None:
+        closers.append(socket.close)
     try:
-        socket.run_forever(reconnect=5)
+        # run_forever returns on close or error; loop so a blip reconnects, but only while
+        # the render that wants us is still going.
+        while not stopping():
+            socket.run_forever()
+            if stopping():
+                break
+            time.sleep(2)
     except Exception as error:  # a dead socket must never kill a paid render
         log(f"[ws] progress listener stopped ({error})")
 

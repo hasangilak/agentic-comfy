@@ -47,10 +47,13 @@ function buildNodes(board: Board, existing: Node[]): Node[] {
       data: { beat },
     });
   });
+  // The reel node tracks the end of the chain, so it ignores its current on-screen position
+  // and only yields to one the user deliberately dragged. Otherwise adding a beat drops the
+  // new node exactly on top of it -- same column, same row.
   list.push({
     id: "reel",
     type: "reel",
-    position: at("reel", { x: board.beats.length * COLUMN, y: ROW_Y }),
+    position: saved.reel ?? { x: board.beats.length * COLUMN, y: ROW_Y },
     data: {},
   });
   return list;

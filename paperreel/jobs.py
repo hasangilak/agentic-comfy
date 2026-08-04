@@ -198,33 +198,54 @@ class Runner:
 
     def _run(self) -> None:
         while True:
-            job_id = self._queue.get()
-            job = self.jobs[job_id]
-            if job.state == "cancelled":
-                continue
-            handler = self.handlers.get(job.kind)
-            if handler is None:
-                job.state = "error"
-                job.error = f"no handler for {job.kind}"
-                self.publish_job(job)
-                continue
-
-            job.state = "running"
-            job.started_at = time.time()
-            self.publish_job(job)
             try:
-                job.result = handler(job, self)
-                job.state = "cancelled" if job.cancelling else "done"
-            except Exception as error:  # noqa: BLE001 - surfaced to the browser verbatim
+                self._run_one(self._queue.get())
+            except BaseException as error:  # noqa: BLE001
+                # Last resort. This thread is the only thing draining the queue, so it is
+                # never allowed to die -- a dead worker leaves the UI spinning on a job
+                # that will never finish and silently swallows every job after it.
+                print(f"[jobs] worker survived an unexpected {type(error).__name__}: {error}")
+
+    def _run_one(self, job_id: str) -> None:
+        job = self.jobs[job_id]
+        if job.state == "cancelled":
+            return
+        handler = self.handlers.get(job.kind)
+        if handler is None:
+            job.state = "error"
+            job.error = f"no handler for {job.kind}"
+            self.publish_job(job)
+            return
+
+        job.state = "running"
+        job.started_at = time.time()
+        self.publish_job(job)
+        try:
+            job.result = handler(job, self)
+            job.state = "cancelled" if job.cancelling else "done"
+        # SystemExit, not just Exception. The comfy client was written for CLI use and
+        # raises SystemExit for domain failures like a 401 -- and SystemExit is a
+        # BaseException, so `except Exception` lets it through, killing this thread and
+        # with it every future job. The queue must outlive any single bad job.
+        except (Exception, SystemExit) as error:  # noqa: BLE001
+            if job.cancelling:
+                job.state = "cancelled"
+                self.log(job, "[cancel] stopped")
+            else:
                 job.state = "error"
                 job.error = f"{type(error).__name__}: {error}"
                 self.log(job, f"[error] {job.error}")
-            finally:
-                job.finished_at = time.time()
-                job.phase = job.state
-                self.publish_job(job)
-                self.publish_board(job.slug)
-                self.publish_container()
+        finally:
+            job.finished_at = time.time()
+            job.phase = job.state
+            # Belt and braces: no job may end with the container meter still running. If a
+            # render failed somewhere its own teardown could not reach, the clock would
+            # otherwise tick up forever against a container that is already gone.
+            if self.container.state != "cold":
+                self.container.mark("cold")
+            self.publish_job(job)
+            self.publish_board(job.slug)
+            self.publish_container()
 
 
 runner = Runner()

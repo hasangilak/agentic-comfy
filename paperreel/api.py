@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import time
 from pathlib import Path
 
@@ -23,6 +24,17 @@ from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
 
+# Past this a beat is well beyond anything that has ever completed on this card; the node
+# already warns above PROVEN_MAX_FRAMES, and this is the hard stop behind it.
+MAX_BEAT_SECONDS = 15.0
+# 8 steps is the measured sweet spot and 20 costs ~70% more; past 30 nobody is trading
+# quality for money on purpose.
+MAX_STEPS = 30
+
+
+def clamp_seconds(value: object) -> float:
+    return max(config.MIN_FRAMES / config.FPS, min(float(value), MAX_BEAT_SECONDS))  # type: ignore[arg-type]
+
 # The Vite dev server runs on another port during development. The deployed case serves
 # the built bundle from this same origin, where CORS is irrelevant.
 app.add_middleware(
@@ -33,9 +45,24 @@ app.add_middleware(
 )
 
 
+SAFE_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+
+
+def safe_slug(slug: str) -> str:
+    """A slug names one directory under reels/ -- it is never a path.
+
+    Unvalidated, `slug=".."` walks out of reels/ and both `load` and /media happily read
+    whatever is there. Loopback-only binding makes that hard to reach, but it is still a
+    traversal and the check costs nothing.
+    """
+    if not SAFE_SLUG.match(slug):
+        raise HTTPException(404, f"no reel called {slug!r}")
+    return slug
+
+
 def load(slug: str) -> board_mod.Board:
     try:
-        return board_mod.Board.load(slug)
+        return board_mod.Board.load(safe_slug(slug))
     except FileNotFoundError:
         raise HTTPException(404, f"no reel called {slug!r}")
 
@@ -105,7 +132,8 @@ def handle_caption(job: Job, run: Runner) -> dict:
 
 def handle_render(job: Job, run: Runner) -> dict:
     board = load(job.slug)
-    return render.render(board, job.detail["beats"], job, run)
+    return render.render(board, job.detail["beats"], job, run,
+                         seconds=job.detail.get("seconds"))
 
 
 for kind, handler in (
@@ -129,7 +157,7 @@ def create_reel(body: dict = Body(...)) -> dict:
     if not concept:
         raise HTTPException(422, "give a concept")
     beats = max(1, min(int(body.get("beats") or 4), 8))
-    seconds = float(body.get("seconds") or 10.0)
+    seconds = clamp_seconds(body.get("seconds") or 10.0)
     job = runner.submit("plan", board_mod.slugify(concept),
                         {"concept": concept, "beats": beats, "seconds": seconds})
     return {"job": job.to_json()}
@@ -148,9 +176,17 @@ def get_reel(slug: str) -> dict:
 @app.patch("/api/reels/{slug}")
 def patch_reel(slug: str, body: dict = Body(...)) -> dict:
     board = load(slug)
-    for key in ("title", "style_bible", "caption", "seconds", "steps", "seed", "mute", "canvas"):
+    for key in ("title", "style_bible", "caption", "canvas"):
         if key in body:
             board.data[key] = body[key]
+    if "seconds" in body:
+        board.data["seconds"] = clamp_seconds(body["seconds"])
+    if "steps" in body:
+        board.data["steps"] = max(1, min(int(body["steps"]), MAX_STEPS))
+    if "seed" in body:
+        board.data["seed"] = int(body["seed"])
+    if "mute" in body:
+        board.data["mute"] = bool(body["mute"])
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}
@@ -176,9 +212,11 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
         beat = board.beat(n)
     except KeyError:
         raise HTTPException(404, f"beat {n} not in {slug}")
-    for key in ("scene", "action", "asset_prompt", "seconds"):
+    for key in ("scene", "action", "asset_prompt"):
         if key in body:
-            beat[key] = body[key]
+            beat[key] = str(body[key])
+    if "seconds" in body:
+        beat["seconds"] = clamp_seconds(body["seconds"])
     if "source" in body:
         if body["source"] not in (board_mod.SOURCE_ASSET, board_mod.SOURCE_CHAIN):
             raise HTTPException(422, "source must be 'asset' or 'chain'")
@@ -202,6 +240,8 @@ def add_beat(slug: str, body: dict = Body(...)) -> dict:
 @app.delete("/api/reels/{slug}/beats/{n}")
 def remove_beat(slug: str, n: int) -> dict:
     board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
     agent.apply_ops(board, [{"op": "remove_beat", "n": n}])
     board.save()
     runner.publish_board(slug)
@@ -238,6 +278,9 @@ def chat(slug: str, body: dict = Body(...)) -> dict:
 def assets(slug: str, body: dict = Body(default={})) -> dict:
     board = load(slug)
     beats = body.get("beats") or board.to_json()["assets_needed"]
+    unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]
+    if unknown:
+        raise HTTPException(404, f"no such beats: {unknown}")
     if not beats:
         raise HTTPException(422, "no beat needs a still")
     job = runner.submit("asset", slug, {"beats": beats})
@@ -253,17 +296,27 @@ def write_caption(slug: str) -> dict:
 @app.post("/api/reels/{slug}/render")
 def start_render(slug: str, body: dict = Body(default={})) -> dict:
     board = load(slug)
-    beats = board.cascade(body.get("beats") or board.pending())
+    draft = bool(body.get("draft"))
+    # A draft is a render-time override, never an edit. Writing DRAFT_SECONDS into the
+    # document and deleting the per-beat durations -- as this used to -- silently threw away
+    # the lengths the user had chosen, with no way back.
+    if draft:
+        beats = board.cascade(
+            body.get("beats") or [b["n"] for b in board.ordered_beats() if b.get("action")]
+        )
+    else:
+        beats = board.cascade(body.get("beats") or board.pending())
     if not beats:
         raise HTTPException(422, "nothing to render")
-    if body.get("draft"):
-        # A cheap approval pass: shorten every beat, keep everything else.
-        board.data["seconds"] = config.DRAFT_SECONDS
-        for beat in board.beats:
-            beat.pop("seconds", None)
-        board.save()
-    job = runner.submit("render", slug, {"beats": beats, "draft": bool(body.get("draft"))})
-    return {"job": job.to_json(), "estimate": board.cost_of(beats)}
+    job = runner.submit("render", slug, {
+        "beats": beats,
+        "draft": draft,
+        "seconds": config.DRAFT_SECONDS if draft else None,
+    })
+    estimate = (
+        board.cost_of_at(beats, config.DRAFT_SECONDS) if draft else board.cost_of(beats)
+    )
+    return {"job": job.to_json(), "estimate": estimate}
 
 
 @app.get("/api/jobs")
@@ -359,9 +412,11 @@ def sse(payload: dict) -> str:
 
 @app.get("/media/{slug}/{name}")
 def media_file(slug: str, name: str) -> FileResponse:
-    root = board_mod.reels_dir() / slug
+    root = (board_mod.reels_dir() / safe_slug(slug)).resolve()
     path = (root / name).resolve()
-    if not str(path).startswith(str(root.resolve())) or not path.is_file():
+    # Must be a file sitting directly in this reel's directory -- a prefix check alone would
+    # let `name` climb out with "../".
+    if path.parent != root or not path.is_file():
         raise HTTPException(404, "no such file")
     return FileResponse(path)
 

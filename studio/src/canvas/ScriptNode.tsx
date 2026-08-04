@@ -72,6 +72,16 @@ export function ScriptNode() {
           </span>
           <span>seed {board.seed}</span>
         </div>
+
+        {/* A new beat starts with no action, which leaves it `planned` -- so it is excluded
+            from the render button and costs nothing until somebody writes the movement. */}
+        <button
+          onClick={() => void studio.guard(() => api.addBeat(board.slug, {}))}
+          className="w-full rounded bg-[#26262e] py-1 text-[11px] text-zinc-300 hover:bg-[#32323c]"
+          title="appends an empty beat, continuing from the last one"
+        >
+          ＋ add a beat
+        </button>
       </div>
 
       <Handle type="source" position={Position.Bottom} />
