@@ -53,17 +53,22 @@ export function ReelRail() {
               />
               beats
             </label>
-            <label className="flex items-center gap-1">
-              <input
-                type="number"
-                min={5}
-                max={15}
-                value={seconds}
-                onChange={(event) => setSeconds(Number(event.target.value))}
-                className="w-10 rounded bg-[#0d0d10] border border-[#26262e] px-1 py-0.5 text-zinc-200"
-              />
-              s each
-            </label>
+            <span className="flex items-center gap-1">
+              {[5, 10].map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setSeconds(option)}
+                  className={`rounded px-1.5 py-0.5 ${
+                    seconds === option
+                      ? "bg-[#d99a4e] font-medium text-[#1a1208]"
+                      : "bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
+                  }`}
+                >
+                  {option}s
+                </button>
+              ))}
+              each
+            </span>
           </div>
           <Button tone="primary" onClick={create} disabled={planning || !concept.trim()}>
             {planning ? "writing…" : `write ${beats * seconds}s script`}

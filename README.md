@@ -68,8 +68,9 @@ there is no way to wire it wrong. The **wire between two beats is the frame hand
   motion, costs no image quota.
 - **dashed amber** — this beat opens on its own still. A clean cut, costs one image.
 
-Editing a beat marks it `edited` and everything chained below it `follows a change`, and
-the render button re-prices itself. It renders **only what's dirty**, so fixing one beat in
+A beat is either **5 s or 10 s** — two buttons, no stepper (see the measured numbers for
+why). Editing a beat marks it `edited` and everything chained below it `follows a change`,
+and the render button re-prices itself. It renders **only what's dirty**, so fixing one beat in
 a four-beat reel costs $0.28 rather than $1.13. Clips attach to their nodes as each beat
 finishes, so beat 1 is watchable while beat 4 is still sampling.
 
@@ -116,12 +117,17 @@ All on RTX PRO 6000, 768×1344, 8 steps, chained beats.
 | --- | --- | --- | --- | --- |
 | 4 × 5.2 s | 382 | $0.42 | 0.024 | proven |
 | 4 × 10.1 s | 1036 | $1.13 | 0.028 | proven |
-| 6 × 10.1 s (60 s) | ~1550 | ~$1.70 | 0.028 | extrapolated |
-| 4 × 15.1 s | — | — | ~0.035 | **fails — 362 frames never completed** |
+| 6 × 10.1 s (60 s) | ~1550 | ~$1.74 | 0.028 | extrapolated |
+| 4 × 15.1 s | — | — | ~0.035 | failed — 362 frames never completed |
 
 Render time grows **faster than linearly** with frame count (video attention is
 quadratic in sequence length): 1.96× the frames cost 2.35× the time. Longer clips buy
 fewer seams, not lower cost.
+
+That last row is why **a beat is either 5 s or 10 s and nothing else**. 5 s is the model's
+124-frame floor; 10 s snaps to 243 frames, which is exactly the longest render that has ever
+completed on this card. The failing length is unreachable by construction rather than by
+warning, and there is no third option to reason about.
 
 Other measurements worth keeping:
 
@@ -179,8 +185,9 @@ hourly rate. Kept for reference; the pipeline above does not use it.
 
 ## Known gaps
 
-- **15 s beats (362 frames) are unproven** and have failed once on this card. `config.PROVEN_MAX_FRAMES`
-  is 243; exceeding it logs a warning.
+- **The CLI can still ask for 15 s beats**, which have failed once on this card. The studio
+  cannot — `config.BEAT_LENGTHS` caps it at 243 frames — but `storyboard.py --seconds 15`
+  bypasses that and only logs a warning.
 - **Character consistency across independent scenes is untested.** `--scenes` needs one
   asset per beat and relies on a shared `style_bible` to keep the character stable;
   only chained mode has been validated.

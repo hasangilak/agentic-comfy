@@ -55,7 +55,8 @@ CHAT_SCHEMA = {
                     "scene": {"type": "string"},
                     "action": {"type": "string"},
                     "asset_prompt": {"type": "string"},
-                    "seconds": {"type": "number"},
+                    "seconds": {"type": "number", "enum": [5, 10],
+                                "description": "beat length; only 5 or 10 are allowed"},
                     "steps": {"type": "integer"},
                     "source": {"type": "string", "enum": ["asset", "chain"]},
                     "caption": {"type": "string"},
@@ -76,9 +77,9 @@ Hard rules of the medium -- breaking these wastes the user's money:
   style_bible holds that description; reuse its exact wording in every asset_prompt.
 - An `action` describes only what MOVES. Appearance belongs in the style_bible.
 
-Beat length snaps onto a frame grid, so {config.MIN_FRAMES} frames ({config.MIN_FRAMES / config.FPS:.1f}s)
-is the minimum and anything past {config.PROVEN_MAX_FRAMES} frames ({config.PROVEN_MAX_FRAMES / config.FPS:.1f}s)
-has failed before. Keep beats between 5 and 10 seconds.
+Every beat is either 5 or 10 seconds. There is no other length -- anything else you ask for
+will be snapped to the nearer of the two, so choose one of them deliberately. Use 5 for a
+quick gesture and 10 for a beat that needs room to breathe.
 
 Each beat's opening frame comes from one of two places, and it matters:
 - "asset": its own generated still. A clean new shot. Costs one image from a quota of
@@ -175,9 +176,7 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
                 beat[key] = op[key]
                 changed.append(key)
         if op.get("seconds"):
-            beat["seconds"] = max(
-                config.MIN_FRAMES / config.FPS, min(float(op["seconds"]), 15.0)
-            )
+            beat["seconds"] = config.snap_seconds(op["seconds"])
             changed.append("seconds")
         return f'beat {op["n"]}: {", ".join(changed)}' if changed else None
 
@@ -216,7 +215,7 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
     if kind == "set_reel":
         changed = []
         if op.get("seconds"):
-            board.data["seconds"] = float(op["seconds"])
+            board.data["seconds"] = config.snap_seconds(op["seconds"])
             changed.append("seconds")
         if op.get("steps"):
             board.data["steps"] = int(op["steps"])

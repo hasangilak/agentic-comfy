@@ -26,14 +26,9 @@ app = FastAPI(title="Paper Reel Studio")
 
 # Past this a beat is well beyond anything that has ever completed on this card; the node
 # already warns above PROVEN_MAX_FRAMES, and this is the hard stop behind it.
-MAX_BEAT_SECONDS = 15.0
 # 8 steps is the measured sweet spot and 20 costs ~70% more; past 30 nobody is trading
 # quality for money on purpose.
 MAX_STEPS = 30
-
-
-def clamp_seconds(value: object) -> float:
-    return max(config.MIN_FRAMES / config.FPS, min(float(value), MAX_BEAT_SECONDS))  # type: ignore[arg-type]
 
 # The Vite dev server runs on another port during development. The deployed case serves
 # the built bundle from this same origin, where CORS is irrelevant.
@@ -157,7 +152,7 @@ def create_reel(body: dict = Body(...)) -> dict:
     if not concept:
         raise HTTPException(422, "give a concept")
     beats = max(1, min(int(body.get("beats") or 4), 8))
-    seconds = clamp_seconds(body.get("seconds") or 10.0)
+    seconds = config.snap_seconds(body.get("seconds") or config.BEAT_LENGTHS[-1])
     job = runner.submit("plan", board_mod.slugify(concept),
                         {"concept": concept, "beats": beats, "seconds": seconds})
     return {"job": job.to_json()}
@@ -180,7 +175,7 @@ def patch_reel(slug: str, body: dict = Body(...)) -> dict:
         if key in body:
             board.data[key] = body[key]
     if "seconds" in body:
-        board.data["seconds"] = clamp_seconds(body["seconds"])
+        board.data["seconds"] = config.snap_seconds(body["seconds"])
     if "steps" in body:
         board.data["steps"] = max(1, min(int(body["steps"]), MAX_STEPS))
     if "seed" in body:
@@ -216,7 +211,7 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
         if key in body:
             beat[key] = str(body[key])
     if "seconds" in body:
-        beat["seconds"] = clamp_seconds(body["seconds"])
+        beat["seconds"] = config.snap_seconds(body["seconds"])
     if "source" in body:
         if body["source"] not in (board_mod.SOURCE_ASSET, board_mod.SOURCE_CHAIN):
             raise HTTPException(422, "source must be 'asset' or 'chain'")

@@ -179,7 +179,14 @@ class Board:
     # persisted, which is why an outside edit can never leave the canvas lying.
 
     def seconds_for(self, beat: dict) -> float:
-        return float(beat.get("seconds") or self.data.get("seconds") or 10.0)
+        """One of the two offered lengths, always.
+
+        Snapped on read as well as on write so a hand-edited storyboard, or a board made
+        before the choice narrowed, still lines up with the two buttons on the node.
+        """
+        return config.snap_seconds(
+            beat.get("seconds") or self.data.get("seconds") or config.BEAT_LENGTHS[-1]
+        )
 
     def source_for(self, beat: dict) -> str:
         """Default the opening beat to its own asset; later beats inherit unless told."""
@@ -351,7 +358,6 @@ class Board:
                 "actual_seconds": round(frames / config.FPS, 2),
                 "source": self.source_for(beat),
                 "state": states[n],
-                "over_proven": frames > config.PROVEN_MAX_FRAMES,
                 "asset": self.media_url(self.asset_path(n)),
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
@@ -376,6 +382,8 @@ class Board:
             "seconds": self.data.get("seconds", 10.0),
             "steps": self.steps(),
             "seed": self.data.get("seed", 1101),
+            # The only lengths a beat may have; the node renders one button per entry.
+            "lengths": list(config.BEAT_LENGTHS),
             "mute": bool(self.data.get("mute")),
             "beats": beats,
             "canvas": self.data.get("canvas", {}),

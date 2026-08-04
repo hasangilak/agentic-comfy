@@ -33,6 +33,13 @@ FRAME_GRID_OFFSET = 5
 MIN_FRAMES = 124
 PROVEN_MAX_FRAMES = 243
 
+# The studio offers exactly these two lengths and nothing else. They are not arbitrary:
+# 5s is the model's 124-frame floor, and 10s snaps to 243 frames -- exactly
+# PROVEN_MAX_FRAMES. So the longest beat the UI can build is the longest one that has ever
+# completed on this card, and the 362-frame render that failed is unreachable by
+# construction rather than by warning.
+BEAT_LENGTHS = (5.0, 10.0)
+
 DEFAULT_STEPS = 8       # 20 steps costs ~70% more; 8 was judged good on paper art
 DRAFT_STEPS = 8
 DRAFT_SECONDS = 5.0
@@ -125,6 +132,19 @@ def frame_count(seconds: float) -> int:
     """Snap a duration up onto the model's 17k+5 frame grid."""
     frames = max(MIN_FRAMES, round(seconds * FPS))
     return frames + (FRAME_GRID_OFFSET - frames % FRAME_GRID) % FRAME_GRID
+
+
+def snap_seconds(value: float | int | str) -> float:
+    """Force a duration onto one of the two offered lengths.
+
+    Applied on the way in AND on the way out, so a hand-edited storyboard or an older
+    board with some other number still presents as one of the two the UI can show.
+    """
+    try:
+        wanted = float(value)
+    except (TypeError, ValueError):
+        return BEAT_LENGTHS[-1]
+    return min(BEAT_LENGTHS, key=lambda option: abs(option - wanted))
 
 
 def build_prompt(action: str, *, mute: bool = False) -> str:

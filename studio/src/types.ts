@@ -23,7 +23,6 @@ export interface Beat {
   actual_seconds: number;
   source: Source;
   state: BeatState;
-  over_proven: boolean;
   asset: string | null;
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
   frame: string | null;
@@ -56,6 +55,8 @@ export interface Board {
   steps: number;
   seed: number;
   mute: boolean;
+  /** The only lengths a beat may have. One button per entry on the node. */
+  lengths: number[];
   beats: Beat[];
   canvas: { nodes?: Record<string, { x: number; y: number }> };
   reel: string | null;

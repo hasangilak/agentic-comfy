@@ -5,9 +5,6 @@ import type { Beat } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, Button, STATE_LOOK, inputClass } from "../ui";
 
-const MIN_SECONDS = 5.2; // the model's 124-frame floor
-const MAX_SECONDS = 15.0;
-
 /**
  * One shot. The unit of both storytelling and spending: everything on this card either
  * describes what moves, or tells you what it will cost to find out.
@@ -34,10 +31,8 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   const fraction =
     job && job.step_max > 0 ? job.step / job.step_max : Math.min(0.98, elapsed / beat.predicted_seconds);
 
-  const setSeconds = (delta: number) => {
-    const next = Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, beat.seconds + delta));
+  const setSeconds = (next: number) =>
     void studio.guard(() => api.patchBeat(board.slug, beat.n, { seconds: next }));
-  };
 
   const toggleSource = () =>
     void studio.guard(() =>
@@ -157,40 +152,36 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           )}
         </button>
 
+        {/* Two lengths, no stepper. 10s is 243 frames -- exactly the longest render that
+            has ever completed on this card -- so there is nothing above it worth offering. */}
         <div className="flex items-center justify-between border-t border-[#26262e] pt-2">
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setSeconds(-1)}
-              className="h-5 w-5 rounded bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
-            >
-              −
-            </button>
-            <span
-              className={`w-14 text-center text-[11px] ${
-                beat.over_proven ? "text-[#f59e0b]" : "text-zinc-300"
-              }`}
-              title={`${beat.frames} frames, snapped onto the model's frame grid`}
-            >
-              {beat.actual_seconds.toFixed(1)}s
-            </span>
-            <button
-              onClick={() => setSeconds(1)}
-              className="h-5 w-5 rounded bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
-            >
-              +
-            </button>
+            {board.lengths.map((option) => {
+              const active = Math.round(beat.seconds) === Math.round(option);
+              return (
+                <button
+                  key={option}
+                  onClick={() => setSeconds(option)}
+                  className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
+                    active
+                      ? "bg-[#d99a4e] font-medium text-[#1a1208]"
+                      : "bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
+                  }`}
+                  title={
+                    active
+                      ? `${beat.frames} frames, snapped onto the model's frame grid`
+                      : `switch this beat to ${option}s`
+                  }
+                >
+                  {option}s
+                </button>
+              );
+            })}
           </div>
           <span className="text-[11px] text-zinc-500" title="predicted, from measured render rates">
             {money(beat.predicted_cost)}
           </span>
         </div>
-
-        {beat.over_proven ? (
-          <p className="text-[10px] leading-snug text-[#f59e0b]">
-            {beat.frames} frames is past the proven limit — a render this long has failed on
-            this card before.
-          </p>
-        ) : null}
 
         {beat.render && beat.state === "rendered" ? (
           <p className="text-[10px] text-zinc-600">
