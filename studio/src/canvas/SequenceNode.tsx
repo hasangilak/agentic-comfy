@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, clock, money } from "../api";
 import type { Beat } from "../types";
 import { useDraft, useStudio } from "../useStudio";
@@ -14,6 +14,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   const studio = useStudio();
   const board = studio.board!;
   const [playing, setPlaying] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   const look = STATE_LOOK[beat.state];
   // A chained beat has no still of its own, so its thumbnail is the frame it opened on --
   // which is the last frame of the clip before it.
@@ -34,6 +37,20 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   const setSeconds = (next: number) =>
     void studio.guard(() => api.patchBeat(board.slug, beat.n, { seconds: next }));
 
+  const upload = (file: File | undefined) => {
+    setDropping(false);
+    if (!file) return;
+    setUploading(true);
+    void studio
+      .guard(() => api.uploadAsset(board.slug, beat.n, file))
+      .finally(() => setUploading(false));
+  };
+
+  // A 16:9 still loses its sides to the vertical crop. Worth saying before it is rendered,
+  // not after -- the source art in this repo is all landscape.
+  const cropped =
+    beat.asset_aspect !== null && Math.abs(beat.asset_aspect - board.gen_aspect) > 0.08;
+
   const toggleSource = () =>
     void studio.guard(() =>
       api.patchBeat(board.slug, beat.n, {
@@ -48,9 +65,18 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       <div className="flex items-center gap-2 border-b border-[#26262e] px-2.5 py-1.5">
         <span className="text-xs font-medium text-zinc-300">{beat.n}</span>
         <Badge state={beat.state} />
+        {/* Always visible, not hover-only: most beats already show an inherited frame, so a
+            hidden control would leave upload undiscoverable on exactly the common case. */}
+        <button
+          onClick={() => picker.current?.click()}
+          className="ml-auto text-zinc-500 hover:text-[#d99a4e]"
+          title="use your own image as this beat's opening still — drag one onto the frame, or click"
+        >
+          ⤒
+        </button>
         <button
           onClick={() => void studio.guard(() => api.removeBeat(board.slug, beat.n))}
-          className="ml-auto text-zinc-600 hover:text-red-400"
+          className="text-zinc-600 hover:text-red-400"
           title="delete this beat"
         >
           ×
@@ -58,8 +84,27 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       </div>
 
       {/* Media. Letterboxed rather than cropped: this is 9:16 content and pretending
-          otherwise would misrepresent the framing. */}
-      <div className="relative h-36 bg-black">
+          otherwise would misrepresent the framing. Also the drop target for your own
+          stills, which is how you avoid spending image quota at all. */}
+      <div
+        className="relative h-36 bg-black"
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDropping(true);
+        }}
+        onDragLeave={() => setDropping(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          upload(event.dataTransfer.files?.[0]);
+        }}
+      >
+        <input
+          ref={picker}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={(event) => upload(event.target.files?.[0] ?? undefined)}
+        />
         {playing && beat.video ? (
           <video src={beat.video} className="h-full w-full object-contain" controls autoPlay loop />
         ) : thumb || beat.video ? (
@@ -85,19 +130,37 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             {beat.state === "needs_asset" ? (
               <>
                 <span>opens on its own still</span>
-                <Button
-                  tone="quiet"
-                  onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
-                  title="uses one image from a quota of roughly five per five hours"
-                >
-                  generate a still
-                </Button>
+                <div className="flex gap-1.5">
+                  <Button
+                    tone="quiet"
+                    onClick={() => picker.current?.click()}
+                    title="drop an image here, or click to browse — costs no quota"
+                  >
+                    ⤒ upload
+                  </Button>
+                  <Button
+                    tone="quiet"
+                    onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
+                    title="uses one image from a quota of roughly five per five hours"
+                  >
+                    ✦ generate
+                  </Button>
+                </div>
               </>
             ) : (
               <span>continues from beat {beat.n - 1}</span>
             )}
           </div>
         )}
+
+        {dropping || uploading ? (
+          <div
+            className="absolute inset-0 flex items-center justify-center border-2 border-dashed
+              border-[#d99a4e] bg-black/70 text-[11px] text-[#d99a4e]"
+          >
+            {uploading ? "uploading…" : "drop to use as this beat's still"}
+          </div>
+        ) : null}
 
         {isRendering ? (
           <div className="absolute inset-x-0 bottom-0 bg-black/80 px-2 py-1.5">
@@ -182,6 +245,12 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             {money(beat.predicted_cost)}
           </span>
         </div>
+
+        {cropped ? (
+          <p className="text-[10px] leading-snug text-[#f59e0b]">
+            This still is not 9:16 — its sides will be cropped away to fit the vertical frame.
+          </p>
+        ) : null}
 
         {beat.render && beat.state === "rendered" ? (
           <p className="text-[10px] text-zinc-600">

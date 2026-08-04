@@ -1,9 +1,11 @@
 import type { Board, ChatTurn, Estimate, Job, ReelSummary } from "./types";
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  // FormData sets its own multipart boundary; forcing a JSON content-type breaks it.
+  const isForm = init?.body instanceof FormData;
   const response = await fetch(path, {
     ...init,
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    headers: init?.body && !isForm ? { "Content-Type": "application/json" } : undefined,
   });
   if (!response.ok) {
     const detail = await response.text();
@@ -49,6 +51,15 @@ export const api = {
 
   assets: (slug: string, beats?: number[]) =>
     post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats }).then((r) => r.job),
+
+  uploadAsset: (slug: string, n: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<{ board: Board }>(`/api/reels/${slug}/beats/${n}/asset`, {
+      method: "POST",
+      body: form,
+    }).then((r) => r.board);
+  },
 
   caption: (slug: string) =>
     post<{ job: Job }>(`/api/reels/${slug}/caption`).then((r) => r.job),

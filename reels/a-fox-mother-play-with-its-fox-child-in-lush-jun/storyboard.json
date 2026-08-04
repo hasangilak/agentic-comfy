@@ -1,0 +1,83 @@
+{
+  "beats": [
+    {
+      "action": "The mother fox stands completely still in the foreground while the fox kit peeks out from behind a large teal monstera leaf and gently wiggles its ears.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion style with visible cardstock grain, drop shadows between paper layers, and 9:16 vertical composition. Mother Fox is a stylized sleek red fox made from warm terracotta-orange cardstock with a crisp white bib, black-tipped ears, amber paper eyes, and a thick bushy tail with a white tip. Fox Kit is a small playful fox cub crafted from matching orange cardstock with an oversized head, small white chest patch, dark brown-tipped ears, and a cute white-tipped tail. Palette features rich emerald green jungle foliage, teal monstera leaves, sage ferns, warm ochre soil, and soft golden paper light rays. In a lush jungle clearing with giant paper fern fronds, Mother Fox stands near a mossy paper rock while Fox Kit peeks out from behind a large teal monstera leaf. Vertical 9:16, locked-off full shot, full body visible, high detail paper craft, no text, no watermarks.",
+      "n": 1,
+      "scene": "Lush jungle clearing with giant paper fern fronds and mossy rocks",
+      "source": "asset"
+    },
+    {
+      "action": "Mother Fox sits calmly watching as Fox Kit pounces playfully onto a drifting golden paper leaf on the ground.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion style with visible cardstock grain, drop shadows between paper layers, and 9:16 vertical composition. Mother Fox is a stylized sleek red fox made from warm terracotta-orange cardstock with a crisp white bib, black-tipped ears, amber paper eyes, and a thick bushy tail with a white tip. Fox Kit is a small playful fox cub crafted from matching orange cardstock with an oversized head, small white chest patch, dark brown-tipped ears, and a cute white-tipped tail. Palette features rich emerald green jungle foliage, teal monstera leaves, sage ferns, warm ochre soil, and soft golden paper light rays. On a sunlit paper jungle path bordered by palm leaves and tropical flowers, Mother Fox sits gracefully while Fox Kit crouches near a golden paper leaf on the ground. Vertical 9:16, locked-off full shot, full body visible, high detail paper craft, no text, no watermarks.",
+      "n": 2,
+      "scene": "Sunlit jungle path bordered by towering paper palm leaves and colorful tropical flowers",
+      "source": "chain"
+    },
+    {
+      "action": "Fox Kit rests quietly on a smooth paper rock while Mother Fox gently taps the kit's head with her front paw.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion style with visible cardstock grain, drop shadows between paper layers, and 9:16 vertical composition. Mother Fox is a stylized sleek red fox made from warm terracotta-orange cardstock with a crisp white bib, black-tipped ears, amber paper eyes, and a thick bushy tail with a white tip. Fox Kit is a small playful fox cub crafted from matching orange cardstock with an oversized head, small white chest patch, dark brown-tipped ears, and a cute white-tipped tail. Palette features rich emerald green jungle foliage, teal monstera leaves, sage ferns, warm ochre soil, and soft golden paper light rays. Beside a shaded jungle creek with paper water droplets and blue lotus cutouts, Mother Fox stands beside Fox Kit who sits on a smooth paper pebble. Vertical 9:16, locked-off full shot, full body visible, high detail paper craft, no text, no watermarks.",
+      "n": 3,
+      "scene": "Shaded jungle creek side with translucent paper water droplets and blue lotus cutouts",
+      "source": "chain"
+    },
+    {
+      "action": "Fox Kit lies asleep tucked against Mother Fox while Mother Fox slowly wraps her bushy white-tipped tail around the kit.",
+      "asset_prompt": "Handcrafted multi-layered paper-cutout stop-motion style with visible cardstock grain, drop shadows between paper layers, and 9:16 vertical composition. Mother Fox is a stylized sleek red fox made from warm terracotta-orange cardstock with a crisp white bib, black-tipped ears, amber paper eyes, and a thick bushy tail with a white tip. Fox Kit is a small playful fox cub crafted from matching orange cardstock with an oversized head, small white chest patch, dark brown-tipped ears, and a cute white-tipped tail. Palette features rich emerald green jungle foliage, teal monstera leaves, sage ferns, warm ochre soil, and soft golden paper light rays. Under a majestic layered paper tree canopy in a cozy twilight jungle hollow, Mother Fox lies curled up with Fox Kit resting against her side. Vertical 9:16, locked-off full shot, full body visible, high detail paper craft, no text, no watermarks.",
+      "n": 4,
+      "scene": "Golden twilight jungle cozy hollow under a majestic layered paper tree canopy",
+      "source": "chain"
+    }
+  ],
+  "canvas": {
+    "nodes": {
+      "beat-1": {
+        "x": 0,
+        "y": 260
+      },
+      "beat-2": {
+        "x": 330,
+        "y": 260
+      },
+      "beat-3": {
+        "x": 660,
+        "y": 260
+      },
+      "beat-4": {
+        "x": 990,
+        "y": 260
+      },
+      "reel": {
+        "x": 1320,
+        "y": 260
+      },
+      "script": {
+        "x": 0,
+        "y": 0
+      }
+    }
+  },
+  "chat": [
+    {
+      "role": "user",
+      "selection": [],
+      "text": "a fox mother play with its fox child in lush jungle. paper cutout style with smooth stop motion animation"
+    },
+    {
+      "ops": [
+        {
+          "op": "set_script",
+          "summary": "created the board"
+        }
+      ],
+      "role": "agy",
+      "text": "Wrote \"Paper Cutout Jungle Foxes\" as 4 beats. Beat 1 needs a still; the rest continue from it."
+    }
+  ],
+  "concept": "a fox mother play with its fox child in lush jungle. paper cutout style with smooth stop motion animation",
+  "seconds": 5.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "Handcrafted multi-layered paper-cutout stop-motion style with visible cardstock grain, drop shadows between paper layers, and 9:16 vertical composition. Mother Fox is a stylized sleek red fox made from warm terracotta-orange cardstock with a crisp white bib, black-tipped ears, amber paper eyes, and a thick bushy tail with a white tip. Fox Kit is a small playful fox cub crafted from matching orange cardstock with an oversized head, small white chest patch, dark brown-tipped ears, and a cute white-tipped tail. Palette features rich emerald green jungle foliage, teal monstera leaves, sage ferns, warm ochre soil, and soft golden paper light rays.",
+  "title": "Paper Cutout Jungle Foxes"
+}

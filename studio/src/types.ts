@@ -24,6 +24,8 @@ export interface Beat {
   source: Source;
   state: BeatState;
   asset: string | null;
+  /** Width/height of the uploaded or generated still, for the crop warning. */
+  asset_aspect: number | null;
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
   frame: string | null;
   video: string | null;
@@ -57,6 +59,8 @@ export interface Board {
   mute: boolean;
   /** The only lengths a beat may have. One button per entry on the node. */
   lengths: number[];
+  /** Aspect the model renders at; stills far from this get cropped. */
+  gen_aspect: number;
   beats: Beat[];
   canvas: { nodes?: Record<string, { x: number; y: number }> };
   reel: string | null;

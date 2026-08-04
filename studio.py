@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "fastapi", "uvicorn[standard]", "pillow", "numpy", "scipy", "httpx",
-#   "imageio-ffmpeg", "websocket-client",
+#   "imageio-ffmpeg", "websocket-client", "python-multipart",
 # ]
 # ///
 """The Paper Reel studio: a node canvas for building reels.

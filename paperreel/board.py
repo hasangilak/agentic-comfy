@@ -56,6 +56,18 @@ def fingerprint(*parts: Any) -> str:
     return digest.hexdigest()[:16]
 
 
+def image_aspect(path: Path) -> float | None:
+    """Width/height of an image, read from its header. None if unreadable."""
+    if not path.is_file():
+        return None
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            return round(image.width / image.height, 3)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def file_hash(path: Path) -> str:
     if not path.is_file():
         return ""
@@ -359,6 +371,8 @@ class Board:
                 "source": self.source_for(beat),
                 "state": states[n],
                 "asset": self.media_url(self.asset_path(n)),
+                # So the node can warn when an uploaded still will be cropped hard.
+                "asset_aspect": image_aspect(self.asset_path(n)),
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
                 "frame": self.media_url(self.frame_path(n)),
@@ -384,6 +398,7 @@ class Board:
             "seed": self.data.get("seed", 1101),
             # The only lengths a beat may have; the node renders one button per entry.
             "lengths": list(config.BEAT_LENGTHS),
+            "gen_aspect": round(config.GEN_WIDTH / config.GEN_HEIGHT, 3),
             "mute": bool(self.data.get("mute")),
             "beats": beats,
             "canvas": self.data.get("canvas", {}),

@@ -1,5 +1,5 @@
 import { ReactFlowProvider } from "@xyflow/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Canvas } from "./canvas/Canvas";
 import { AgyPanel } from "./panels/AgyPanel";
 import { ReelRail } from "./panels/ReelRail";
@@ -8,6 +8,18 @@ import { StudioContext, useStudio, useStudioState } from "./useStudio";
 
 export default function App() {
   const studio = useStudioState();
+
+  // A file dropped anywhere but a node would otherwise make the browser navigate to it,
+  // throwing away the whole session. Nodes stop propagation by handling their own drop.
+  useEffect(() => {
+    const swallow = (event: DragEvent) => event.preventDefault();
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
+    return () => {
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
+    };
+  }, []);
 
   return (
     <StudioContext.Provider value={studio}>

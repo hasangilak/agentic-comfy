@@ -8,6 +8,9 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    // Pinned to IPv4. Left to itself Vite binds ::1 only, so http://127.0.0.1:5173 refuses
+    // the connection while http://localhost:5173 works -- a confusing way to lose ten minutes.
+    host: "127.0.0.1",
     proxy: {
       "/api": { target: "http://127.0.0.1:8787", changeOrigin: true },
       "/media": { target: "http://127.0.0.1:8787", changeOrigin: true },

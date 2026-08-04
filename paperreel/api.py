@@ -8,13 +8,14 @@ that works anyway, since a browser cannot attach auth headers to a WebSocket.
 
 from __future__ import annotations
 
+import io
 import json
 import queue
 import re
 import time
 from pathlib import Path
 
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +30,10 @@ app = FastAPI(title="Paper Reel Studio")
 # 8 steps is the measured sweet spot and 20 costs ~70% more; past 30 nobody is trading
 # quality for money on purpose.
 MAX_STEPS = 30
+
+# Generous for a still frame; small enough that a stray video file is rejected rather than
+# read into memory.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 # The Vite dev server runs on another port during development. The deployed case serves
 # the built bundle from this same origin, where CORS is irrelevant.
@@ -280,6 +285,44 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
         raise HTTPException(422, "no beat needs a still")
     job = runner.submit("asset", slug, {"beats": beats})
     return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/asset")
+async def upload_asset(slug: str, n: int, file: UploadFile = File(...)) -> dict:
+    """Use your own image as a beat's opening still.
+
+    The way around the image quota, which allows roughly five generations per five hours.
+    Stored at its original size: the geometry is settled at render time by media.fit_frame,
+    which cover-crops onto the generation grid.
+    """
+    from PIL import Image
+
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"image is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+    try:
+        # verify() consumes the file object, so the decode needs a second open.
+        with Image.open(io.BytesIO(raw)) as probe:
+            probe.verify()
+        with Image.open(io.BytesIO(raw)) as image:
+            image.convert("RGB").save(board.asset_path(n))
+    except Exception:  # noqa: BLE001 - any decode failure is the same answer to the user
+        raise HTTPException(
+            422,
+            f"{file.filename or 'that file'} is not a readable image. PNG, JPEG and WebP "
+            "work; HEIC from an iPhone does not.",
+        )
+
+    # Supplying a still means this beat opens on it rather than continuing from the one
+    # before -- which is a real story change, so the wire on the canvas changes to match.
+    board.beat(n)["source"] = board_mod.SOURCE_ASSET
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
 
 
 @app.post("/api/reels/{slug}/caption")
