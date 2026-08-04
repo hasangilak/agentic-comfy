@@ -62,7 +62,10 @@ uv run studio.py                                       # http://127.0.0.1:8787
 ```
 
 The board is a fixed chain — a script node, a row of sequence nodes, a reel node — so
-there is no way to wire it wrong. The **wire between two beats is the frame handoff**:
+there is no way to wire it wrong. Scenes can be inserted before or after any existing scene
+and removed in place; the immediate neighbors reconnect automatically. Manual wiring stays
+disabled, so a scene cannot branch, connect twice, point backward, or form a loop. The
+**wire between two beats is the frame handoff**:
 
 - **solid green** — this beat continues from the previous clip's last frame. Continuous
   motion, costs no image quota.

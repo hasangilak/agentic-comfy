@@ -169,21 +169,25 @@ class Board:
         """
         ordered = self.ordered_beats()
         moves = [(b, index + 1) for index, b in enumerate(ordered) if b["n"] != index + 1]
-        if not moves:
-            return
-        # Two passes through a temp name, so a 3->2 shift cannot clobber beat 2's files.
-        for beat, target in moves:
-            for maker in (self.asset_path, self.frame_path, self.video_path):
-                src = maker(beat["n"])
-                if src.exists():
-                    src.rename(src.with_name(f"tmp_{target}_{src.name}"))
-        for beat, target in moves:
-            for maker in (self.asset_path, self.frame_path, self.video_path):
-                final = maker(target)
-                staged = final.with_name(f"tmp_{target}_{maker(beat['n']).name}")
-                if staged.exists():
-                    staged.replace(final)
-            beat["n"] = target
+        if moves:
+            # Two passes through a temp name, so a 3->2 shift cannot clobber beat 2's files.
+            for beat, target in moves:
+                for maker in (self.asset_path, self.frame_path, self.video_path):
+                    src = maker(beat["n"])
+                    if src.exists():
+                        src.rename(src.with_name(f"tmp_{target}_{src.name}"))
+            for beat, target in moves:
+                for maker in (self.asset_path, self.frame_path, self.video_path):
+                    final = maker(target)
+                    staged = final.with_name(f"tmp_{target}_{maker(beat['n']).name}")
+                    if staged.exists():
+                        staged.replace(final)
+                beat["n"] = target
+
+        # This is the topology invariant behind the canvas: scene 1 has no incoming scene,
+        # so it can never be chained. It matters especially after deleting the old scene 1.
+        if ordered:
+            ordered[0]["source"] = SOURCE_ASSET
 
     # ## Derived state
     #

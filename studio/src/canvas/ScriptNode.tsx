@@ -12,6 +12,10 @@ export function ScriptNode() {
   const studio = useStudio();
   const board = studio.board!;
   const [open, setOpen] = useState(false);
+  const structureBusy = Object.values(studio.jobs).some(
+    (job) =>
+      job.slug === board.slug && (job.state === "queued" || job.state === "running"),
+  );
 
   const title = useDraft(board.title, (next) =>
     void studio.guard(() => api.patchBoard(board.slug, { title: next })),
@@ -77,10 +81,16 @@ export function ScriptNode() {
             from the render button and costs nothing until somebody writes the movement. */}
         <button
           onClick={() => void studio.guard(() => api.addBeat(board.slug, {}))}
-          className="w-full rounded bg-[#26262e] py-1 text-[11px] text-zinc-300 hover:bg-[#32323c]"
-          title="appends an empty beat, continuing from the last one"
+          disabled={structureBusy}
+          className="w-full rounded bg-[#26262e] py-1 text-[11px] text-zinc-300
+            hover:bg-[#32323c] disabled:cursor-not-allowed disabled:opacity-40"
+          title={
+            structureBusy
+              ? "wait for the current job to finish"
+              : "appends an empty scene to the end of the linear sequence"
+          }
         >
-          ＋ add a beat
+          ＋ add scene at end
         </button>
       </div>
 

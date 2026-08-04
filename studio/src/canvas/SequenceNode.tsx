@@ -37,6 +37,11 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       candidate.detail.beats.includes(beat.n),
   );
   const isGenerating = Boolean(assetJob);
+  const structureBusy = Object.values(studio.jobs).some(
+    (candidate) =>
+      candidate.slug === board.slug &&
+      (candidate.state === "queued" || candidate.state === "running"),
+  );
   const elapsed = isRendering && job?.beat_started_at ? Date.now() / 1000 - job.beat_started_at : 0;
   const remaining = Math.max(0, beat.predicted_seconds - elapsed);
   // Sampling steps dominate the render, so step progress is a fair stand-in for the beat.
@@ -75,9 +80,36 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         <span className="text-xs font-medium text-zinc-300">{beat.n}</span>
         <Badge state={beat.state} />
         <button
+          onClick={() => void studio.guard(() => api.addBeat(board.slug, { n: beat.n }))}
+          disabled={structureBusy}
+          className="ml-auto text-[10px] text-zinc-600 hover:text-[#d99a4e]
+            disabled:cursor-not-allowed disabled:opacity-30"
+          title={
+            structureBusy
+              ? "wait for the current job to finish"
+              : "insert a new scene before this one"
+          }
+        >
+          + before
+        </button>
+        <button
+          onClick={() => void studio.guard(() => api.addBeat(board.slug, { n: beat.n + 1 }))}
+          disabled={structureBusy}
+          className="text-[10px] text-zinc-600 hover:text-[#d99a4e]
+            disabled:cursor-not-allowed disabled:opacity-30"
+          title={
+            structureBusy
+              ? "wait for the current job to finish"
+              : "insert a new scene after this one"
+          }
+        >
+          + after
+        </button>
+        <button
           onClick={() => void studio.guard(() => api.removeBeat(board.slug, beat.n))}
-          className="ml-auto text-zinc-600 hover:text-red-400"
-          title="delete this beat"
+          disabled={structureBusy}
+          className="text-zinc-600 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
+          title={structureBusy ? "wait for the current job to finish" : "delete this scene"}
         >
           ×
         </button>

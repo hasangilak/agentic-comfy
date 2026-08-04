@@ -181,17 +181,33 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
         return f'beat {op["n"]}: {", ".join(changed)}' if changed else None
 
     if kind == "add_beat":
-        position = int(op.get("n") or len(board.beats) + 1)
-        for existing in board.beats:
-            if existing["n"] >= position:
-                existing["n"] += 1
+        requested = int(op.get("n") or len(board.beats) + 1)
+        position = max(1, min(requested, len(board.beats) + 1))
+
+        # Move media before changing the numbers. Descending order keeps beat 2 -> 3 from
+        # overwriting the original beat 3 when inserting into the middle of a prepared reel.
+        for existing in sorted(board.beats, key=lambda beat: beat["n"], reverse=True):
+            old = existing["n"]
+            if old < position:
+                continue
+            for maker in (board.asset_path, board.frame_path, board.video_path):
+                source = maker(old)
+                if source.exists():
+                    source.replace(maker(old + 1))
+            existing["n"] = old + 1
         board.beats.append({
             "n": position,
             "scene": op.get("scene", ""),
             "action": op.get("action", ""),
             "asset_prompt": op.get("asset_prompt", ""),
-            "source": op.get("source") or board_mod.SOURCE_CHAIN,
+            # A new first scene cannot continue from anything. Every other insertion joins
+            # the existing linear handoff unless the caller explicitly asks for a cut.
+            "source": (
+                board_mod.SOURCE_ASSET if position == 1
+                else op.get("source") or board_mod.SOURCE_CHAIN
+            ),
         })
+        reset_sequence_layout(board)
         return f"added beat {position}"
 
     if kind == "remove_beat":
@@ -199,6 +215,7 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
         board.data["beats"] = [b for b in board.beats if b["n"] != n]
         for path in (board.asset_path(n), board.frame_path(n), board.video_path(n)):
             path.unlink(missing_ok=True)
+        reset_sequence_layout(board)
         return f"removed beat {n}"
 
     if kind == "set_source":
@@ -223,6 +240,13 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
         return f'reel: {", ".join(changed)}' if changed else None
 
     raise ValueError(f"unknown op {kind!r}")
+
+
+def reset_sequence_layout(board: board_mod.Board) -> None:
+    """Reflow a structurally changed chain while preserving the script node's position."""
+    canvas = board.data.setdefault("canvas", {})
+    nodes = canvas.get("nodes") or {}
+    canvas["nodes"] = {"script": nodes["script"]} if "script" in nodes else {}
 
 
 # ## Creating a board from a concept

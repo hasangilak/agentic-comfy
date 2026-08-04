@@ -10,7 +10,7 @@ import {
   type NodeChange,
   type OnSelectionChangeParams,
 } from "@xyflow/react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { api } from "../api";
 import type { Board } from "../types";
 import { useStudio } from "../useStudio";
@@ -95,14 +95,23 @@ function buildEdges(board: Board): Edge[] {
 
 export function Canvas() {
   const studio = useStudio();
+  const setSelection = studio.setSelection;
   const board = studio.board!;
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
+  const beatCount = useRef<number | null>(null);
 
   useEffect(() => {
-    setNodes((existing) => buildNodes(board, existing));
+    // Beat numbers are positional IDs. After insertion/removal they may refer to different
+    // scenes, so discard the old on-screen positions and let the server-cleared layout
+    // reflow the one-dimensional chain without overlaps.
+    const structureChanged =
+      beatCount.current !== null && beatCount.current !== board.beats.length;
+    setNodes((existing) => buildNodes(board, structureChanged ? [] : existing));
     setEdges(buildEdges(board));
-  }, [board, setNodes, setEdges]);
+    if (structureChanged) setSelection([]);
+    beatCount.current = board.beats.length;
+  }, [board, setNodes, setEdges, setSelection]);
 
   // Absorb React Flow's own changes (dimensions, selection, drag) first, or it re-emits
   // them forever waiting to be acknowledged.

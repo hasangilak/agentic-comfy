@@ -75,6 +75,22 @@ def rendering_now(slug: str) -> set[int]:
     return {active.beat} if active.beat else set()
 
 
+def require_structure_idle(slug: str) -> None:
+    """Scene positions are job identifiers, so they cannot change under queued work."""
+    busy = next(
+        (
+            job for job in runner.jobs.values()
+            if job.slug == slug and job.state in ("queued", "running")
+        ),
+        None,
+    )
+    if busy:
+        raise HTTPException(
+            409,
+            f"cannot add or remove scenes while the {busy.kind} job is {busy.state}",
+        )
+
+
 def board_json(board: board_mod.Board) -> dict:
     return board.to_json(rendering=rendering_now(board.slug))
 
@@ -231,6 +247,7 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
 @app.post("/api/reels/{slug}/beats")
 def add_beat(slug: str, body: dict = Body(...)) -> dict:
     board = load(slug)
+    require_structure_idle(slug)
     agent.apply_ops(board, [{"op": "add_beat", **body}])
     board.save()
     runner.publish_board(slug)
@@ -240,6 +257,7 @@ def add_beat(slug: str, body: dict = Body(...)) -> dict:
 @app.delete("/api/reels/{slug}/beats/{n}")
 def remove_beat(slug: str, n: int) -> dict:
     board = load(slug)
+    require_structure_idle(slug)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
     agent.apply_ops(board, [{"op": "remove_beat", "n": n}])
