@@ -47,10 +47,13 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                         "frames; a 362-frame render has failed on this card before")
 
     # Validate the whole chain up front. Discovering a missing first frame three beats in
-    # means having paid for three beats to learn it.
+    # means having paid for three beats to learn it. The source of each beat is captured
+    # here and used for the rest of the batch, so a still uploaded mid-render cannot
+    # silently turn a chained beat into a cut halfway through.
+    sources = {n: board.source_for(board.beat(n)) for n in ordered}
     for n in ordered:
         beat = board.beat(n)
-        if board.source_for(beat) == board_mod.SOURCE_ASSET:
+        if sources[n] == board_mod.SOURCE_ASSET:
             if not board.asset_path(n).exists():
                 raise FileNotFoundError(f"beat {n} needs its own still ({board.asset_path(n).name})")
         else:
@@ -113,9 +116,9 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                         step=0, step_max=steps, beat_started_at=time.time(),
                     )
 
-                    frame = _first_frame(board, n)
+                    frame, frame_id = _first_frame(board, n, sources[n])
                     runner.log(job, f"[render] beat {n}: {frames[n]} frames, {steps} steps, "
-                                    f"first frame from {board.source_for(beat)}")
+                                    f"first frame from {sources[n]}")
                     started = time.monotonic()
                     outputs = comfy.run_graph(
                         http,
@@ -133,7 +136,8 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                     elapsed = time.monotonic() - started
 
                     comfy.download(http, comfy.only_video(outputs), board.video_path(n))
-                    _record(board, n, elapsed, frames[n], steps, draft=seconds is not None)
+                    _record(board, n, elapsed, frames[n], steps,
+                            draft=seconds is not None, frame_id=frame_id)
                     rendered.append(n)
                     # Announce immediately: the browser attaches this clip to its node and
                     # the user can watch it while the rest of the batch renders.
@@ -182,22 +186,31 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
     }
 
 
-def _first_frame(board: board_mod.Board, n: int):
-    """Produce the exact opening frame this beat renders from.
+def _first_frame(board: board_mod.Board, n: int, source: str):
+    """Produce the exact opening frame this beat renders from, and identify it.
 
     This is where the wire on the canvas becomes real: "asset" fits the beat's own still
     onto the generation grid, "chain" pulls the last frame out of the previous clip.
+
+    `source` is passed in rather than read from the board, because uploading a still flips
+    a beat from chained to its own image -- and a batch must render what was queued, not
+    change shape halfway through because somebody dropped a file on a later node.
+
+    Returns (frame, frame_id) where frame_id is the still's content hash taken here, at the
+    moment of use, so the recorded fingerprint names the image really rendered.
     """
-    beat = board.beat(n)
     target = board.frame_path(n)
-    if board.source_for(beat) == board_mod.SOURCE_ASSET:
-        return media.fit_frame(board.asset_path(n), target)
+    if source == board_mod.SOURCE_ASSET:
+        return media.fit_frame(board.asset_path(n), target), board_mod.file_hash(
+            board.asset_path(n)
+        )
     upstream = board.upstream(n)
-    return media.last_frame(board.video_path(upstream["n"]), target)
+    video = board.video_path(upstream["n"])
+    return media.last_frame(video, target), board_mod.file_hash(video)
 
 
 def _record(board: board_mod.Board, n: int, elapsed: float, frames: int, steps: int,
-            *, draft: bool = False) -> None:
+            *, draft: bool = False, frame_id: str | None = None) -> None:
     """Stamp a beat with what it was made from, so staleness can be detected later."""
     beat = board.beat(n)
     beat["render"] = {
@@ -212,8 +225,8 @@ def _record(board: board_mod.Board, n: int, elapsed: float, frames: int, steps: 
         # Fingerprinted on the frame count ACTUALLY rendered and computed after the file
         # lands, so a chained beat hashes the clip it truly follows and a draft does not
         # masquerade as the finished article.
-        "fingerprint": board.render_fingerprint(beat, frames=frames),
-        "own": board.own_fingerprint(beat, frames=frames),
+        "fingerprint": board.render_fingerprint(beat, frames=frames, frame_id=frame_id),
+        "own": board.own_fingerprint(beat, frames=frames, frame_id=frame_id),
     }
     board.save()
 

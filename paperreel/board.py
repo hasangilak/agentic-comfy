@@ -213,21 +213,22 @@ class Board:
     def seed_for(self, beat: dict) -> int:
         return int(self.data.get("seed") or 1101) + beat["n"]
 
-    def render_fingerprint(self, beat: dict, *, frames: int | None = None) -> str:
+    def render_fingerprint(self, beat: dict, *, frames: int | None = None,
+                           frame_id: str | None = None) -> str:
         """What this beat WOULD be rendered from right now.
 
         `frames` overrides the length, so a draft pass can stamp what it ACTUALLY rendered
         rather than what the board asks for. Without that, a 5s draft would record the
         fingerprint of the 10s final and the canvas would call it finished.
+
+        `frame_id` does the same for the opening still. A render reads the still off disk at
+        the moment it starts a beat; if a new one is uploaded while the batch is still
+        running, recomputing the hash afterwards would stamp the clip with an image it was
+        never made from -- and the beat would show as finished when it needs redoing.
         """
         source = self.source_for(beat)
-        if source == SOURCE_ASSET:
-            frame_id = file_hash(self.asset_path(beat["n"]))
-        else:
-            # Chained: identified by whatever the upstream beat currently renders to, so
-            # this fingerprint changes the moment upstream is re-rendered.
-            up = self.upstream(beat["n"])
-            frame_id = file_hash(self.video_path(up["n"])) if up else ""
+        if frame_id is None:
+            frame_id = self.frame_id_for(beat)
         return fingerprint(
             beat.get("action", ""),
             frames if frames is not None else config.frame_count(self.seconds_for(beat)),
@@ -237,6 +238,15 @@ class Board:
             source,
             frame_id,
         )
+
+    def frame_id_for(self, beat: dict) -> str:
+        """Content hash of the still this beat opens on, as things stand right now."""
+        if self.source_for(beat) == SOURCE_ASSET:
+            return file_hash(self.asset_path(beat["n"]))
+        # Chained: identified by whatever the upstream beat currently renders to, so this
+        # changes the moment upstream is re-rendered.
+        up = self.upstream(beat["n"])
+        return file_hash(self.video_path(up["n"])) if up else ""
 
     def states(self, *, rendering: set[int] | None = None) -> dict[int, str]:
         """Every beat's state in one downstream pass.
@@ -284,15 +294,30 @@ class Board:
             return READY
         return PLANNED
 
-    def own_fingerprint(self, beat: dict, *, frames: int | None = None) -> str:
-        return fingerprint(
+    def own_fingerprint(self, beat: dict, *, frames: int | None = None,
+                        frame_id: str | None = None) -> str:
+        """What this beat is, ignoring anything inherited from upstream.
+
+        Compared against the recorded value to tell "you changed this" from "the beat before
+        it changed" -- only the first is the user's own doing, only the second cascades.
+
+        A beat opening on its OWN still counts that still as part of itself: swapping the
+        image is an edit you made, so it must read as `edited`, not as `follows a change` --
+        which would be nonsense on beat 1, where there is nothing before it to follow.
+        A chained beat's frame comes from upstream, so it stays out, which is exactly what
+        keeps the two labels meaningful.
+        """
+        parts: list = [
             beat.get("action", ""),
             frames if frames is not None else config.frame_count(self.seconds_for(beat)),
             self.steps(),
             self.seed_for(beat),
             bool(self.data.get("mute")),
             self.source_for(beat),
-        )
+        ]
+        if self.source_for(beat) == SOURCE_ASSET:
+            parts.append(frame_id if frame_id is not None else self.frame_id_for(beat))
+        return fingerprint(*parts)
 
     def pending(self, *, rendering: set[int] | None = None) -> list[int]:
         """Beats that would be rendered by 'render everything that needs it'.
