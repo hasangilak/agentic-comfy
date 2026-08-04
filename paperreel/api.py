@@ -277,12 +277,23 @@ def chat(slug: str, body: dict = Body(...)) -> dict:
 @app.post("/api/reels/{slug}/assets")
 def assets(slug: str, body: dict = Body(default={})) -> dict:
     board = load(slug)
-    beats = body.get("beats") or board.to_json()["assets_needed"]
+    requested = body.get("beats")
+    beats = board.to_json()["assets_needed"] if requested is None else requested
     unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]
     if unknown:
         raise HTTPException(404, f"no such beats: {unknown}")
     if not beats:
         raise HTTPException(422, "no beat needs a still")
+
+    # An explicit per-node request means "prepare this scene with its own image", even if
+    # it currently continues from the previous clip. Record that choice immediately so the
+    # canvas and render queue agree about the scene boundary while generation is queued.
+    if requested is not None:
+        for n in beats:
+            board.beat(n)["source"] = board_mod.SOURCE_ASSET
+        board.save()
+        runner.publish_board(slug)
+
     job = runner.submit("asset", slug, {"beats": beats})
     return {"job": job.to_json()}
 

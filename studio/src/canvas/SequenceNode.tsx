@@ -20,7 +20,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   const look = STATE_LOOK[beat.state];
   // A chained beat has no still of its own, so its thumbnail is the frame it opened on --
   // which is the last frame of the clip before it.
-  const thumb = beat.asset ?? beat.frame;
+  const thumb = beat.source === "asset" ? beat.asset : beat.frame;
 
   const action = useDraft(beat.action, (next) =>
     void studio.guard(() => api.patchBeat(board.slug, beat.n, { action: next })),
@@ -28,6 +28,15 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
 
   const job = studio.activeJob;
   const isRendering = beat.state === "rendering";
+  const assetJob = Object.values(studio.jobs).find(
+    (candidate) =>
+      candidate.kind === "asset" &&
+      candidate.slug === board.slug &&
+      (candidate.state === "queued" || candidate.state === "running") &&
+      Array.isArray(candidate.detail.beats) &&
+      candidate.detail.beats.includes(beat.n),
+  );
+  const isGenerating = Boolean(assetJob);
   const elapsed = isRendering && job?.beat_started_at ? Date.now() / 1000 - job.beat_started_at : 0;
   const remaining = Math.max(0, beat.predicted_seconds - elapsed);
   // Sampling steps dominate the render, so step progress is a fair stand-in for the beat.
@@ -65,18 +74,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       <div className="flex items-center gap-2 border-b border-[#26262e] px-2.5 py-1.5">
         <span className="text-xs font-medium text-zinc-300">{beat.n}</span>
         <Badge state={beat.state} />
-        {/* Always visible, not hover-only: most beats already show an inherited frame, so a
-            hidden control would leave upload undiscoverable on exactly the common case. */}
-        <button
-          onClick={() => picker.current?.click()}
-          className="ml-auto text-zinc-500 hover:text-[#d99a4e]"
-          title="use your own image as this beat's opening still — drag one onto the frame, or click"
-        >
-          ⤒
-        </button>
         <button
           onClick={() => void studio.guard(() => api.removeBeat(board.slug, beat.n))}
-          className="text-zinc-600 hover:text-red-400"
+          className="ml-auto text-zinc-600 hover:text-red-400"
           title="delete this beat"
         >
           ×
@@ -127,29 +127,11 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-[10px] text-zinc-600">
-            {beat.state === "needs_asset" ? (
-              <>
-                <span>opens on its own still</span>
-                <div className="flex gap-1.5">
-                  <Button
-                    tone="quiet"
-                    onClick={() => picker.current?.click()}
-                    title="drop an image here, or click to browse — costs no quota"
-                  >
-                    ⤒ upload
-                  </Button>
-                  <Button
-                    tone="quiet"
-                    onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
-                    title="uses one image from a quota of roughly five per five hours"
-                  >
-                    ✦ generate
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <span>continues from beat {beat.n - 1}</span>
-            )}
+            <span>
+              {beat.source === "asset"
+                ? "add this scene's opening still"
+                : `continues from beat ${beat.n - 1}`}
+            </span>
           </div>
         )}
 
@@ -183,6 +165,30 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       </div>
 
       <div className="space-y-2 p-2.5">
+        {/* Asset preparation is available on every node, regardless of whether it currently
+            continues from the previous clip or already has media. Both actions make this
+            scene a clean cut; they never need a video render to become available. */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-zinc-500">opening still</span>
+          <Button
+            tone="ghost"
+            className="ml-auto"
+            disabled={uploading}
+            onClick={() => picker.current?.click()}
+            title="use your own image for this scene — costs no quota"
+          >
+            {uploading ? "uploading…" : beat.asset ? "⤒ replace" : "⤒ upload"}
+          </Button>
+          <Button
+            tone="ghost"
+            disabled={isGenerating}
+            onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
+            title="generate an opening still for this scene and make it a clean cut"
+          >
+            {isGenerating ? "generating…" : beat.asset ? "✦ regenerate" : "✦ generate"}
+          </Button>
+        </div>
+
         <textarea
           className={`${inputClass} thin h-20 leading-relaxed`}
           value={action.draft}
