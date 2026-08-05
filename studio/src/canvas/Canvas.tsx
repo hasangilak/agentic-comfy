@@ -109,7 +109,10 @@ export function Canvas() {
       beatCount.current !== null && beatCount.current !== board.beats.length;
     setNodes((existing) => buildNodes(board, structureChanged ? [] : existing));
     setEdges(buildEdges(board));
-    if (structureChanged) setSelection([]);
+    if (structureChanged) {
+      setSelection([]);
+      studio.setRenderSelection([]);
+    }
     beatCount.current = board.beats.length;
   }, [board, setNodes, setEdges, setSelection]);
 

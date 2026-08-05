@@ -37,8 +37,12 @@ def main() -> None:
     print(f"[studio] http://{args.host}:{args.port}")
     print(f"[studio] frontend: {'studio/dist' if dist.is_dir() else 'NOT BUILT -- run npm run dev in studio/'}")
     print(f"[studio] backend:  {config.BACKEND_URL}")
+    # Bounded graceful shutdown. Ctrl-C (or a SIGTERM when the launching shell goes away)
+    # closes the listening socket first and only then drains open connections -- so without
+    # a deadline a single long-lived connection leaves a process that is alive but listening
+    # to nothing, which presents as a studio that renders nothing and reports no error.
     uvicorn.run("paperreel.api:app", host=args.host, port=args.port, reload=args.reload,
-                log_level="warning")
+                log_level="warning", timeout_graceful_shutdown=5)
 
 
 if __name__ == "__main__":

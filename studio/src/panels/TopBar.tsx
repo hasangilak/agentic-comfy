@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { api, clock, money } from "../api";
+import type { Estimate } from "../types";
 import { useStudio } from "../useStudio";
 import { Button } from "../ui";
 
@@ -20,6 +22,58 @@ export function TopBar() {
   const look = CONTAINER_LOOK[studio.container.state];
   const pending = board?.pending ?? [];
   const busy = Boolean(job);
+  const selected = board
+    ? studio.renderSelection.filter((n) => board.beats.some((beat) => beat.n === n))
+    : [];
+  const [selectedEstimate, setSelectedEstimate] = useState<Estimate | null>(null);
+  const [selectedDraftEstimate, setSelectedDraftEstimate] = useState<Estimate | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    if (!board || selected.length === 0) {
+      setSelectedEstimate(null);
+      setSelectedDraftEstimate(null);
+      return () => {
+        current = false;
+      };
+    }
+    void Promise.all([
+      api.estimate(board.slug, selected),
+      api.estimate(board.slug, selected, true),
+    ])
+      .then(([estimate, draftEstimate]) => {
+        if (current) {
+          setSelectedEstimate(estimate);
+          setSelectedDraftEstimate(draftEstimate);
+        }
+      })
+      .catch((problem) => {
+        if (current) studio.setError(String(problem));
+      });
+    return () => {
+      current = false;
+    };
+  }, [board?.slug, board?.beats, selected.join(","), studio.setError]);
+
+  const renderBeats = selected.length ? selected : undefined;
+  const renderCount = selected.length
+    ? (selectedEstimate?.beats?.length ?? selected.length)
+    : pending.length;
+  const renderCost = selected.length
+    ? selectedEstimate?.predicted_cost
+    : board?.pending_cost.predicted_cost;
+  const renderSeconds = selected.length
+    ? selectedEstimate?.predicted_seconds
+    : board?.pending_cost.predicted_seconds;
+  const canRender = Boolean(board && renderCount > 0 && !busy);
+
+  const startRender = (draft: boolean) => {
+    if (!board) return;
+    void studio.guard(async () => {
+      await api.render(board.slug, renderBeats, draft);
+      studio.setRenderSelection([]);
+    });
+  };
 
   return (
     <div className="flex h-13 shrink-0 items-center gap-3 border-b border-[#26262e] bg-[#16161b] px-3">
@@ -48,27 +102,49 @@ export function TopBar() {
       {job ? <Phases job={job} /> : null}
 
       <div className="ml-auto flex items-center gap-2">
-        {board && pending.length > 0 && !busy ? (
+        {canRender ? (
           <>
             <Button
               tone="quiet"
-              onClick={() => void studio.guard(() => api.render(board.slug, undefined, true))}
-              title={`a cheap approval pass at ${board.draft_cost.video_seconds.toFixed(0)}s total`}
+              onClick={() => startRender(true)}
+              title={
+                selected.length
+                  ? `draft the ${renderCount} selected/dependent scenes`
+                  : `a cheap approval pass at ${board!.draft_cost.video_seconds.toFixed(0)}s total`
+              }
             >
-              draft {money(board.draft_cost.predicted_cost)}
+              draft {selected.length
+                ? selectedDraftEstimate
+                  ? money(selectedDraftEstimate.predicted_cost)
+                  : "…"
+                : money(board!.draft_cost.predicted_cost)}
             </Button>
             <Button
               tone="primary"
-              onClick={() => void studio.guard(() => api.render(board.slug))}
-              title={`${pending.length} beats, about ${clock(board.pending_cost.predicted_seconds)}`}
+              onClick={() => startRender(false)}
+              title={`${renderCount} beats including chained dependencies, about ${
+                renderSeconds === undefined ? "…" : clock(renderSeconds)
+              }`}
             >
-              ▶ render {pending.length} {pending.length === 1 ? "beat" : "beats"} ·{" "}
-              {money(board.pending_cost.predicted_cost)}
+              ▶ render{" "}
+              {selected.length
+                ? `${selected.length} selected`
+                : `${renderCount} ${renderCount === 1 ? "beat" : "beats"}`} ·{" "}
+              {renderCost === undefined ? "…" : money(renderCost)}
             </Button>
+            {selected.length ? (
+              <button
+                onClick={() => studio.setRenderSelection([])}
+                className="text-[10px] text-zinc-600 hover:text-zinc-300"
+                title="clear render selection"
+              >
+                clear
+              </button>
+            ) : null}
           </>
         ) : null}
 
-        {board && pending.length === 0 && !busy ? (
+        {board && renderCount === 0 && !busy ? (
           <span className="text-[11px] text-zinc-600">nothing to render</span>
         ) : null}
 

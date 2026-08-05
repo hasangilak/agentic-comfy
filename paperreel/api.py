@@ -8,6 +8,7 @@ that works anyway, since a browser cannot attach auth headers to a WebSocket.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import queue
@@ -15,7 +16,7 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -275,7 +276,10 @@ def remove_beat(slug: str, n: int) -> dict:
 def estimate(slug: str, body: dict = Body(default={})) -> dict:
     board = load(slug)
     beats = body.get("beats") or board.pending()
-    return board.cost_of(board.cascade(beats))
+    beats = board.cascade(beats)
+    if body.get("draft"):
+        return board.cost_of_at(beats, config.DRAFT_SECONDS)
+    return board.cost_of(beats)
 
 
 # ## Jobs
@@ -446,18 +450,44 @@ def pipeline_stop() -> None:
 # invalidations, and a 2-second heartbeat that keeps the container timer honest.
 
 
+TICK_SECONDS = 2.0
+POLL_SECONDS = 0.2  # how often the loop looks for new events and for a gone browser
+
+
 @app.get("/api/events")
-def events() -> StreamingResponse:
-    def stream():
+def events(request: Request) -> StreamingResponse:
+    """The stream must be able to end, or the whole server becomes unusable.
+
+    This used to be a sync generator blocking on `channel.get(timeout=2)` forever. A
+    never-ending response is a trap: on shutdown uvicorn closes the listening socket and
+    then waits for open connections to drain, so one open browser tab left the process
+    alive with nothing listening -- SSE still flowing, so the studio looked healthy, while
+    every fetch got ECONNREFUSED and buttons like ▶ render silently did nothing.
+
+    Async and non-blocking on purpose: it notices a disconnected browser within
+    POLL_SECONDS (which also stops leaking a subscriber queue per abandoned tab), and it
+    holds no threadpool worker while it waits, so a handful of open tabs cannot starve the
+    threadpool that every other (sync) endpoint here needs.
+    """
+    async def stream():
         channel = runner.subscribe()
         try:
             yield sse({"type": "hello", "container": runner.container.to_json(),
                        "jobs": runner.recent()})
-            while True:
-                try:
-                    yield sse(channel.get(timeout=2.0))
-                except queue.Empty:
+            ticked = time.monotonic()
+            while not await request.is_disconnected():
+                drained = False
+                while True:
+                    try:
+                        event = channel.get_nowait()
+                    except queue.Empty:
+                        break
+                    drained = True
+                    yield sse(event)
+                if not drained and time.monotonic() - ticked >= TICK_SECONDS:
+                    ticked = time.monotonic()
                     yield sse({"type": "tick", "container": runner.container.to_json()})
+                await asyncio.sleep(POLL_SECONDS)
         finally:
             runner.unsubscribe(channel)
 
@@ -494,4 +524,10 @@ def media_file(slug: str, name: str) -> FileResponse:
 
 DIST = config.ROOT / "studio" / "dist"
 if DIST.is_dir():
+    @app.get("/reels/{slug}", include_in_schema=False)
+    def reel_page(slug: str) -> FileResponse:
+        """Serve the SPA entry point for an addressable canvas board."""
+        load(slug)  # Preserve a real 404 for malformed or missing board URLs.
+        return FileResponse(DIST / "index.html")
+
     app.mount("/", StaticFiles(directory=DIST, html=True), name="studio")

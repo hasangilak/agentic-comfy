@@ -1,0 +1,195 @@
+{
+  "beats": [
+    {
+      "action": "Layered Ocean Wave Pan: Cutout teal paper waves slide past each other over a textured parchment background. A paper island unfolds in the distance.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes is framed floating in mid-air on the far left side against layered paper cloud formations over a dark blue paper ocean.",
+      "n": 1,
+      "render": {
+        "at": "2026-08-04T23:25:27+00:00",
+        "cost": 0.1241,
+        "draft": false,
+        "fingerprint": "cda71ae07f23b346",
+        "frames": 124,
+        "own": "cda71ae07f23b346",
+        "render_seconds": 114.0,
+        "seconds": 5.17,
+        "seed": 1102,
+        "steps": 8
+      },
+      "scene": "Atmospheric sky above the ocean near Ogygia",
+      "source": "asset"
+    },
+    {
+      "action": "Stop-Motion Smoke: Wisps of white tissue-paper smoke curl rhythmically up from a layered brown cardstock cave entrance.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes is positioned near the top of the frame hovering amid translucent white paper fog layers above a distant paper coastline.",
+      "n": 2,
+      "render": {
+        "at": "2026-08-04T23:26:57+00:00",
+        "cost": 0.0964,
+        "draft": false,
+        "fingerprint": "9f88a89e8e20920f",
+        "frames": 124,
+        "own": "9f88a89e8e20920f",
+        "render_seconds": 88.5,
+        "seconds": 5.17,
+        "seed": 1103,
+        "steps": 8
+      },
+      "scene": "Descending through coastal mist above Ogygia's shoreline",
+      "source": "asset"
+    },
+    {
+      "action": "Detail Close-Up: Cardstock grapevines with tiny, metallic-purple paper grapes drop gently into frame in steps.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes hovers just inches above seafoam green layered paper ocean waves near a sun-bleached dune sand strip.",
+      "n": 3,
+      "render": {
+        "at": "2026-08-04T23:28:26+00:00",
+        "cost": 0.0963,
+        "draft": false,
+        "fingerprint": "b3d86454764648ab",
+        "frames": 124,
+        "own": "b3d86454764648ab",
+        "render_seconds": 88.4,
+        "seconds": 5.17,
+        "seed": 1104,
+        "steps": 8
+      },
+      "scene": "Skimming ocean surf near the sandy beach",
+      "source": "asset"
+    },
+    {
+      "action": "Mechanical Water Flow: Strips of cellophane and blue paper slide through cutout beds of purple violet paper flowers.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes stands fully visible on sun-bleached dune beige paper sand with golden foil sandals landing near decorative paper seashells.",
+      "n": 4,
+      "render": {
+        "at": "2026-08-04T23:29:54+00:00",
+        "cost": 0.0943,
+        "draft": false,
+        "fingerprint": "79d036490c4c85af",
+        "frames": 124,
+        "own": "79d036490c4c85af",
+        "render_seconds": 86.6,
+        "seconds": 5.17,
+        "seed": 1105,
+        "steps": 8
+      },
+      "scene": "Sandy beach landing on the shore of Ogygia",
+      "source": "asset"
+    },
+    {
+      "action": "Crafted Wildlife: Paper-crafted birds on thin brass wire rigs flap gently in green cardstock trees.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes walks through a meadow framed by layered paper iris flowers, cypress greenery, and cedar trees.",
+      "n": 5,
+      "render": {
+        "at": "2026-08-04T23:31:23+00:00",
+        "cost": 0.0956,
+        "draft": false,
+        "fingerprint": "b818aca38c75f652",
+        "frames": 124,
+        "own": "b818aca38c75f652",
+        "render_seconds": 87.8,
+        "seconds": 5.17,
+        "seed": 1106,
+        "steps": 8
+      },
+      "scene": "Lush meadow path leading inland toward the woods",
+      "source": "asset"
+    },
+    {
+      "action": "Character Entry: Hermes (a detailed paper puppet with jointed brass fasteners) glides onto the shore, his winged sandals fluttering.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes stands in full view beside four paper spring channels surrounded by soft green paper moss and violet blossoms.",
+      "n": 6,
+      "render": {
+        "at": "2026-08-04T23:32:52+00:00",
+        "cost": 0.0957,
+        "draft": false,
+        "fingerprint": "495f6256f532e292",
+        "frames": 124,
+        "own": "495f6256f532e292",
+        "render_seconds": 87.9,
+        "seconds": 5.17,
+        "seed": 1107,
+        "steps": 8
+      },
+      "scene": "Four clear paper springs flowing through lush vegetation",
+      "source": "asset"
+    },
+    {
+      "action": "Lighting Shift & Quick Scene Swap: Vibrant colors swap out for sharp, charcoal-black and torn gray paper cliffs under dark lighting.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes stands before a grand cave opening curtained in layered paper grapevines loaded with purple paper clusters.",
+      "n": 7,
+      "render": {
+        "at": "2026-08-04T23:34:21+00:00",
+        "cost": 0.096,
+        "draft": false,
+        "fingerprint": "2513be52ece669e7",
+        "frames": 124,
+        "own": "2513be52ece669e7",
+        "render_seconds": 88.2,
+        "seconds": 5.17,
+        "seed": 1108,
+        "steps": 8
+      },
+      "scene": "Outside Calypso's cave draped in heavy grapevines",
+      "source": "asset"
+    },
+    {
+      "action": "Character Close-Up: A silhouette paper puppet of Odysseus, seated on a jagged cliff edge, with tiny paper teardrops falling toward a crumpled paper sea.",
+      "asset_prompt": "Vertical 9:16 aspect ratio, handcrafted multi-layered paper-cutout stop-motion picture, no text, no watermark. Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents. Hermes stands fully visible at the entrance of Calypso's cave framed by glowing amber paper firelight from within.",
+      "n": 8,
+      "render": {
+        "at": "2026-08-04T23:35:50+00:00",
+        "cost": 0.096,
+        "draft": false,
+        "fingerprint": "b76d1888d6242767",
+        "frames": 124,
+        "own": "b76d1888d6242767",
+        "render_seconds": 88.2,
+        "seconds": 5.17,
+        "seed": 1109,
+        "steps": 8
+      },
+      "scene": "Entrance of Calypso's illuminated grotto",
+      "source": "asset"
+    }
+  ],
+  "chat": [
+    {
+      "role": "user",
+      "selection": [],
+      "text": "Hermes Arrives at Ogygia"
+    },
+    {
+      "ops": [
+        {
+          "op": "set_script",
+          "summary": "created the board"
+        }
+      ],
+      "role": "agy",
+      "text": "Wrote \"Hermes Arrives at Ogygia\" as 8 beats. Beat 1 needs a still; the rest continue from it."
+    }
+  ],
+  "concept": "Hermes Arrives at Ogygia",
+  "last_render": {
+    "at": "2026-08-04T23:35:52+00:00",
+    "beats": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "container_seconds": 774.8,
+    "cost": 0.8436
+  },
+  "seconds": 5.0,
+  "seed": 1101,
+  "spend_seconds": 774.8,
+  "steps": 8,
+  "style_bible": "Handcrafted multi-layered paper-cutout stop-motion aesthetic, featuring visible textured paper grain, crisp die-cut edges, subtle cast shadows between layered paper sheets, and physical craft depth. The central character is Hermes, a lithe messenger god figure crafted from warm cream parchment paper with sleek dark bronze paper hair, wearing a vibrant turquoise paper chlamys cape pinned at the right shoulder, winged golden foil sandals with small feathered paper wings at the ankles, and holding a slender golden paper caduceus staff with twin serpents. The color palette features deep Mediterranean sea-blue, seafoam green, sun-bleached dune beige, terracotta coral, and lush vine green, highlighted with gleaming gold foil accents.",
+  "title": "Hermes Arrives at Ogygia"
+}

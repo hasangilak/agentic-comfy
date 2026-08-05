@@ -13,11 +13,12 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   const { beat } = data;
   const studio = useStudio();
   const board = studio.board!;
-  const [playing, setPlaying] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [uploading, setUploading] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const look = STATE_LOOK[beat.state];
+  const renderSelected = studio.renderSelection.includes(beat.n);
+  const canSelectForRender = !["planned", "needs_asset", "rendering"].includes(beat.state);
   // A chained beat has no still of its own, so its thumbnail is the frame it opened on --
   // which is the last frame of the clip before it.
   const thumb = beat.source === "asset" ? beat.asset : beat.frame;
@@ -79,6 +80,35 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       <div className="flex items-center gap-2 border-b border-[#26262e] px-2.5 py-1.5">
         <span className="text-xs font-medium text-zinc-300">{beat.n}</span>
         <Badge state={beat.state} />
+        <label
+          className={`nodrag nopan flex items-center gap-1 text-[10px] ${
+            canSelectForRender
+              ? "cursor-pointer text-zinc-400 hover:text-zinc-200"
+              : "cursor-not-allowed text-zinc-700"
+          }`}
+          title={
+            canSelectForRender
+              ? "include this scene when you press Render"
+              : beat.state === "needs_asset"
+                ? "add an opening still before rendering this scene"
+                : "write the movement before rendering this scene"
+          }
+        >
+          <input
+            type="checkbox"
+            checked={renderSelected}
+            disabled={!canSelectForRender}
+            onChange={() =>
+              studio.setRenderSelection((current) =>
+                current.includes(beat.n)
+                  ? current.filter((n) => n !== beat.n)
+                  : [...current, beat.n].sort((a, b) => a - b),
+              )
+            }
+            className="h-3 w-3 accent-[#d99a4e]"
+          />
+          render
+        </label>
         <button
           onClick={() => void studio.guard(() => api.addBeat(board.slug, { n: beat.n }))}
           disabled={structureBusy}
@@ -137,26 +167,8 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           className="hidden"
           onChange={(event) => upload(event.target.files?.[0] ?? undefined)}
         />
-        {playing && beat.video ? (
-          <video src={beat.video} className="h-full w-full object-contain" controls autoPlay loop />
-        ) : thumb || beat.video ? (
-          <>
-            <img
-              src={thumb ?? undefined}
-              alt=""
-              className="h-full w-full object-contain opacity-90"
-            />
-            {beat.video ? (
-              <button
-                onClick={() => setPlaying(true)}
-                className="absolute inset-0 flex items-center justify-center bg-black/30
-                  text-2xl text-white/80 transition hover:bg-black/10 hover:text-white"
-                title="play this clip"
-              >
-                ▶
-              </button>
-            ) : null}
-          </>
+        {thumb ? (
+          <img src={thumb} alt="" className="h-full w-full object-contain opacity-90" />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-[10px] text-zinc-600">
             <span>
@@ -195,6 +207,31 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           </div>
         ) : null}
       </div>
+
+      {beat.video ? (
+        <div className="border-t border-[#26262e] bg-[#0d0d10]">
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-[#4ade80]">
+              rendered output
+            </span>
+            <a
+              href={beat.video}
+              download
+              className="nodrag ml-auto text-[10px] text-[#4ade80] hover:text-green-300"
+              title="download this scene's rendered clip"
+            >
+              ↓ clip
+            </a>
+          </div>
+          <video
+            src={beat.video}
+            className="nodrag nowheel h-36 w-full border-t border-[#26262e] bg-black object-contain"
+            controls
+            preload="metadata"
+            loop
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-2 p-2.5">
         {/* Asset preparation is available on every node, regardless of whether it currently
@@ -291,8 +328,8 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         ) : null}
 
         {beat.render && beat.state === "rendered" ? (
-          <p className="text-[10px] text-zinc-600">
-            took {clock(beat.render.render_seconds)} · cost {money(beat.render.cost)}
+          <p className="text-[10px] text-zinc-500">
+            rendered in {clock(beat.render.render_seconds)} · cost {money(beat.render.cost)}
           </p>
         ) : null}
       </div>

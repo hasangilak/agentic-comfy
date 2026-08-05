@@ -57,6 +57,14 @@ def client(url: str | None = None, *, timeout: float = 300.0) -> httpx.Client:
 
 CLIENT_ID = "paper-reel"
 
+# The client-wide timeout has to cover a whole sampling run, but applying it to a status
+# poll means a container that vanished mid-render (Modal scales an idle one down and closes
+# its tunnel) takes 15 minutes to produce a single strike -- so a lost server hangs the
+# render for hours instead of failing it. These are the per-request budgets: a /history poll
+# answers in milliseconds, and a finished clip is a few MB.
+POLL_TIMEOUT = httpx.Timeout(30.0, connect=15.0)
+DOWNLOAD_TIMEOUT = httpx.Timeout(120.0, connect=15.0)
+
 
 def progress_listener(on_progress, *, log=print, closers=None, stop_event=None) -> None:
     """Republish ComfyUI's per-step sampling progress. Runs in a thread; never raises.
@@ -243,7 +251,8 @@ def run_graph(http: httpx.Client, graph: dict, *, poll: float = 5.0, log=print,
         # A dead container answers with an HTML error page, not JSON. Tolerate a few
         # in a row (a restart is survivable) but don't spin forever on a corpse.
         try:
-            record = http.get(f"/history/{prompt_id}").json().get(prompt_id)
+            record = http.get(f"/history/{prompt_id}",
+                              timeout=POLL_TIMEOUT).json().get(prompt_id)
         except (httpx.HTTPError, json.JSONDecodeError) as error:
             strikes += 1
             if strikes >= 12:
@@ -282,7 +291,7 @@ def download(http: httpx.Client, item: dict, out_path: Path) -> Path:
         f"&subfolder={quote(item.get('subfolder', ''))}"
         f"&type={quote(item.get('type', 'output'))}"
     )
-    with http.stream("GET", f"/view?{query}") as response:
+    with http.stream("GET", f"/view?{query}", timeout=DOWNLOAD_TIMEOUT) as response:
         response.raise_for_status()
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with out_path.open("wb") as handle:

@@ -1,15 +1,28 @@
 import type { Board, ChatTurn, Estimate, Job, ReelSummary } from "./types";
 
+const UNREACHABLE =
+  "the studio server is not answering on 127.0.0.1:8787 — restart it with `uv run studio.py`";
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   // FormData sets its own multipart boundary; forcing a JSON content-type breaks it.
   const isForm = init?.body instanceof FormData;
-  const response = await fetch(path, {
-    ...init,
-    headers: init?.body && !isForm ? { "Content-Type": "application/json" } : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: init?.body && !isForm ? { "Content-Type": "application/json" } : undefined,
+    });
+  } catch {
+    // fetch only rejects when the request never got an answer at all.
+    throw new Error(UNREACHABLE);
+  }
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${response.status}: ${detail.slice(0, 300)}`);
+    const detail = (await response.text()).slice(0, 300);
+    // The Vite proxy turns a refused connection into a bodyless 500. Left as "500:" that
+    // reads like a server bug, when the server is simply gone -- and a click on ▶ render
+    // then looks like it did nothing at all.
+    if (!detail.trim()) throw new Error(`${response.status}: ${UNREACHABLE}`);
+    throw new Error(`${response.status}: ${detail}`);
   }
   return response.json() as Promise<T>;
 }
@@ -43,8 +56,8 @@ export const api = {
       (r) => r.board,
     ),
 
-  estimate: (slug: string, beats?: number[]) =>
-    post<Estimate>(`/api/reels/${slug}/estimate`, { beats }),
+  estimate: (slug: string, beats?: number[], draft = false) =>
+    post<Estimate>(`/api/reels/${slug}/estimate`, { beats, draft }),
 
   chat: (slug: string, message: string, selection: number[]) =>
     post<{ job: Job }>(`/api/reels/${slug}/chat`, { message, selection }).then((r) => r.job),

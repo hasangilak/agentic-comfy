@@ -17,6 +17,18 @@ const COLD: Container = {
   session_cost: 0,
 };
 
+const reelPath = (slug: string) => `/reels/${encodeURIComponent(slug)}`;
+
+function reelFromLocation(): string | null {
+  const match = window.location.pathname.match(/^\/reels\/([^/]+)\/?$/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
 export function useStudioState() {
   const [reels, setReels] = useState<ReelSummary[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
@@ -27,6 +39,7 @@ export function useStudioState() {
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<number[]>([]);
+  const [renderSelection, setRenderSelection] = useState<number[]>([]);
   const [authOk, setAuthOk] = useState(true);
 
   // The container clock arrives every 2s over SSE. Interpolate locally so it counts up
@@ -61,15 +74,49 @@ export function useStudioState() {
     }
   }, []);
 
-  const openReel = useCallback(
+  const selectReel = useCallback(
     async (target: string) => {
       setSlug(target);
       slugRef.current = target;
+      setBoard(null);
+      setChat([]);
       setSelection([]);
+      setRenderSelection([]);
       await refreshBoard(target);
     },
     [refreshBoard],
   );
+
+  const openReel = useCallback(
+    async (target: string) => {
+      const path = reelPath(target);
+      if (window.location.pathname !== path) window.history.pushState({}, "", path);
+      await selectReel(target);
+    },
+    [selectReel],
+  );
+
+  // A board is an addressable page, not transient picker state. Restore it on a direct
+  // visit/refresh and keep the canvas in sync with browser back and forward navigation.
+  useEffect(() => {
+    const followLocation = () => {
+      const target = reelFromLocation();
+      if (target) {
+        void selectReel(target);
+        return;
+      }
+      setSlug(null);
+      slugRef.current = null;
+      setBoard(null);
+      setChat([]);
+      setSelection([]);
+      setRenderSelection([]);
+    };
+
+    followLocation();
+    window.addEventListener("popstate", followLocation);
+    return () => window.removeEventListener("popstate", followLocation);
+  }, [selectReel]);
 
   // ## The single event stream
   //
@@ -164,8 +211,10 @@ export function useStudioState() {
     log,
     error,
     selection,
+    renderSelection,
     authOk,
     setSelection,
+    setRenderSelection,
     setError,
     openReel,
     refreshBoard,
