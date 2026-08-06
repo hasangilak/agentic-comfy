@@ -96,6 +96,31 @@ def board_json(board: board_mod.Board) -> dict:
     return board.to_json(rendering=rendering_now(board.slug))
 
 
+async def store_upload(file: UploadFile, dest: Path) -> None:
+    """Decode an uploaded image and write it to `dest`, or answer why it cannot be used.
+
+    Stored at its original size: geometry is settled at render time by media.fit_frame,
+    which cover-crops onto the generation grid.
+    """
+    from PIL import Image
+
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"image is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+    try:
+        # verify() consumes the file object, so the decode needs a second open.
+        with Image.open(io.BytesIO(raw)) as probe:
+            probe.verify()
+        with Image.open(io.BytesIO(raw)) as image:
+            image.convert("RGB").save(dest)
+    except Exception:  # noqa: BLE001 - any decode failure is the same answer to the user
+        raise HTTPException(
+            422,
+            f"{file.filename or 'that file'} is not a readable image. PNG, JPEG and WebP "
+            "work; HEIC from an iPhone does not.",
+        )
+
+
 # ## Job handlers
 #
 # Registered on the single worker. Each one is a plain function that may block for minutes.
@@ -127,10 +152,19 @@ def handle_asset(job: Job, run: Runner) -> dict:
             break
         beat = board.beat(n)
         run.update(job, phase=f"asset for beat {n}", beat=n)
-        run.log(job, f"[asset] beat {n}: generating")
+
+        reference = board.reference_path()
+        # Regenerating the very still that IS the reference has to be free to redesign, or
+        # the cast could never be changed again once the first image existed.
+        if reference is not None and reference == board.asset_path(n):
+            reference = None
+        run.log(job, f"[asset] beat {n}: generating"
+                     + (f", characters locked to {reference.name}" if reference
+                        else " (nothing to match yet -- this defines the look)"))
         try:
             planner.generate_asset(beat, board.data.get("style_bible", ""),
-                                   board.asset_path(n), board.workdir)
+                                   board.asset_path(n), board.workdir,
+                                   reference=reference)
         except planner.QuotaExhausted as exhausted:
             run.log(job, f"[asset] {exhausted}")
             # Not an error: the remaining beats simply have to wait for the window, and
@@ -325,35 +359,39 @@ async def upload_asset(slug: str, n: int, file: UploadFile = File(...)) -> dict:
     """Use your own image as a beat's opening still.
 
     The way around the image quota, which allows roughly five generations per five hours.
-    Stored at its original size: the geometry is settled at render time by media.fit_frame,
-    which cover-crops onto the generation grid.
     """
-    from PIL import Image
-
     board = load(slug)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
-
-    raw = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, f"image is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
-    try:
-        # verify() consumes the file object, so the decode needs a second open.
-        with Image.open(io.BytesIO(raw)) as probe:
-            probe.verify()
-        with Image.open(io.BytesIO(raw)) as image:
-            image.convert("RGB").save(board.asset_path(n))
-    except Exception:  # noqa: BLE001 - any decode failure is the same answer to the user
-        raise HTTPException(
-            422,
-            f"{file.filename or 'that file'} is not a readable image. PNG, JPEG and WebP "
-            "work; HEIC from an iPhone does not.",
-        )
+    await store_upload(file, board.asset_path(n))
 
     # Supplying a still means this beat opens on it rather than continuing from the one
     # before -- which is a real story change, so the wire on the canvas changes to match.
     board.beat(n)["source"] = board_mod.SOURCE_ASSET
     board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
+@app.post("/api/reels/{slug}/reference")
+async def upload_reference(slug: str, file: UploadFile = File(...)) -> dict:
+    """Pin what the characters look like, for every still generated from here on.
+
+    Costs nothing and spends no quota, but it changes every future cut: each new scene's
+    still is generated conditioned on this image instead of on the style bible alone.
+    Existing stills are left exactly as they are -- regenerate the ones you want matched.
+    """
+    board = load(slug)
+    await store_upload(file, board.workdir / board_mod.REFERENCE_NAME)
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
+@app.delete("/api/reels/{slug}/reference")
+def clear_reference(slug: str) -> dict:
+    """Drop back to the default: beat 1's own still is the reference."""
+    board = load(slug)
+    (board.workdir / board_mod.REFERENCE_NAME).unlink(missing_ok=True)
     runner.publish_board(slug)
     return {"board": board_json(board)}
 

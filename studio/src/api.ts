@@ -74,6 +74,20 @@ export const api = {
     }).then((r) => r.board);
   },
 
+  uploadReference: (slug: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<{ board: Board }>(`/api/reels/${slug}/reference`, {
+      method: "POST",
+      body: form,
+    }).then((r) => r.board);
+  },
+
+  clearReference: (slug: string) =>
+    call<{ board: Board }>(`/api/reels/${slug}/reference`, { method: "DELETE" }).then(
+      (r) => r.board,
+    ),
+
   caption: (slug: string) =>
     post<{ job: Job }>(`/api/reels/${slug}/caption`).then((r) => r.job),
 

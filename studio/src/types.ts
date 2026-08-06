@@ -61,6 +61,10 @@ export interface Board {
   lengths: number[];
   /** Aspect the model renders at; stills far from this get cropped. */
   gen_aspect: number;
+  /** The still every cut's image is generated from, so the cast survives a scene change. */
+  reference: string | null;
+  /** False when it is only beat 1's own still standing in. */
+  reference_explicit: boolean;
   beats: Beat[];
   canvas: { nodes?: Record<string, { x: number; y: number }> };
   reel: string | null;

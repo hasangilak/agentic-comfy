@@ -71,9 +71,10 @@ function AuthWarning() {
         text-[11px] leading-relaxed text-[#f59e0b]"
     >
       No Modal proxy token set and the deployment is not public, so renders will fail with a
-      401. Mint one at modal.com/settings/proxy-auth-tokens, then export{" "}
-      <code>MODAL_PROXY_TOKEN_ID</code> and <code>MODAL_PROXY_TOKEN_SECRET</code> before
-      starting studio.py.
+      401. Mint one at modal.com/settings/proxy-auth-tokens, then put{" "}
+      <code>MODAL_PROXY_TOKEN_ID</code> and <code>MODAL_PROXY_TOKEN_SECRET</code> in{" "}
+      <code>.env</code> (or export them) and restart studio.py — the file is read at startup,
+      so a token added while it is running will not be picked up.
     </div>
   );
 }

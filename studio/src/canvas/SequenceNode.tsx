@@ -252,7 +252,13 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             tone="ghost"
             disabled={isGenerating}
             onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
-            title="generate an opening still for this scene and make it a clean cut"
+            title={
+              board.reference
+                ? "generate an opening still for this scene and make it a clean cut — the " +
+                  "cast is matched to the reference on the script node, so only the setting changes"
+                : "generate an opening still for this scene and make it a clean cut — this " +
+                  "is the first still, so it will become the reel's cast reference"
+            }
           >
             {isGenerating ? "generating…" : beat.asset ? "✦ regenerate" : "✦ generate"}
           </Button>
@@ -275,8 +281,10 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             beat.n === 1
               ? "the first beat has nothing to continue from"
               : beat.source === "chain"
-                ? "continuous motion, costs no image quota — click for a clean cut instead"
-                : "a clean cut, costs one image from the quota — click to continue instead"
+                ? "the same take carrying on — same set, same camera, no image quota. " +
+                  "Click to make it a clean cut to somewhere else instead"
+                : "a clean cut to a new setting, costs one image from the quota. " +
+                  "Click to carry the previous take on unbroken instead"
           }
         >
           {beat.source === "chain" ? (

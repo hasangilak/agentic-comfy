@@ -96,8 +96,12 @@ def plan(concept: str, beats: int, seconds: float, workdir: Path) -> dict:
         "or break this: the camera never moves or cuts within a beat; only one thing is "
         "animated at a time; no dialogue, no on-screen text; the same character appears in "
         "every beat and must be described identically each time. Write the style_bible first "
-        "and reuse its exact wording inside every asset_prompt so the images match. "
-        "Return JSON only."
+        "and reuse its exact wording inside every asset_prompt so the images match.\n\n"
+        "Beat 1 opens on its own still. Every later beat opens on the final frame of the "
+        "beat before it -- same place, same camera -- so each action must pick up from "
+        "exactly where the previous action ended, as one continuous take. Do not write a "
+        "later beat as though it starts from a fresh setup, and do not move the scene "
+        "somewhere else between beats. Return JSON only."
     )
     return agy(prompt, model=config.PLANNER_MODEL, schema=PLAN_SCHEMA, cwd=workdir)
 
@@ -121,21 +125,51 @@ def find_generated_image(stdout: str, since: float) -> Path | None:
     return max(fresh, key=lambda p: p.stat().st_mtime) if fresh else None
 
 
-def generate_asset(beat: dict, style_bible: str, out_path: Path, workdir: Path) -> Path:
+def generate_asset(beat: dict, style_bible: str, out_path: Path, workdir: Path,
+                   *, reference: Path | None = None) -> Path:
+    """Generate one beat's opening still.
+
+    `reference` is the board's character reference, passed to the image tool's `ImagePaths`
+    so this comes out as a new SHOT of characters that already exist rather than a new
+    reading of the description. Without it, a reel whose beats are all hard cuts redesigns
+    its cast once per scene -- the same paragraph of text lands differently every time --
+    which is the cross-scene inconsistency a style bible alone never fixed.
+    """
     import time
 
     from PIL import Image
 
     since = time.time() - 1
-    prompt = (
-        "Use your generate_image tool to create exactly ONE image. Do not write code, do not "
-        "call an external API, do not ask questions. Use this prompt verbatim:\n\n"
+    look = (
         f"{style_bible} {beat['asset_prompt']} Vertical 9:16 portrait composition, "
         "handcrafted layered paper-cutout art, visible paper grain, soft contact shadows, "
-        "no text, no watermarks, no signature.\n\n"
-        "After the image is saved, print only its absolute path."
+        "no text, no watermarks, no signature."
     )
-    stdout = str(agy(prompt, model=config.IMAGE_MODEL, schema=None, cwd=workdir))
+    instructions = [
+        "Use your generate_image tool to create exactly ONE image. Do not write code, do "
+        "not call an external API, do not ask questions.",
+        # AspectRatio defaults to 1:1 and the model was choosing landscape on its own, so
+        # asking for 9:16 in the prompt text alone was not enough: a 1600x872 still gets
+        # cover-cropped to the 768x1344 grid at render time, which keeps under a third of
+        # the width. Composition, subject scale and framing then jumped between cuts
+        # whatever the prompt said.
+        f'Set AspectRatio to "9:16". The still is rendered on a tall '
+        f"{config.GEN_WIDTH}x{config.GEN_HEIGHT} grid and anything squarer is centre-cropped "
+        "down to it, throwing away most of the frame.",
+    ]
+    if reference is not None:
+        instructions.append(
+            f'Set ImagePaths to ["{reference.resolve()}"]. That image is this reel\'s locked '
+            "reference. Reuse the characters in it exactly: same shapes, markings, colours, "
+            "paper stock, cut style, outline weight and proportions, and the same art "
+            "direction and palette. This is a new shot of characters that already exist, "
+            "not a new design of them. Only the setting, framing and pose described below "
+            "may differ."
+        )
+    instructions.append(f"Use this prompt verbatim:\n\n{look}")
+    instructions.append("After the image is saved, print only its absolute path.")
+    stdout = str(agy("\n\n".join(instructions), model=config.IMAGE_MODEL, schema=None,
+                     cwd=workdir))
     found = find_generated_image(stdout, since)
     if found is None:
         lowered = stdout.lower()

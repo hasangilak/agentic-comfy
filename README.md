@@ -67,9 +67,23 @@ and removed in place; the immediate neighbors reconnect automatically. Manual wi
 disabled, so a scene cannot branch, connect twice, point backward, or form a loop. The
 **wire between two beats is the frame handoff**:
 
-- **solid green** — this beat continues from the previous clip's last frame. Continuous
-  motion, costs no image quota.
-- **dashed amber** — this beat opens on its own still. A clean cut, costs one image.
+- **solid green** — this beat continues from the previous clip's last frame. Not a new shot
+  at all: the same take carrying on, same set, same camera. Costs no image quota.
+- **dashed amber** — this beat opens on its own still. A clean cut to somewhere else, one
+  image from the quota.
+
+Each join is told to the model as what it is, which is most of what continuity comes down
+to. A cut is instructed to open on its still and hold that framing; a continuation is
+instructed that its first frame is a freeze from the middle of a take already in motion, to
+be carried on from that exact pose without re-posing, re-centring or re-establishing
+anything. Given the cut wording, a continuation reads a mid-stride pose as a starting pose,
+settles the puppet back to rest and begins again — the jolt you see at a seam.
+
+The other half is that both kinds hold the same cast. The **cast reference** on the script
+node is one image that every generated still is conditioned on, so a cut changes the setting
+rather than the characters; the style bible goes into the video prompt as well, so a beat
+that drifts mid-clip drifts toward that description rather than toward the model's own idea
+of a paper fox. Beat 1's still is the reference by default — pin your own to override it.
 
 Every beat has its own persistent **upload** and **generate** controls, so all scene assets
 can be prepared before any video rendering starts. Dragging an image onto a frame works too.
@@ -197,9 +211,10 @@ hourly rate. Kept for reference; the pipeline above does not use it.
 - **The CLI can still ask for 15 s beats**, which have failed once on this card. The studio
   cannot — `config.BEAT_LENGTHS` caps it at 243 frames — but `storyboard.py --seconds 15`
   bypasses that and only logs a warning.
-- **Character consistency across independent scenes is untested.** `--scenes` needs one
-  asset per beat and relies on a shared `style_bible` to keep the character stable;
-  only chained mode has been validated.
+- **Cross-scene consistency is improved but not measured.** Independent scenes no longer
+  rely on the `style_bible` text alone — every still is generated conditioned on the cast
+  reference image, and the bible is now in the video prompt too — but how far that holds
+  over a long reel of hard cuts has not been quantified on real renders.
 - **Container may be over-provisioned** at 8 cores / 64 GiB — that's 23% of the bill
   and was never measured against actual usage.
 - **The studio's per-step progress is unverified against a live render.** ComfyUI's `/ws`

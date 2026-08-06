@@ -81,10 +81,22 @@ Every beat is either 5 or 10 seconds. There is no other length -- anything else 
 will be snapped to the nearer of the two, so choose one of them deliberately. Use 5 for a
 quick gesture and 10 for a beat that needs room to breathe.
 
-Each beat's opening frame comes from one of two places, and it matters:
-- "asset": its own generated still. A clean new shot. Costs one image from a quota of
-  roughly five per five hours, so it is the scarce resource.
-- "chain": the previous beat's final frame. Continuous motion, perfect continuity, free.
+Each beat's opening frame comes from one of two places. This is the single most important
+choice on the board, because it decides what the beat is:
+- "asset": its own generated still. A hard cut to somewhere else -- new setting, new
+  framing, new composition. The still is generated from the reel's locked character
+  reference, so the cast stays identical across the cut; only the world around them
+  changes. Costs one image from a quota of roughly five per five hours, so it is the
+  scarce resource.
+- "chain": the previous beat's final frame. Not a new shot at all -- the same take
+  continuing, same set, same camera, same lighting, with the movement carrying straight
+  through. Free.
+
+So choose "asset" when the story genuinely moves somewhere else, and "chain" when the
+movement should carry on unbroken. A chained beat's `action` must read as the continuation
+of the beat before it -- it starts from the pose that beat ended in and takes the movement
+onward. Writing it as a fresh instruction ("the fox sits down in the meadow") makes the
+model reset the puppet and start over, which is visible as a jolt at the join.
 
 Reply briefly, then return the ops that carry out what was asked. Return ops ONLY for what
 the user actually asked to change. Return JSON only."""

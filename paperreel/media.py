@@ -120,9 +120,20 @@ def fit_frame(source: Path, out_path: Path) -> Path:
 
 
 def last_frame(video: Path, out_path: Path) -> Path:
-    """Grab a clip's final frame so the next beat can continue from it."""
-    run_ffmpeg(["-sseof", "-0.2", "-i", str(video), "-update", "1",
-                "-frames:v", "1", str(out_path)])
+    """Grab a clip's TRUE final frame so the next beat can continue from it.
+
+    Seeking to a fixed offset before the end and taking the first frame after it lands
+    early -- measured on a 124-frame beat, `-sseof -0.2` returns frame 121 of 124. The
+    beat that continues from it therefore restarts an eighth of a second in the past, so
+    the stitched reel plays three frames forward and then jumps back to them: the hitch
+    visible at every continuation seam.
+
+    Decoding the tail and letting each frame overwrite the same file leaves the real last
+    frame behind, verified bit-identical to a full frame dump. One second of tail is ~24
+    PNG encodes, which is cheap next to the render that produced the clip.
+    """
+    run_ffmpeg(["-sseof", "-1.0", "-i", str(video), "-vsync", "0", "-update", "1",
+                str(out_path)])
     return out_path
 
 

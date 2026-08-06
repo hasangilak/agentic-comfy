@@ -84,14 +84,21 @@ def main() -> None:
         # Chaining needs only the opening frame, which is what keeps a reel inside the
         # tight image quota. Scene mode needs one asset per beat.
         wanted = board["beats"][:1] if args.chain else board["beats"]
+        # In scene mode every beat is a hard cut, so each still has to be generated from the
+        # first one rather than from the style bible alone -- otherwise the cast is redesigned
+        # once per scene and no two shots share a character.
+        first = workdir / f"beat{board['beats'][0]['n']}_asset.png"
         for beat in wanted:
             out = workdir / f"beat{beat['n']}_asset.png"
             if out.exists():
                 print(f"[asset] beat {beat['n']}: already present, skipping")
                 continue
-            print(f"[asset] beat {beat['n']}: generating")
+            reference = first if first.exists() and first != out else None
+            print(f"[asset] beat {beat['n']}: generating"
+                  + (f", characters locked to {reference.name}" if reference else ""))
             try:
-                planner.generate_asset(beat, board["style_bible"], out, workdir)
+                planner.generate_asset(beat, board["style_bible"], out, workdir,
+                                       reference=reference)
             except planner.QuotaExhausted as exhausted:
                 raise SystemExit(f"[asset] {exhausted}")
         print(f"[asset] assets in {workdir}")

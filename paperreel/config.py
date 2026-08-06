@@ -7,6 +7,44 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+
+def load_env_file(path: Path | None = None) -> list[str]:
+    """Read KEY=value lines from .env into the environment. Returns the keys it set.
+
+    Everything here reads os.environ, and nothing was reading the file, so a .env holding
+    the Modal proxy tokens left the studio starting with no credentials at all. That failure
+    is expensive in the worst way: it surfaces as a 401 from ComfyUI *after* the container is
+    deployed and already billing, rather than before anything is spent.
+
+    setdefault, not assignment: a variable exported in the shell wins over the file, which
+    is what anyone overriding one for a single run expects. Called at import so the CLIs and
+    the studio all pick it up without each one remembering to.
+    """
+    path = path or ROOT / ".env"
+    try:
+        text = path.read_text()
+    except OSError:  # absent or unreadable is the normal case, not an error
+        return []
+    loaded = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.removeprefix("export ").lstrip()
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        key, value = key.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
+
+
+ENV_FILE_KEYS = load_env_file()
+
 # ## Frame geometry
 #
 # H3's quality profile is ~1 megapixel and both dimensions must be multiples of 32,
@@ -109,19 +147,49 @@ AGY_HOME = Path.home() / ".gemini" / "antigravity-cli"
 # ## Prompt scaffold
 #
 # H3 holds a paper-cutout look far better when the instruction pins down what must
-# NOT change. Callers supply only the action; this wraps it.
-STYLE_PREFIX = (
+# NOT change. Callers supply the action, the board's identity paragraph, and which kind of
+# join this beat opens on; this assembles the rest.
+#
+# The join is the part that matters most, because the same first frame means two opposite
+# things. On a cut it is the deliberate opening composition of a new shot. On a
+# continuation it is a freeze lifted out of the middle of a take that is already moving.
+# Told the wrong one -- as every beat was, when both got "start exactly from the provided
+# first frame" -- the model reads a mid-stride pose as a starting pose, settles the subject
+# back to rest and begins the action again. That restart is the jolt at a seam, and no
+# amount of frame-handoff accuracy fixes it.
+MEDIUM = (
     "Single continuous locked-off shot in handcrafted layered paper-cutout stop-motion "
-    "style, shot straight-on. Start exactly from the provided first frame. "
+    "style, shot straight-on. "
 )
-STYLE_SUFFIX = (
+OPEN_CUT = (
+    "The provided first frame is the opening frame of a new shot: begin from it exactly, "
+    "and hold its framing, subject scale and lighting for the whole clip. "
+)
+OPEN_CONTINUATION = (
+    "The provided first frame is a freeze grabbed from the middle of a take that is "
+    "already in motion -- it is not a new setup and not a rest pose. Carry that motion on "
+    "from exactly this pose, at the same speed and in the same direction, as one unbroken "
+    "take. Do not restart the shot, do not re-pose or re-centre the subject, do not let it "
+    "settle to rest and start again, and do not re-establish the scene: same set, same "
+    "camera, same lighting, same moment continuing. "
+)
+# The style bible, verbatim. Over 5-10 seconds of sampling a generic "keep the character
+# identical" has nothing to hold on to, so the model drifts towards its own idea of a
+# paper fox rather than the one this board designed.
+IDENTITY_PREFIX = (
+    "The characters and the set are already designed and must not be reinterpreted: "
+)
+CRAFT = (
     " Animate it as real paper puppetry: crisp cut edges, visible paper grain, layered "
     "cardstock depth with soft contact shadows, joints pivoting like split-pin cutouts. "
-    "Keep the character's face, proportions, colours, paper texture, decorative cut-paper "
-    "details, outline weight, and scale identical in every frame. Keep the background, "
-    "flowers, sun, clouds, lighting, and camera completely static. Nothing transforms, "
-    "duplicates, slides, rotates, or changes design. No camera movement, no cuts, no new "
-    "objects, no text, no watermarks. Smooth temporal consistency and natural foot contact."
+    "Keep every character's face, markings, proportions, colours, paper texture, "
+    "decorative cut-paper details, outline weight, and scale identical in every frame. "
+    # Deliberately generic. This used to name the flowers, sun and clouds of the board it
+    # was written for, which on a board without them is an instruction to invent them.
+    "Keep the set, the background layers, the lighting, and the camera completely static. "
+    "Nothing transforms, duplicates, slides, rotates, or changes design. No camera "
+    "movement, no cuts, no new objects, no text, no watermarks. Smooth temporal "
+    "consistency and natural foot contact."
 )
 AUDIO_SUFFIX = (
     " Audio: soft paper rustling and quiet birdsong in a sunny forest, no music, no speech."
@@ -147,9 +215,26 @@ def snap_seconds(value: float | int | str) -> float:
     return min(BEAT_LENGTHS, key=lambda option: abs(option - wanted))
 
 
-def build_prompt(action: str, *, mute: bool = False) -> str:
-    prompt = STYLE_PREFIX + action.strip().rstrip(".") + "." + STYLE_SUFFIX
-    return prompt if mute else prompt + AUDIO_SUFFIX
+def build_prompt(action: str, *, mute: bool = False, identity: str = "",
+                 continues: bool = False) -> str:
+    """Assemble the instruction for one beat.
+
+    `identity` is the board's style bible -- what the characters and the set look like,
+    never how they move. `continues` says this beat opens on the previous clip's final
+    frame rather than on a still of its own, which changes how the first frame must be
+    read; see the scaffold above.
+    """
+    parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
+    identity = " ".join(identity.split())
+    if identity:
+        parts.append(IDENTITY_PREFIX + identity.rstrip(".") + ". ")
+    action = action.strip().rstrip(".")
+    if action:
+        parts.append(action + ".")
+    parts.append(CRAFT)
+    if not mute:
+        parts.append(AUDIO_SUFFIX)
+    return "".join(parts)
 
 
 def estimate_cost(container_seconds: float) -> float:

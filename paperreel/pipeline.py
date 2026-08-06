@@ -88,6 +88,7 @@ def render_beats(
     seed: int = 1101,
     chain: bool = True,
     mute: bool = False,
+    identity: str = "",
     manage_app: bool = True,
     log=print,
 ) -> BatchResult:
@@ -117,8 +118,12 @@ def render_beats(
             comfy.wake(http, log=log)
             for index, (n, action) in enumerate(actions):
                 frame = workdir / f"beat{n}_frame.png"
+                # Whether this beat opens mid-motion decides how the prompt has to describe
+                # its first frame, so it is read off the same branch that chooses the frame.
+                continues = False
                 if chain and result.beats:
                     media.last_frame(result.beats[-1].video, frame)
+                    continues = True
                     log(f"[render] beat {n}: continuing from beat {actions[index - 1][0]}")
                 elif opening_frame is not None:
                     media.fit_frame(
@@ -136,7 +141,8 @@ def render_beats(
                     http,
                     comfy.build_graph(
                         first_frame=uploaded,
-                        prompt=config.build_prompt(action, mute=mute),
+                        prompt=config.build_prompt(action, mute=mute, identity=identity,
+                                                   continues=continues),
                         length=length, steps=steps, seed=seed + n,
                     ),
                     log=log,
@@ -185,7 +191,8 @@ def render_reel(
         workdir,
         opening_frame=opening,
         seconds=seconds, steps=steps, seed=seed,
-        chain=chain, mute=mute, manage_app=manage_app, log=log,
+        chain=chain, mute=mute, identity=board.get("style_bible", ""),
+        manage_app=manage_app, log=log,
     )
     result.reel = media.stitch(
         [b.video for b in result.beats],

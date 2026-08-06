@@ -21,6 +21,10 @@ from . import config
 SOURCE_ASSET = "asset"  # its own generated still -- a new shot, costs one image quota
 SOURCE_CHAIN = "chain"  # the previous beat's last frame -- continuous motion, free
 
+# An explicit character reference, dropped in the reel directory. Every still generated for
+# a cut is conditioned on it, which is what keeps the same characters across a scene change.
+REFERENCE_NAME = "character.png"
+
 # Node states, in the order the UI paints them.
 PLANNED = "planned"          # prompt only
 NEEDS_ASSET = "needs_asset"  # wants its own still, hasn't got one
@@ -123,6 +127,28 @@ class Board:
     def video_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}.mp4"
 
+    def reference_path(self) -> Path | None:
+        """The still that fixes what the characters look like, for generating a new scene.
+
+        A hard cut is where identity actually breaks: each beat's still used to be a fresh
+        reading of the same paragraph of text, so the characters were redesigned per scene.
+        Conditioning every still on one image instead is what makes a cut change the
+        setting without changing who is in it.
+
+        An explicit upload wins. Otherwise the first beat's own still stands in, which is
+        the right default -- it is the shot the whole reel was designed from. None on a
+        board with no still at all yet, where the first generation defines the look.
+        """
+        explicit = self.workdir / REFERENCE_NAME
+        if explicit.is_file():
+            return explicit
+        ordered = self.ordered_beats()
+        if ordered:
+            first = self.asset_path(ordered[0]["n"])
+            if first.is_file():
+                return first
+        return None
+
     @property
     def reel_path(self) -> Path:
         """Where a studio render writes the deliverable."""
@@ -211,6 +237,14 @@ class Board:
             return explicit
         return SOURCE_ASSET if self.upstream(beat["n"]) is None else SOURCE_CHAIN
 
+    def identity(self) -> str:
+        """The style bible: what the characters and the set look like, never how they move.
+
+        Goes into the video prompt as well as the asset prompts, because a beat that drifts
+        mid-clip drifts away from *this* description or from nothing at all.
+        """
+        return " ".join(str(self.data.get("style_bible") or "").split())
+
     def steps(self) -> int:
         return int(self.data.get("steps") or config.DEFAULT_STEPS)
 
@@ -240,6 +274,10 @@ class Board:
             self.seed_for(beat),
             bool(self.data.get("mute")),
             source,
+            # The style bible is part of the video prompt now, so rewriting it really does
+            # change what every beat would render as. Leaving it out would let the canvas
+            # keep calling those clips finished.
+            self.identity(),
             frame_id,
         )
 
@@ -318,6 +356,10 @@ class Board:
             self.seed_for(beat),
             bool(self.data.get("mute")),
             self.source_for(beat),
+            # Board-wide, so editing it marks every beat `edited` rather than
+            # `follows a change` -- correct, because you did edit it, and it is not
+            # something a beat inherits from the one before it.
+            self.identity(),
         ]
         if self.source_for(beat) == SOURCE_ASSET:
             parts.append(frame_id if frame_id is not None else self.frame_id_for(beat))
@@ -429,6 +471,10 @@ class Board:
             "lengths": list(config.BEAT_LENGTHS),
             "gen_aspect": round(config.GEN_WIDTH / config.GEN_HEIGHT, 3),
             "mute": bool(self.data.get("mute")),
+            # The still every cut's image is generated from, and whether it was chosen
+            # deliberately or is just beat 1 standing in.
+            "reference": self.media_url(self.reference_path()),
+            "reference_explicit": (self.workdir / REFERENCE_NAME).is_file(),
             "beats": beats,
             "canvas": self.data.get("canvas", {}),
             "reel": self.media_url(self.existing_reel()),

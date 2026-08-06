@@ -125,7 +125,13 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                         comfy.build_graph(
                             first_frame=comfy.upload_image(http, frame),
                             prompt=config.build_prompt(
-                                beat.get("action", ""), mute=bool(board.data.get("mute"))
+                                beat.get("action", ""),
+                                mute=bool(board.data.get("mute")),
+                                identity=board.identity(),
+                                # From the source captured up front, not read fresh: the
+                                # instruction has to describe the frame this batch is
+                                # actually handing over.
+                                continues=sources[n] == board_mod.SOURCE_CHAIN,
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
                         ),
