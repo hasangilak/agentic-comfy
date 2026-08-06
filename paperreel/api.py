@@ -376,6 +376,17 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
     unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]
     if unknown:
         raise HTTPException(404, f"no such beats: {unknown}")
+    # A reference beat has no opening still to generate -- it composes its own first frame
+    # from its pictures. Generating one anyway would spend quota AND silently turn the beat
+    # into a cut, dropping the references from the render.
+    referenced = [n for n in beats
+                  if board_mod.uses_refs(board.source_for(board.beat(n)))]
+    if referenced:
+        raise HTTPException(
+            409,
+            f"beats {referenced} are conditioned on reference pictures, not on an opening "
+            "still. Change the join on the node first if you want a still instead.",
+        )
     if not beats:
         raise HTTPException(422, "no beat needs a still")
 
@@ -431,6 +442,69 @@ async def upload_asset(slug: str, n: int, file: UploadFile = File(...),
     # wire on the canvas changes to match.
     board.beat(n)["source"] = source
     board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/refs")
+async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) -> dict:
+    """Add reference pictures to a beat, and put it on the reference join.
+
+    This is the other way to condition a shot: instead of one keyframe the model is shown up
+    to config.MAX_REF_IMAGES pictures of the cast and the set, and composes the opening frame
+    itself. The prompt names them <Picture 1>..<Picture N> in the order they were added, so
+    the order is meaningful and appending is deliberate -- new pictures land after the ones
+    already there rather than shuffling the numbering under the prompt.
+
+    Uploads are free of image quota, exactly like an uploaded still. What they cost is render
+    time: reference tokens ride through every sampling step, so nine pictures is a slower
+    clip than one.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    if not files:
+        raise HTTPException(422, "no images sent")
+
+    stored = 0
+    for file in files:
+        index = board.next_ref_index(n)
+        if index is None:
+            # Partial success is the honest answer: the images that fitted are on disk, and
+            # saying so beats either silently dropping the rest or rejecting the whole batch.
+            raise HTTPException(
+                409,
+                f"beat {n} already has {config.MAX_REF_IMAGES} reference pictures, which is "
+                f"the model's limit. {stored} of this upload were stored; remove one to add "
+                "another.",
+            )
+        await store_upload(file, board.ref_path(n, index))
+        stored += 1
+
+    # Supplying references IS the join, the same way supplying a still makes a beat a cut:
+    # the beat is now conditioned on pictures and has no keyframe at all.
+    board.beat(n)["source"] = board_mod.SOURCE_REFERENCE
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board), "stored": stored}
+
+
+@app.delete("/api/reels/{slug}/beats/{n}/refs/{index}")
+def remove_ref(slug: str, n: int, index: int) -> dict:
+    """Drop one reference picture, by the number the prompt calls it.
+
+    The survivors are renumbered to close the gap, because the prompt numbers them by
+    position: leaving a hole would have the model told about a <Picture 2> that is really the
+    third image, or a picture with no tag at all.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    path = board.ref_path(n, index) if 1 <= index <= config.MAX_REF_IMAGES else None
+    if path is None or not path.is_file():
+        raise HTTPException(404, f"beat {n} has no reference picture {index}")
+    path.unlink()
+    board.compact_refs(n)
     runner.publish_board(slug)
     return {"board": board_json(board)}
 

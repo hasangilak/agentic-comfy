@@ -6,10 +6,16 @@ import { useDraft, useStudio } from "../useStudio";
 import { Badge, Button, STATE_LOOK, inputClass } from "../ui";
 
 /**
- * The three joins, in the order the button walks them: free, then the two that cost an image.
- * Beat 1 is excluded from the cycle entirely -- it has nothing to continue from.
+ * The four joins, in the order the button walks them: free, then the two that cost an image,
+ * then the reference join. Beat 1 cannot continue from anything, so it only toggles between
+ * the two joins that stand on their own -- its own still, or its own reference pictures.
  */
-const JOIN_CYCLE: Record<Source, Source> = { chain: "bridge", bridge: "asset", asset: "chain" };
+const JOIN_CYCLE: Record<Source, Source> = {
+  chain: "bridge",
+  bridge: "asset",
+  asset: "reference",
+  reference: "chain",
+};
 
 const JOIN_HELP: Record<Source, string> = {
   chain:
@@ -20,8 +26,13 @@ const JOIN_HELP: Record<Source, string> = {
     "frame: continuity plus a composition you chose. Costs one image. Click to make it a " +
     "clean cut instead",
   asset:
-    "a clean cut to a new setting, costs one image from the quota. Click to carry the " +
-    "previous take on unbroken instead",
+    "a clean cut to a new setting, costs one image from the quota. Click to condition this " +
+    "scene on reference pictures instead of an opening still",
+  reference:
+    "no opening frame at all: the model is shown your reference pictures of the cast and the " +
+    "set and composes the shot itself. Uploads only, so no image quota — but every picture " +
+    "is carried through every sampling step, so more of them means a slower render. Click " +
+    "to carry the previous take on unbroken instead",
 };
 
 /**
@@ -45,6 +56,11 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   // What an uploaded or generated still MEANS here. On a bridge it is the ending, and saying
   // so is the difference between a picture that lands and a picture that replaces the join.
   const isBridge = beat.source === "bridge";
+  // The reference join has no still at all -- it has a set of pictures, shown as a grid where
+  // every other join shows one frame.
+  const isReference = beat.source === "reference";
+  const refs = beat.refs ?? [];
+  const refSlotsLeft = Math.max(0, board.max_refs - refs.length);
 
   const action = useDraft(beat.action, (next) =>
     void studio.guard(() => api.patchBeat(board.slug, beat.n, { action: next })),
@@ -82,25 +98,41 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
 
   // A bridge keeps its join: the picture is the frame it lands on, not a replacement for the
   // continuation. Every other join treats a supplied still as the beat's opening frame, which
-  // makes it a cut.
-  const upload = (file: File | undefined) => {
+  // makes it a cut. On the reference join a drop is a set of pictures instead, appended after
+  // the ones already there, because the prompt names them by position.
+  const upload = (dropped: FileList | File[] | null | undefined) => {
     setDropping(false);
-    if (!file) return;
+    const files = dropped ? Array.from(dropped) : [];
+    if (!files.length) return;
+    const wanted = isReference ? files.slice(0, refSlotsLeft) : files.slice(0, 1);
+    if (!wanted.length) return;
     setUploading(true);
     void studio
-      .guard(() => api.uploadAsset(board.slug, beat.n, file, isBridge ? "bridge" : "asset"))
+      .guard(() =>
+        isReference
+          ? api.uploadRefs(board.slug, beat.n, wanted)
+          : api.uploadAsset(board.slug, beat.n, wanted[0], isBridge ? "bridge" : "asset"),
+      )
       .finally(() => setUploading(false));
   };
+
+  const removeRef = (index: number) =>
+    void studio.guard(() => api.removeRef(board.slug, beat.n, index));
 
   // A 16:9 still loses its sides to the vertical crop. Worth saying before it is rendered,
   // not after -- the source art in this repo is all landscape.
   const cropped =
     beat.asset_aspect !== null && Math.abs(beat.asset_aspect - board.gen_aspect) > 0.08;
 
+  // Beat 1 has nothing before it, so the two continuations are unreachable -- but the
+  // reference join is not: its pictures come from nowhere upstream. So the first node
+  // toggles between its own still and its own references rather than being frozen.
+  const nextSource: Source = beat.n === 1
+    ? isReference ? "asset" : "reference"
+    : JOIN_CYCLE[beat.source];
+
   const cycleSource = () =>
-    void studio.guard(() =>
-      api.patchBeat(board.slug, beat.n, { source: JOIN_CYCLE[beat.source] }),
-    );
+    void studio.guard(() => api.patchBeat(board.slug, beat.n, { source: nextSource }));
 
   return (
     <div className={`w-60 rounded-lg border bg-[#16161b] shadow-lg ${look.ring}`}>
@@ -119,7 +151,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             canSelectForRender
               ? "include this scene when you press Render"
               : beat.state === "needs_asset"
-                ? "add an opening still before rendering this scene"
+                ? isReference
+                  ? "add at least one reference picture before rendering this scene"
+                  : "add an opening still before rendering this scene"
                 : "write the movement before rendering this scene"
           }
         >
@@ -186,17 +220,58 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         onDragLeave={() => setDropping(false)}
         onDrop={(event) => {
           event.preventDefault();
-          upload(event.dataTransfer.files?.[0]);
+          upload(event.dataTransfer.files);
         }}
       >
         <input
           ref={picker}
           type="file"
           accept="image/png,image/jpeg,image/webp"
+          multiple={isReference}
           className="hidden"
-          onChange={(event) => upload(event.target.files?.[0] ?? undefined)}
+          onChange={(event) => {
+            upload(event.target.files);
+            // Cleared so re-picking the same file still fires a change event.
+            event.target.value = "";
+          }}
         />
-        {thumb ? (
+        {isReference ? (
+          refs.length ? (
+            /* Numbered, because the numbers are load-bearing: the prompt tells the model
+               about <Picture 1>..<Picture N> in exactly this order. */
+            <div className="nodrag nowheel grid h-full auto-rows-[2.85rem] grid-cols-3 gap-0.5
+              overflow-y-auto p-0.5">
+              {refs.map((src, index) => (
+                <div key={src} className="group relative bg-[#0d0d10]">
+                  <img src={src} alt="" className="h-full w-full object-cover opacity-90" />
+                  <span
+                    className="absolute left-0.5 top-0.5 rounded bg-black/70 px-1 text-[9px]
+                      text-zinc-300"
+                    title={`the prompt calls this <Picture ${index + 1}>`}
+                  >
+                    {index + 1}
+                  </span>
+                  <button
+                    onClick={() => removeRef(index + 1)}
+                    title={`remove <Picture ${index + 1}> — the rest are renumbered`}
+                    className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1
+                      text-[10px] text-zinc-300 hover:text-red-400 group-hover:block"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-1 px-3
+              text-center text-[10px] text-zinc-600">
+              <span>drop up to {board.max_refs} reference pictures</span>
+              <span className="text-zinc-700">
+                the cast and the set — this scene has no opening frame
+              </span>
+            </div>
+          )
+        ) : thumb ? (
           <img src={thumb} alt="" className="h-full w-full object-contain opacity-90" />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-[10px] text-zinc-600">
@@ -217,9 +292,15 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           >
             {uploading
               ? "uploading…"
-              : isBridge
-                ? "drop to use as the frame this beat lands on"
-                : "drop to use as this beat's still"}
+              : isReference
+                ? refSlotsLeft
+                  ? `drop to add reference pictures — ${refSlotsLeft} slot${
+                      refSlotsLeft === 1 ? "" : "s"
+                    } left`
+                  : `${board.max_refs} pictures is the model's limit — remove one first`
+                : isBridge
+                  ? "drop to use as the frame this beat lands on"
+                  : "drop to use as this beat's still"}
           </div>
         ) : null}
 
@@ -275,25 +356,35 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             so both actions leave the join alone; on any other join they make it a clean cut. */}
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] uppercase tracking-wide text-zinc-500">
-            {isBridge ? "closing still" : "opening still"}
+            {isReference
+              ? `references ${refs.length}/${board.max_refs}`
+              : isBridge
+                ? "closing still"
+                : "opening still"}
           </span>
           <Button
             tone="ghost"
             className="ml-auto"
-            disabled={uploading}
+            disabled={uploading || (isReference && refSlotsLeft === 0)}
             onClick={() => picker.current?.click()}
             title={
-              isBridge
-                ? "use your own image as the frame this scene lands on — costs no quota"
-                : "use your own image for this scene — costs no quota"
+              isReference
+                ? refSlotsLeft
+                  ? "add pictures of the cast and the set — costs no quota, but each one is " +
+                    "carried through every sampling step"
+                  : `${board.max_refs} is the model's limit; remove one to add another`
+                : isBridge
+                  ? "use your own image as the frame this scene lands on — costs no quota"
+                  : "use your own image for this scene — costs no quota"
             }
           >
-            {uploading ? "uploading…" : beat.asset ? "⤒ replace" : "⤒ upload"}
+            {uploading ? "uploading…" : isReference ? "⤒ add" : beat.asset ? "⤒ replace" : "⤒ upload"}
           </Button>
           {/* Absent, not disabled, when the reel supplies its own stills: a greyed button
               still reads as "the way this is meant to work". The switch back is on the
-              script node, next to the count of what is missing. */}
-          {board.manual_stills ? null : (
+              script node, next to the count of what is missing. A reference scene has no
+              opening still to generate at all, so the affordance goes with it. */}
+          {board.manual_stills || isReference ? null : (
             <Button
               tone="ghost"
               disabled={isGenerating}
@@ -334,15 +425,25 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
 
         <button
           onClick={cycleSource}
-          disabled={beat.n === 1}
           className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[10px]
             leading-snug text-zinc-400 hover:bg-[#26262e] disabled:opacity-40
             disabled:hover:bg-transparent"
           title={
-            beat.n === 1 ? "the first beat has nothing to continue from" : JOIN_HELP[beat.source]
+            beat.n === 1
+              ? isReference
+                ? "the first scene cannot continue from anything, so it is either its own " +
+                  "still or its own reference pictures. Click for a still"
+                : "the first scene cannot continue from anything, so it is either its own " +
+                  "still or its own reference pictures. Click for references"
+              : JOIN_HELP[beat.source]
           }
         >
-          {beat.source === "chain" ? (
+          {isReference ? (
+            <>
+              <span className="text-[#d99a4e]">◈</span> composed from {refs.length || "no"}{" "}
+              reference picture{refs.length === 1 ? "" : "s"} · no opening frame
+            </>
+          ) : beat.source === "chain" ? (
             <>
               <span className="text-[#4ade80]">↳</span> continues from beat {beat.n - 1}
             </>
@@ -390,7 +491,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           </span>
         </div>
 
-        {cropped ? (
+        {/* Only keyframes are cropped onto the 9:16 grid. A reference picture is scaled by
+            the model itself, aspect preserved, so warning about it would be a lie. */}
+        {cropped && !isReference ? (
           <p className="text-[10px] leading-snug text-[#f59e0b]">
             This still is not 9:16 — its sides will be cropped away to fit the vertical frame.
           </p>

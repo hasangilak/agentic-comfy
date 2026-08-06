@@ -46,19 +46,28 @@ GPU = "RTX-PRO-6000"
 # diffusion model with modulation-weight pruning plus int8 convolutions;
 # `nvfp4_awq` is the 32B Qwen3-VL text encoder in 4-bit.
 #
-# Swap `fl2va` for `ref2va` to do reference-conditioned generation instead of
-# text/first-frame/last-frame.
+# Both diffusion checkpoints ship, because H3 splits the tasks between them:
+#
+#   fl2va  -- text / first frame / last frame, i.e. every keyframe join
+#   ref2va -- reference conditioning: up to 9 images (MiniMaxH3ReferenceToVideo), and
+#             no keyframe inputs at all
+#
+# Only one is resident at a time -- ComfyUI loads whatever the queued graph names and evicts
+# the other -- so the second checkpoint costs Volume space and one model swap per switch,
+# not VRAM. A reel that never uses references never loads it.
 MODEL_REPO = "Comfy-Org/MiniMax-H3"
 MODEL_FILES = [
     # (repo path, ComfyUI models/ subdirectory)
     ("diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "diffusion_models"),
+    ("diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors", "diffusion_models"),
     ("text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "text_encoders"),
     ("vae/minimax_h3_video_vae_fp16.safetensors", "vae"),
     ("vae/minimax_h3_audio_vae_fp32.safetensors", "vae"),
 ]
-# ~39.6 GiB total. On a non-Blackwell card (L40S, A100) NVFP4 has no hardware
-# support -- swap the text encoder for qwen3vl_32b_minimax_h3_int8_convrot
-# (25.3 GiB), which pushes the total to ~50 GiB and needs an 80 GB card.
+# ~59.1 GiB total (19.5 GiB of it the second checkpoint). On a non-Blackwell card
+# (L40S, A100) NVFP4 has no hardware support -- swap the text encoder for
+# qwen3vl_32b_minimax_h3_int8_convrot (25.3 GiB), which pushes the total to ~70 GiB and
+# needs an 80 GB card.
 
 COMFYUI_VERSION = "0.30.0"  # first stable release with native H3 nodes
 PYTORCH_VERSION = "2.11.0+cu130"

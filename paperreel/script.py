@@ -77,9 +77,11 @@ def normalise(data: dict) -> dict:
                 raw.get("seconds") or data.get("seconds") or config.BEAT_LENGTHS[-1]
             ),
             # The first beat has nothing before it to continue from, whatever the script
-            # says. Later beats default to chaining, which is the free join.
+            # says -- except on the reference join, which continues from nothing anywhere.
+            # Later beats default to chaining, which is the free join.
             "source": (
-                board_mod.SOURCE_ASSET if index == 1
+                board_mod.SOURCE_REFERENCE if source == board_mod.SOURCE_REFERENCE
+                else board_mod.SOURCE_ASSET if index == 1
                 else source if source in board_mod.SOURCES
                 else board_mod.SOURCE_CHAIN
             ),
@@ -145,6 +147,18 @@ def notes(plan: dict) -> list[str]:
             f"beat {', '.join(map(str, unpromotable))} -- continues from the beat before with "
             "no asset_prompt: if that hand-off degrades there is nothing to promote it to its "
             "own shot from."
+        )
+
+    # Nothing about a reference beat can be supplied by a script: the pictures are uploads,
+    # and until they exist the beat has no conditioning at all. Said once here rather than
+    # discovered as a "needs an image" node with no obvious button.
+    referenced = [b["n"] for b in plan["beats"]
+                  if b["source"] == board_mod.SOURCE_REFERENCE]
+    if referenced:
+        found.append(
+            f"beat {', '.join(map(str, referenced))} -- conditioned on reference pictures "
+            f"rather than an opening frame. Upload up to {config.MAX_REF_IMAGES} images of "
+            "the cast and the set on each of those nodes; nothing generates them for you."
         )
     return found
 

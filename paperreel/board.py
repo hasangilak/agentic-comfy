@@ -20,13 +20,19 @@ from . import config
 # Where a beat's frames come from. This is what the wire between two nodes means.
 #
 # H3 conditions on up to two keyframes -- a first and a last -- so a beat has three
-# useful joins, not two. The third is what lets a beat both continue AND be given a
+# keyframe joins, not two. The third is what lets a beat both continue AND be given a
 # picture: the continuation goes in the first slot and the picture in the last, and the
 # clip is the move between them.
+#
+# The fourth join is a different checkpoint rather than a different wiring. `ref2va` takes up
+# to config.MAX_REF_IMAGES pictures of the cast and the set and NO keyframe at all, so a
+# reference beat cannot continue from anything -- it composes its own opening frame. That is
+# the trade: nine pictures of what things look like, in exchange for the frame-exact handoff.
 SOURCE_ASSET = "asset"    # its own still as the FIRST frame -- a new shot, one image quota
 SOURCE_CHAIN = "chain"    # the previous beat's last frame -- continuous motion, free
 SOURCE_BRIDGE = "bridge"  # continues from the previous clip AND lands on its own still
-SOURCES = (SOURCE_ASSET, SOURCE_CHAIN, SOURCE_BRIDGE)
+SOURCE_REFERENCE = "reference"  # up to 9 reference pictures, no keyframe -- the ref2va path
+SOURCES = (SOURCE_ASSET, SOURCE_CHAIN, SOURCE_BRIDGE, SOURCE_REFERENCE)
 
 
 def chains(source: str) -> bool:
@@ -43,8 +49,16 @@ def uses_asset(source: str) -> bool:
 
     A cut opens on it; a bridge arrives at it. Either way the file has to be there before
     the beat can be rendered, and either way it costs one image from the quota.
+
+    False for a reference beat, which has no keyframe: its pictures are references, and they
+    are counted and checked separately by `uses_refs`.
     """
     return source in (SOURCE_ASSET, SOURCE_BRIDGE)
+
+
+def uses_refs(source: str) -> bool:
+    """Is this beat conditioned on reference pictures rather than on a keyframe?"""
+    return source == SOURCE_REFERENCE
 
 # An explicit character reference, dropped in the reel directory. Every still generated for
 # a cut is conditioned on it, which is what keeps the same characters across a scene change.
@@ -111,10 +125,16 @@ class FrameIds:
     staleness: `asset` is a still the user put there, so changing it is an edit they made;
     `upstream` is inherited from the clip before, so changing it is a change to follow.
     A bridge beat has both, which is the whole reason this is a pair.
+
+    `refs` is the third case and belongs to neither: a reference beat has no keyframe, so
+    what it was conditioned on is the whole ordered set of pictures. Order is part of it --
+    swapping <Picture 1> and <Picture 2> changes the prompt's meaning, so it must read as an
+    edit rather than as no change at all.
     """
 
     asset: str = ""
     upstream: str = ""
+    refs: str = ""
 
 
 @dataclass
@@ -174,13 +194,58 @@ class Board:
     def video_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}.mp4"
 
+    def ref_path(self, n: int, index: int) -> Path:
+        """One of a reference beat's pictures, numbered as the prompt names it.
+
+        1-based on disk on purpose: `beat3_ref2.png` is the file the prompt calls
+        <Picture 2>, so what the model was told and what is on disk can be read off each
+        other without arithmetic. The graph's own sockets are 0-based; that conversion
+        happens once, in comfy.build_graph.
+        """
+        return self.workdir / f"beat{n}_ref{index}.png"
+
+    def ref_paths(self, n: int) -> list[Path]:
+        """The reference pictures this beat actually has, in <Picture i> order.
+
+        Gaps are skipped rather than preserved: deleting picture 2 of three must not leave
+        the model conditioned on a hole, and the surviving files keep their own numbers only
+        until the next write compacts them (see `compact_refs`).
+        """
+        return [p for p in (self.ref_path(n, i) for i in range(1, config.MAX_REF_IMAGES + 1))
+                if p.is_file()]
+
+    def next_ref_index(self, n: int) -> int | None:
+        """The lowest free picture slot, or None when the beat is already at the cap."""
+        for index in range(1, config.MAX_REF_IMAGES + 1):
+            if not self.ref_path(n, index).is_file():
+                return index
+        return None
+
+    def compact_refs(self, n: int) -> None:
+        """Close the gap after a deletion, so the numbers on disk are 1..N with no holes.
+
+        Without this, deleting <Picture 1> of three leaves <Picture 2> and <Picture 3> -- and
+        the prompt, which numbers by connection order, would then call them 1 and 2. The
+        images and the words for them have to agree.
+        """
+        for target, path in enumerate(self.ref_paths(n), start=1):
+            wanted = self.ref_path(n, target)
+            if path != wanted:
+                path.replace(wanted)
+
     def media_makers(self) -> tuple:
         """Every per-beat file, so a move or a delete cannot leave one of them behind.
 
         One list in one place: a stale `beat3_end.png` after a delete is exactly the kind of
-        orphan that later reads as somebody else's finished work.
+        orphan that later reads as somebody else's finished work. The reference pictures are
+        in here for the same reason -- nine of them per beat, and a renumber that missed them
+        would hand beat 2 the cast of the beat that used to be there.
         """
-        return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path)
+        refs = tuple(
+            (lambda n, index=index: self.ref_path(n, index))
+            for index in range(1, config.MAX_REF_IMAGES + 1)
+        )
+        return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path, *refs)
 
     def reference_path(self) -> Path | None:
         """The still that fixes what the characters look like, for generating a new scene.
@@ -267,7 +332,9 @@ class Board:
 
         # This is the topology invariant behind the canvas: scene 1 has no incoming scene,
         # so it can never be chained. It matters especially after deleting the old scene 1.
-        if ordered:
+        # A reference beat is left alone -- it takes nothing from upstream either way, so
+        # promoting it to a cut would throw away its pictures for no reason.
+        if ordered and chains(self.source_for(ordered[0])):
             ordered[0]["source"] = SOURCE_ASSET
 
     # ## Derived state
@@ -288,10 +355,14 @@ class Board:
     def source_for(self, beat: dict) -> str:
         """Default the opening beat to its own asset; later beats inherit unless told.
 
-        A beat with nothing before it can only open on a still, whatever the document says --
-        both continuations need an upstream clip to take their first frame from.
+        A beat with nothing before it cannot continue from anything, whatever the document
+        says -- both continuations need an upstream clip to take their first frame from. It
+        CAN be a reference beat, though: references are not inherited from anywhere, so that
+        join is as available on beat 1 as on any other.
         """
         explicit = beat.get("source")
+        if explicit == SOURCE_REFERENCE:
+            return SOURCE_REFERENCE
         if self.upstream(beat["n"]) is None:
             return SOURCE_ASSET
         return explicit if explicit in SOURCES else SOURCE_CHAIN
@@ -342,14 +413,16 @@ class Board:
             self.identity(),
             frame_ids.asset,
             frame_ids.upstream,
+            frame_ids.refs,
         )
 
     def frame_ids_for(self, beat: dict) -> FrameIds:
-        """Content hashes of the stills this beat is conditioned on, as things stand now.
+        """Content hashes of the images this beat is conditioned on, as things stand now.
 
-        A bridge carries both: its own still is the last frame it has to reach, and the
-        upstream clip is the first frame it starts from. Swapping either one really does
-        change what the beat would render as.
+        A bridge carries both keyframe halves: its own still is the last frame it has to
+        reach, and the upstream clip is the first frame it starts from. Swapping either one
+        really does change what the beat would render as. A reference beat carries neither,
+        and its pictures are hashed together in order instead.
         """
         source = self.source_for(beat)
         asset = file_hash(self.asset_path(beat["n"])) if uses_asset(source) else ""
@@ -359,7 +432,12 @@ class Board:
             # the moment upstream is re-rendered.
             up = self.upstream(beat["n"])
             upstream = file_hash(self.video_path(up["n"])) if up else ""
-        return FrameIds(asset=asset, upstream=upstream)
+        refs = ""
+        if uses_refs(source):
+            # Positional, so reordering the pictures counts as an edit -- which it is, since
+            # the prompt names them by position.
+            refs = fingerprint(*(file_hash(p) for p in self.ref_paths(beat["n"])))
+        return FrameIds(asset=asset, upstream=upstream, refs=refs)
 
     def states(self, *, rendering: set[int] | None = None) -> dict[int, str]:
         """Every beat's state in one downstream pass.
@@ -401,7 +479,13 @@ class Board:
             return STALE if own_changed else INVALIDATED
         if has_video:
             return STALE  # rendered by an older tool that left no fingerprint
-        if uses_asset(self.source_for(beat)) and not self.asset_path(n).exists():
+        source = self.source_for(beat)
+        if uses_asset(source) and not self.asset_path(n).exists():
+            return NEEDS_ASSET
+        # A reference beat has no keyframe to be missing, but it cannot render on zero
+        # pictures either -- ref2va with nothing connected is text-to-video wearing the wrong
+        # checkpoint. Same state, because the answer is the same: put an image on the node.
+        if uses_refs(source) and not self.ref_paths(n):
             return NEEDS_ASSET
         if beat.get("action"):
             return READY
@@ -433,9 +517,13 @@ class Board:
             # something a beat inherits from the one before it.
             self.identity(),
         ]
-        if uses_asset(self.source_for(beat)):
+        source = self.source_for(beat)
+        if uses_asset(source) or uses_refs(source):
+            # A reference beat's pictures are its own work in exactly the same way a cut's
+            # still is: nothing upstream can change them, so changing one reads as `edited`.
             ids = frame_ids if frame_ids is not None else self.frame_ids_for(beat)
             parts.append(ids.asset)
+            parts.append(ids.refs)
         return fingerprint(*parts)
 
     def pending(self, *, rendering: set[int] | None = None) -> list[int]:
@@ -455,8 +543,9 @@ class Board:
 
         A bridge does not stop the cascade: it still takes its first frame from the clip
         before it, so a re-render upstream moves the ground under it exactly as it does under
-        a plain continuation. Only a cut breaks the run, because a cut's first frame is a file
-        on disk that nothing upstream can change.
+        a plain continuation. A cut breaks the run, because a cut's first frame is a file on
+        disk that nothing upstream can change -- and a reference beat breaks it for the same
+        reason, since it is conditioned only on its own pictures.
         """
         chosen = set(beats)
         dirty = False
@@ -466,7 +555,7 @@ class Board:
                 continue
             if dirty and chains(self.source_for(beat)):
                 chosen.add(beat["n"])
-            elif self.source_for(beat) == SOURCE_ASSET:
+            elif not chains(self.source_for(beat)):
                 dirty = False
         return sorted(chosen)
 
@@ -528,6 +617,9 @@ class Board:
                 "frame": self.media_url(self.frame_path(n)),
                 # And, for a bridge, the frame it was told to arrive at.
                 "end_frame": self.media_url(self.end_frame_path(n)),
+                # A reference beat's pictures, in <Picture i> order -- index 0 of this list
+                # is what the prompt calls <Picture 1>.
+                "refs": [self.media_url(p) for p in self.ref_paths(n)],
                 "video": self.media_url(self.video_path(n)),
                 "predicted_seconds": round(
                     config.predict_render_seconds(frames, steps=self.steps()), 1
@@ -570,6 +662,15 @@ class Board:
                 b["n"] for b in self.ordered_beats()
                 if uses_asset(self.source_for(b)) and not self.asset_path(b["n"]).exists()
             ],
+            # Kept apart from assets_needed on purpose: those are generated against the image
+            # quota, these are uploads. A reference beat waiting for pictures must never be
+            # swept into a "generate the missing stills" run, which would make it a cut.
+            "refs_needed": [
+                b["n"] for b in self.ordered_beats()
+                if uses_refs(self.source_for(b)) and not self.ref_paths(b["n"])
+            ],
+            # The node grows one upload slot per picture and stops here.
+            "max_refs": config.MAX_REF_IMAGES,
         }
 
     def cost_of_at(self, beats: list[int], seconds: float) -> dict:

@@ -33,3 +33,5 @@ concat.txt
 # Local-only editor and permission state
 .claude/settings.local.json
 .DS_Store
+.agents
+skills-lock.json

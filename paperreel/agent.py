@@ -86,7 +86,7 @@ will be snapped to the nearer of the two, so choose one of them deliberately. Us
 quick gesture and 10 for a beat that needs room to breathe.
 
 The video model takes up to two still frames per beat -- one for where the clip starts and
-one for where it ends -- so a beat's frames come from one of three places. This is the single
+one for where it ends -- so a beat's frames come from one of four places. This is the single
 most important choice on the board, because it decides what the beat is:
 - "asset": its own generated still as the FIRST frame. A hard cut to somewhere else -- new
   setting, new framing, new composition. The still is generated from the reel's locked
@@ -102,6 +102,14 @@ most important choice on the board, because it decides what the beat is:
   as a cut. Choose it when a continuous shot has to reach a specific state -- the lamp lit,
   the character back in position -- or when a long chain of continuations is drifting away
   from the style bible and needs pinning back to a still.
+
+- "reference": no still frame at all. The model is instead shown up to
+  {config.MAX_REF_IMAGES} pictures the user uploaded of the cast and the set, and composes
+  the opening frame itself from the scene line. It runs on a different set of weights, so it
+  cannot continue from anything and cannot land on anything -- but it is the only join that
+  can be given several pictures, and it spends no image quota because the pictures are
+  uploads. Never set it on a beat yourself unless the user asked for it: without uploaded
+  pictures the beat cannot render at all, and you cannot upload them.
 
 So choose "asset" when the story genuinely moves somewhere else, "chain" when the movement
 should carry on unbroken and where it ends does not matter, and "bridge" when it should carry
@@ -124,9 +132,14 @@ def board_digest(board: board_mod.Board) -> str:
              f'STYLE BIBLE: {board.data.get("style_bible", "")}']
     for beat in board.ordered_beats():
         state = board.state_of(beat)
+        source = board.source_for(beat)
+        # A reference beat's pictures are the whole of its conditioning, and only the user can
+        # add them, so the count is the part of its state worth spending tokens on.
+        if board_mod.uses_refs(source):
+            source += f" ({len(board.ref_paths(beat['n']))} pictures)"
         lines.append(
             f'BEAT {beat["n"]} [{state}, {board.seconds_for(beat):.0f}s, '
-            f'frames from {board.source_for(beat)}]\n'
+            f'frames from {source}]\n'
             f'  scene: {beat.get("scene", "")}\n'
             f'  action: {beat.get("action", "")}'
         )
@@ -232,7 +245,12 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
             # A new first scene cannot continue from anything. Every other insertion joins
             # the existing linear handoff unless the caller explicitly asks for another join.
             "source": (
-                board_mod.SOURCE_ASSET if position == 1
+                # A reference beat takes nothing from upstream, so it is as valid in first
+                # position as anywhere else -- the "new first scene" rule is about the two
+                # continuations, which have nothing to continue from there.
+                board_mod.SOURCE_REFERENCE
+                if requested_source == board_mod.SOURCE_REFERENCE
+                else board_mod.SOURCE_ASSET if position == 1
                 else requested_source if requested_source in board_mod.SOURCES
                 else board_mod.SOURCE_CHAIN
             ),

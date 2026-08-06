@@ -131,11 +131,12 @@ def progress_listener(on_progress, *, log=print, closers=None, stop_event=None) 
 
 def build_graph(*, first_frame: str | None, prompt: str, length: int,
                 steps: int, seed: int, last_frame: str | None = None,
+                ref_images: list[str] | None = None,
                 filename_prefix: str = "video/reel") -> dict:
-    """The 15-node H3 image-to-video graph in ComfyUI API format.
+    """The 15-node H3 graph in ComfyUI API format, in one of its two conditioning modes.
 
-    Both keyframes are optional at the node level, which is what gives this three modes off
-    one checkpoint (the weights are `fl2va` -- first/last frame to video plus audio):
+    KEYFRAME MODE (`ref_images` empty) runs MiniMaxH3ImageToVideo on the `fl2va` checkpoint.
+    Both keyframes are optional at the node level, which is what gives it three joins:
 
       * neither     -- pure text-to-video, the escape hatch when there is no source art
       * first only  -- image-to-video, the normal case
@@ -147,7 +148,27 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
     prompt, so a supplied last frame conditions the whole clip's look, not just its end.
     A keyframe latent is re-injected at every step and never denoised, so neither image
     drifts -- and the cost of adding one is a VAE encode, not more sampling.
+
+    REFERENCE MODE (`ref_images` non-empty) runs MiniMaxH3ReferenceToVideo on the `ref2va`
+    checkpoint: up to config.MAX_REF_IMAGES pictures of the cast and the set, and no keyframe
+    at all. That is a different set of weights, not a flag, which is why the two modes are
+    mutually exclusive here rather than merged -- ref2va has no first_frame input to fill.
+    The references are shown to the text encoder as <Picture 1>..<Picture N> in the order
+    given, and their tokens ride through every sampling step, so each one costs render time
+    for the whole clip rather than a single encode.
     """
+    ref_images = list(ref_images or [])
+    if ref_images and (first_frame or last_frame):
+        raise ValueError(
+            "reference mode and keyframes are separate checkpoints: ref2va has no first or "
+            "last frame input. Pass either ref_images or first_frame/last_frame, not both."
+        )
+    if len(ref_images) > config.MAX_REF_IMAGES:
+        raise ValueError(
+            f"MiniMax H3 takes at most {config.MAX_REF_IMAGES} reference images, "
+            f"got {len(ref_images)}"
+        )
+
     h3_inputs: dict = {
         "clip": ["3", 0],
         "vae": ["4", 0],
@@ -158,7 +179,8 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
     }
     graph: dict = {
         "2": {"class_type": "UNETLoader",
-              "inputs": {"unet_name": config.UNET, "weight_dtype": "default"}},
+              "inputs": {"unet_name": config.UNET_REF if ref_images else config.UNET,
+                         "weight_dtype": "default"}},
         "3": {"class_type": "CLIPLoader",
               "inputs": {"clip_name": config.CLIP, "type": "minimax", "device": "default"}},
         "4": {"class_type": "VAELoader", "inputs": {"vae_name": config.VIDEO_VAE}},
@@ -184,6 +206,21 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
                "inputs": {"video": ["14", 0], "filename_prefix": filename_prefix,
                           "format": "auto", "codec": "auto"}},
     }
+    if ref_images:
+        # The reference node also encodes audio references, so it wants the audio VAE too --
+        # unused here, but required, and node 5 already has it loaded for the decode.
+        graph["6"]["class_type"] = "MiniMaxH3ReferenceToVideo"
+        h3_inputs["audio_vae"] = ["5", 0]
+        h3_inputs["ref_image_size"] = config.REF_IMAGE_SIZE
+        for index, image in enumerate(ref_images):
+            node_id = str(20 + index)
+            graph[node_id] = {"class_type": "LoadImage", "inputs": {"image": image}}
+            # Autogrow sockets are addressed by their full dotted path and are 0-based, so
+            # ref_image_0 is what the prompt calls <Picture 1>. Sending them flat as
+            # "ref_image_0" fails with required_input_missing.
+            h3_inputs[f"ref_images.ref_image_{index}"] = [node_id, 0]
+        return graph
+
     if first_frame:
         graph["1"] = {"class_type": "LoadImage", "inputs": {"image": first_frame}}
         h3_inputs["first_frame"] = ["1", 0]

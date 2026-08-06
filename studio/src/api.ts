@@ -87,6 +87,26 @@ export const api = {
     }).then((r) => r.board);
   },
 
+  /**
+   * Add reference pictures to a beat and put it on the reference join. Appends, because the
+   * prompt names them <Picture 1>..<Picture N> by position -- the server refuses anything
+   * past the cap rather than reordering what is already there.
+   */
+  uploadRefs: (slug: string, n: number, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append("files", file);
+    return call<{ board: Board; stored: number }>(`/api/reels/${slug}/beats/${n}/refs`, {
+      method: "POST",
+      body: form,
+    }).then((r) => r.board);
+  },
+
+  /** `index` is 1-based: the number in the prompt, not the array position. */
+  removeRef: (slug: string, n: number, index: number) =>
+    call<{ board: Board }>(`/api/reels/${slug}/beats/${n}/refs/${index}`, {
+      method: "DELETE",
+    }).then((r) => r.board),
+
   uploadReference: (slug: string, file: File) => {
     const form = new FormData();
     form.append("file", file);

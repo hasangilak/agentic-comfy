@@ -1,36 +1,60 @@
 {
   "beats": [
     {
-      "action": "scene: A quiet cobblestone street beneath a dark victorian paper lamp post at twilight.\naction: The Moth puppet slides slowly into frame from the upper left on a subtle downward diagonal, its ivory cut wings pivoting rhythmically up and down on visible pin rivets while holding a tiny glowing amber paper disc by a thin string.",
+      "action": "The Moth puppet slides slowly into frame from the upper left on a subtle downward diagonal, its ivory cut wings pivoting rhythmically up and down on visible pin rivets while holding a tiny glowing amber paper disc by a thin string.",
       "asset_prompt": "FOREGROUND: A dark silhouette of a cut paper iron fence along the bottom left corner, cut from matte black chipboard, standing 5mm proud of the base board and casting a long soft shadow rightward.\nMIDGROUND: The lower half of a 25cm tall victorian streetlamp cut from matte black chipboard, positioned along the right third vertical gridline. The street consists of overlapping storm slate-blue cardstock cobbles. On the upper left third, fully visible against the upper background, the Moth puppet (4cm tall, cut from pale parchment ivory cardstock with fine hand-inked dark brown cross-hatch lines, raw umber kraft brown torso, glossy black pin-head bead eyes, black chipboard antennae, Silver pin rivets at shoulders) hovers in mid-air, facing right. It holds a small 5mm burnt sienna paper ember disc attached by a single strand of beige thread. Leave the central vertical space around the lamp housing clear for the moth's arrival.\nBACKGROUND: Receding flat paper silhouettes of row houses in deep midnight navy and raw umber kraft brown, stacked in three distinct physical depth layers.\nUPPER THIRD / SKY: Flat storm slate-blue cardstock sky plane with small, hand-punched star slits showing pale parchment ivory behind.\nATMOSPHERE: Clear, no haze or smoke.\nLIGHT: Warm sienna key light raking sharply from the upper left at 45 degrees, casting long shadows to the lower right.\nCOMPOSITION: Tall vertical 9:16 portrait. The tall black lamp post anchors the right third; the upper left quadrant holds the subject with significant open negative space in the centre.",
       "n": 1,
+      "render": {
+        "at": "2026-08-06T19:25:52+00:00",
+        "cost": 0.2967,
+        "draft": false,
+        "fingerprint": "0b62a03d097acbea",
+        "frames": 243,
+        "own": "c824af3c36e63a6b",
+        "render_seconds": 272.5,
+        "seconds": 10.12,
+        "seed": 1102,
+        "steps": 8
+      },
       "scene": "A quiet cobblestone street beneath a dark victorian paper lamp post at twilight.",
       "seconds": 10.0,
       "source": "asset"
     },
     {
-      "action": "scene: A quiet cobblestone street beneath a dark victorian paper lamp post at twilight.\naction: Carrying straight on from the descent, the Moth puppet settles onto the side of the black chipboard lamp housing, its wings folding flat and coming to a complete rest while the hanging ember swings once and stops.",
+      "action": "Carrying straight on from the descent, the Moth puppet settles onto the side of the black chipboard lamp housing, its wings folding flat and coming to a complete rest while the hanging ember swings once and stops.",
       "asset_prompt": "",
       "n": 2,
+      "render": {
+        "at": "2026-08-06T19:30:07+00:00",
+        "cost": 0.276,
+        "draft": false,
+        "fingerprint": "327d220a741ef2c4",
+        "frames": 243,
+        "own": "1ba44892f20096c0",
+        "render_seconds": 253.5,
+        "seconds": 10.12,
+        "seed": 1103,
+        "steps": 8
+      },
       "scene": "A quiet cobblestone street beneath a dark victorian paper lamp post at twilight.",
       "seconds": 10.0,
-      "source": "asset"
+      "source": "reference"
     },
     {
-      "action": "scene: Macro close-up of the paper streetlamp glass housing and the moth.\naction: The Moth puppet remains completely motionless on the frame of the lamp, while its left antenna tilts slightly downward in a single discrete step.",
+      "action": "The Moth puppet remains completely motionless on the frame of the lamp, while its left antenna tilts slightly downward in a single discrete step.",
       "asset_prompt": "FOREGROUND: The upper frame edge shows the cut-out corner of the matte black chipboard lamp roof, casting a heavy downward shadow.\nMIDGROUND: A tight macro shot filling the frame with the hexagonal lantern housing, constructed from matte black chipboard framing surrounding translucent parchment vellum panes. On the left side of the frame, clinging to the outer black frame, is the Moth puppet (4cm tall, cut from pale parchment ivory cardstock with fine hand-inked dark brown cross-hatch lines, raw umber kraft brown torso, glossy black pin-head bead eyes, black chipboard antennae, silver pin rivets at shoulders). The moth's front leg touches a small sliding trapdoor piece of black paper at the base of the lantern housing. The small burnt sienna paper ember disc hangs suspended below the moth's feet on a thread.\nBACKGROUND: Out-of-focus plane of storm slate-blue cardstock depicting distant street background.\nUPPER THIRD / SKY: Occluded by the top cap of the black chipboard lamp post.\nATMOSPHERE: Faint texture of the cold-press cardstock tooth caught in the raking key light.\nLIGHT: Sharp warm sienna key light from the upper left, highlighting the cut edges of the black chipboard and the paper grain of the moth's ivory wings.\nCOMPOSITION: Tall vertical 9:16 portrait close-up. The lantern housing occupies the right two-thirds of the frame, with the Moth puppet aligned vertically along the left third line.",
       "n": 3,
       "scene": "Macro close-up of the paper streetlamp glass housing and the moth.",
       "seconds": 5.0,
-      "source": "asset"
+      "source": "reference"
     },
     {
-      "action": "scene: Macro close-up of the paper streetlamp glass housing and the moth.\naction: Using its forelegs, the Moth puppet slides a small square black paper panel upward to open the lamp base, then swings the amber paper ember inside the translucent vellum glass housing.",
+      "action": "Using its forelegs, the Moth puppet slides a small square black paper panel upward to open the lamp base, then swings the amber paper ember inside the translucent vellum glass housing.",
       "asset_prompt": "",
       "n": 4,
       "scene": "Macro close-up of the paper streetlamp glass housing and the moth.",
       "seconds": 5.0,
-      "source": "chain"
+      "source": "reference"
     },
     {
       "action": "A warm ember amber paper cutout disc inside the glass housing drops into place, instantly revealing stacked yellow and orange paper flame layers inside the lantern, while the surrounding blue street background drops down one shade darker as the Moth puppet flaps away upward.",
@@ -38,46 +62,34 @@
       "n": 5,
       "scene": "Wide view of the streetlamp illuminated against the darkened street.",
       "seconds": 5.0,
-      "source": "asset"
-    },
-    {
-      "action": "Continuing its departure without pause, the Moth puppet flies off toward the top left corner in small rhythmic steps on twos, leaving the glowing lamp post standing alone and perfectly still in the quiet night.",
-      "asset_prompt": "",
-      "n": 6,
-      "scene": "Wide view of the streetlamp illuminated against the darkened street.",
-      "seconds": 5.0,
-      "source": "chain"
+      "source": "reference"
     }
   ],
   "canvas": {
     "nodes": {
       "beat-1": {
-        "x": 0,
-        "y": 260
+        "x": 46,
+        "y": 278
       },
       "beat-2": {
-        "x": 330,
-        "y": 260
+        "x": 318,
+        "y": 272
       },
       "beat-3": {
-        "x": 660,
-        "y": 260
+        "x": 643,
+        "y": 261
       },
       "beat-4": {
-        "x": 990,
-        "y": 260
+        "x": 961,
+        "y": 267
       },
       "beat-5": {
-        "x": 1316,
-        "y": 207
-      },
-      "beat-6": {
-        "x": 1650,
+        "x": 1320,
         "y": 260
       },
       "reel": {
-        "x": 1980,
-        "y": 260
+        "x": 1658,
+        "y": 270
       },
       "script": {
         "x": -85,

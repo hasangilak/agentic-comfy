@@ -20,9 +20,13 @@ from . import comfy, config, media
 class Shot:
     """One beat as the renderer needs it: what moves, where, and where its frames come from.
 
-    `source` is one of the three joins in board.py. `asset` is the still this beat owns, and
+    `source` is one of the four joins in board.py. `asset` is the still this beat owns, and
     which of the two keyframe slots it lands in depends on the join: the first frame for a
     cut, the last frame for a bridge. Unused by a plain continuation, which has no still.
+
+    `refs` is the other conditioning mode: up to config.MAX_REF_IMAGES pictures of the cast
+    and the set, in <Picture i> order, which the ref2va checkpoint uses INSTEAD of a keyframe.
+    Only read when the join is "reference", and empty on every other one.
     """
 
     n: int
@@ -30,6 +34,7 @@ class Shot:
     scene: str = ""
     source: str = board_mod.SOURCE_CHAIN
     asset: Path | None = None
+    refs: list[Path] = field(default_factory=list)
 
 
 @dataclass
@@ -132,6 +137,14 @@ def render_beats(
     if absent:
         raise FileNotFoundError(f"beats {absent} need their own still; generate the assets "
                                 "or drop your own PNGs in place")
+    unreferenced = [shot.n for shot in shots
+                    if board_mod.uses_refs(shot.source)
+                    and not [p for p in shot.refs if p.exists()]]
+    if unreferenced:
+        raise FileNotFoundError(
+            f"beats {unreferenced} are conditioned on reference pictures but have none; "
+            f"supply between 1 and {config.MAX_REF_IMAGES} images each"
+        )
 
     length = config.frame_count(seconds)
     if length > config.PROVEN_MAX_FRAMES:
@@ -148,10 +161,18 @@ def render_beats(
                 n = shot.n
                 frame = workdir / f"beat{n}_frame.png"
                 end_frame = None
+                refs: list[Path] = []
                 # Whether this beat opens mid-motion decides how the prompt has to describe
                 # its first frame, so it is read off the same branch that chooses the frame.
                 continues = board_mod.chains(shot.source)
-                if continues:
+                if board_mod.uses_refs(shot.source):
+                    # No keyframe on this path at all -- the pictures are the conditioning,
+                    # and they go to the model at their own size.
+                    refs = [p for p in shot.refs if p.exists()]
+                    frame = None
+                    continues = False
+                    log(f"[render] beat {n}: {len(refs)} reference pictures")
+                elif continues:
                     media.last_frame(result.beats[-1].video, frame)
                     log(f"[render] beat {n}: continuing from beat {shots[index - 1].n}")
                     if shot.source == board_mod.SOURCE_BRIDGE:
@@ -171,9 +192,11 @@ def render_beats(
                         first_frame=uploaded,
                         last_frame=(comfy.upload_image(http, end_frame)
                                     if end_frame else None),
+                        ref_images=[comfy.upload_image(http, path) for path in refs],
                         prompt=config.build_prompt(shot.action, scene=shot.scene, mute=mute,
                                                    identity=identity, continues=continues,
-                                                   lands=end_frame is not None),
+                                                   lands=end_frame is not None,
+                                                   refs=len(refs)),
                         length=length, steps=steps, seed=seed + n,
                     ),
                     log=log,
@@ -215,14 +238,24 @@ def render_reel(
     beats = board["beats"]
     shots = []
     for index, beat in enumerate(beats):
-        if index == 0 or not chain:
+        named = beat.get("source")
+        if named == board_mod.SOURCE_REFERENCE:
+            # Survives both overrides: a reference beat takes nothing from the beat before
+            # it, so neither "this is the first beat" nor --scenes has anything to fix.
+            source = board_mod.SOURCE_REFERENCE
+        elif index == 0 or not chain:
             source = board_mod.SOURCE_ASSET
         else:
-            named = beat.get("source")
             source = named if named in board_mod.SOURCES else board_mod.SOURCE_CHAIN
         shots.append(Shot(
             n=beat["n"], action=beat["action"], scene=beat.get("scene", ""), source=source,
             asset=workdir / f"beat{beat['n']}_asset.png",
+            refs=[
+                path for path in (
+                    workdir / f"beat{beat['n']}_ref{i}.png"
+                    for i in range(1, config.MAX_REF_IMAGES + 1)
+                ) if path.exists()
+            ],
         ))
 
     result = render_beats(

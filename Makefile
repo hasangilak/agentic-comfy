@@ -28,7 +28,7 @@ help:
 	@echo
 	@echo "one-time, touches Modal:"
 	@echo "make login     uvx modal setup"
-	@echo "make models    download ~40 GiB of weights into a Modal Volume (needed once)"
+	@echo "make models    download ~59 GiB of weights into a Modal Volume (needed once)"
 	@echo "make deploy    deploy the GPU app (free until a request arrives)"
 	@echo "make stop-app  stop the GPU app now"
 

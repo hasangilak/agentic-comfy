@@ -2,13 +2,19 @@
 
 /**
  * Where a beat's frames come from -- the meaning of the wire on the canvas. The model takes
- * a first and a last keyframe, so there are three joins, not two:
+ * a first and a last keyframe, so there are three keyframe joins, not two:
  *
  *   asset  -- its own still as the first frame: a cut
  *   chain  -- the previous clip's last frame as the first frame: a continuation
  *   bridge -- both, so the clip continues AND lands on a still of its own
+ *
+ * The fourth is a different checkpoint rather than a different wiring:
+ *
+ *   reference -- up to `max_refs` pictures of the cast and the set, and NO keyframe. The
+ *                model composes the opening frame itself, so this join cannot continue
+ *                from anything -- that is the price of the extra images.
  */
-export type Source = "asset" | "chain" | "bridge";
+export type Source = "asset" | "chain" | "bridge" | "reference";
 
 export type BeatState =
   | "planned" // no action written yet
@@ -37,6 +43,8 @@ export interface Beat {
   frame: string | null;
   /** And, on a bridge, the frame it was told to arrive at. Null on every other join. */
   end_frame: string | null;
+  /** A reference beat's pictures, in prompt order: refs[0] is <Picture 1>. Empty elsewhere. */
+  refs: string[];
   video: string | null;
   predicted_seconds: number;
   predicted_cost: number;
@@ -85,6 +93,10 @@ export interface Board {
   draft_cost: Estimate;
   spent: number;
   assets_needed: number[];
+  /** Reference beats with no pictures yet. Uploads, never generated -- no quota involved. */
+  refs_needed: number[];
+  /** The model's cap on reference pictures per beat: nine. */
+  max_refs: number;
 }
 
 export interface ReelSummary {

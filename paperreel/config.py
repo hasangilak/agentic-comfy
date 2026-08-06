@@ -134,10 +134,36 @@ BACKEND_URL = os.environ.get(
 PUBLIC_ENDPOINT = os.environ.get("PAPERREEL_PUBLIC") == "1"
 
 # ## Models
+#
+# Two diffusion checkpoints, because H3 splits the tasks across them and a graph loads one:
+#
+#   fl2va  -- text / first frame / last frame. Every join built on keyframes.
+#   ref2va -- reference conditioning: up to 9 images, and no keyframe inputs at all.
+#
+# They are 19.5 GiB each, so keeping both on the Volume costs disk, not VRAM: ComfyUI loads
+# whichever the graph asks for and evicts the other. A batch that mixes joins therefore pays
+# one model swap per switch, which is why the studio orders nothing specially -- a reel that
+# is all keyframes never touches ref2va at all.
 UNET = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+UNET_REF = "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
 CLIP = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
 VIDEO_VAE = "minimax_h3_video_vae_fp16.safetensors"
 AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
+
+# ## Reference conditioning
+#
+# MiniMaxH3ReferenceToVideo grows one input socket per reference and stops at nine images
+# (`ref_images.ref_image_0` .. `ref_image_8` in the API graph). The other three sockets --
+# videos, their soundtracks, standalone audio -- cap at three each and are not wired here.
+#
+# The prompt refers to them as <Picture 1>..<Picture 9>, 1-based and in connection order,
+# which is the tag the text encoder is trained on. Off-by-one matters: image N in the graph
+# is <Picture N+1> in the prompt.
+MAX_REF_IMAGES = 9
+# "match" scales each reference down to the generation's pixel area; "max" uses the reference
+# pipeline's 2048px short edge for better identity fidelity. Reference tokens ride through
+# every sampling step, so "max" can be several times slower -- and slower here is money.
+REF_IMAGE_SIZE = "match"
 
 # ## Antigravity
 PLANNER_MODEL = os.environ.get("PAPERREEL_PLANNER_MODEL", "gemini-3.6-flash-high")
@@ -172,6 +198,19 @@ OPEN_CONTINUATION = (
     "take. Do not restart the shot, do not re-pose or re-centre the subject, do not let it "
     "settle to rest and start again, and do not re-establish the scene: same set, same "
     "camera, same lighting, same moment continuing. "
+)
+# The reference join has no keyframe at all: ref2va conditions on pictures of the cast and the
+# set, and the opening composition is the model's to build. That has to be said explicitly or
+# the model reads nine supplied images as nine shots and cuts between them -- which is the one
+# thing this production never does. Formatted with the <Picture i> tag list at build time.
+OPEN_REFERENCE = (
+    "No first frame is provided. Instead {tags} are supplied as design references: they fix "
+    "what the characters, the set and the materials look like, and nothing else. Reproduce "
+    "every subject that appears in them exactly -- same shapes, markings, colours, "
+    "proportions, paper texture, cut edges and palette -- and compose the opening frame "
+    "yourself from the scene line below. The references are not shots: do not show them, do "
+    "not cut between them, do not pan across them, and do not put more than one version of a "
+    "character on screen. "
 )
 # H3 takes a last frame as well as a first, and this is what has to be said when both are
 # supplied. Without it the model treats the second image as another shot to cut to, and the
@@ -235,8 +274,20 @@ def snap_seconds(value: float | int | str) -> float:
     return min(BEAT_LENGTHS, key=lambda option: abs(option - wanted))
 
 
+def reference_tags(count: int) -> str:
+    """The prompt's name for the supplied references: "<Picture 1>, <Picture 2> and <Picture 3>".
+
+    1-based and in connection order, which is what the text encoder was trained on. The graph
+    sockets are 0-based, so this deliberately does not match the key names in comfy.build_graph.
+    """
+    tags = [f"<Picture {i}>" for i in range(1, max(0, count) + 1)]
+    if len(tags) <= 1:
+        return "".join(tags)
+    return ", ".join(tags[:-1]) + " and " + tags[-1]
+
+
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
-                 continues: bool = False, lands: bool = False) -> str:
+                 continues: bool = False, lands: bool = False, refs: int = 0) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -247,10 +298,18 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     previous clip's final frame rather than on a still of its own, which changes how the
     first frame must be read; see the scaffold above. `lands` says a final frame was given
     too, so the clip has a destination it must reach and not overshoot.
+
+    `refs` is how many reference pictures this beat is conditioned on instead of a keyframe.
+    Non-zero puts the beat on the ref2va checkpoint, which has no first or last frame inputs
+    at all -- so `continues` and `lands` cannot apply and are ignored rather than silently
+    describing frames the model was never given.
     """
-    parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
-    if lands:
-        parts.append(ARRIVE_ON_LAST)
+    if refs > 0:
+        parts = [MEDIUM, OPEN_REFERENCE.format(tags=reference_tags(refs))]
+    else:
+        parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
+        if lands:
+            parts.append(ARRIVE_ON_LAST)
     identity = " ".join(identity.split())
     if identity:
         parts.append(IDENTITY_PREFIX + identity.rstrip(".") + ". ")

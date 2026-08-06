@@ -24,7 +24,7 @@ concept ──agy──▶ ┐
 
 ```bash
 make login                                             # once — uvx modal setup
-make models                                            # once, ~40 GiB into a Volume
+make models                                            # once, ~59 GiB into a Volume
 ```
 
 The download is separate on purpose: it lands in a persistent Volume, so cold starts
@@ -122,9 +122,12 @@ disabled, so a scene cannot branch, connect twice, point backward, or form a loo
 - **solid green, labelled `→ still`** — a **bridge**: it continues from the previous clip
   *and* is given its own still as the frame it has to arrive at. One unbroken take that ends
   on a composition you chose. One image from the quota, same as a cut.
+- **no wire in, labelled `◈`** — a **reference** beat: no keyframe at all. It is shown up to
+  **nine** uploaded pictures of the cast and the set and composes its own opening frame.
+  Uploads, so no quota.
 
 The bridge exists because H3 takes two keyframes, a first and a last, and the wire only ever
-used the first. Click a beat's join line to walk the three. Use it when a continuous shot has
+used the first. Click a beat's join line to walk the four. Use it when a continuous shot has
 to reach a specific state — the lamp lit, the character back on its mark — or when a long run
 of continuations has drifted and needs pinning back to a still: the model has to land on that
 frame, so the drift is corrected inside the beat instead of accumulating past it. Its
@@ -142,6 +145,28 @@ settles the puppet back to rest and begins again — the jolt you see at a seam.
 the continuation wording plus an instruction that the second still is where this same move
 ends and must be reached only on the last frame — without that, the model treats it as another
 shot to cut to, arrives early and then sits there.
+
+### The reference join — nine pictures instead of a keyframe
+
+The three joins above are all keyframes, and a keyframe is one image. The fourth join is a
+different checkpoint rather than a different wiring: `ref2va` takes **up to 9 reference
+images** (plus 3 videos and 3 audio clips, which this pipeline does not wire) and **no first
+or last frame at all**. Drop pictures on a scene's reference tray and they upload in order;
+the node numbers them, and the prompt tells the model about them as `<Picture 1>`…
+`<Picture 9>` in exactly that order. Remove one and the rest renumber, because the numbers are
+what the prompt refers to.
+
+Use it when what you have is a cast — turnarounds, an outfit, a set — rather than a frame.
+What it costs is the handoff: a reference beat cannot continue from the clip before it and
+cannot land on a still, since those inputs do not exist on these weights. It also cannot be
+generated into: ✦ generate is gone from the node and the server refuses an asset job for it
+with a 409, because generating a still there would spend quota *and* silently turn the scene
+into a cut. Render time grows with the number of pictures, too — reference tokens ride through
+every sampling step rather than being encoded once like a keyframe.
+
+Both checkpoints live on the Volume (19.5 GiB each), and ComfyUI loads whichever the queued
+beat names, so a reel that never uses references never pays for the second one beyond disk.
+`reel.py --ref cast.png --ref set.png` is the same path from the CLI.
 
 The other half is that both kinds hold the same cast. The **cast reference** on the script
 node is one image that every generated still is conditioned on, so a cut changes the setting
@@ -210,6 +235,7 @@ For a single clip, `reel.py` composes a frame from a separate background and cha
 ```bash
 uv run reel.py --preview                       # compose only, no GPU
 uv run reel.py --prompt "the pig walks right" --seconds 10
+uv run reel.py --ref cast.png --ref set.png    # reference mode, up to 9, no keyframe
 ```
 
 ## Measured numbers

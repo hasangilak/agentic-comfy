@@ -120,6 +120,17 @@ export function FillStills() {
         {board.manual_stills ? " · generation is off, nothing here can spend quota" : ""}
       </p>
 
+      {/* Said here because this panel is where a missing image is usually noticed, but kept
+          separate: reference pictures are not stills, and nothing on this panel can place
+          them -- they go on their own node, where their order is visible. */}
+      {board.refs_needed.length ? (
+        <p className="text-[10px] leading-snug text-[#f59e0b]">
+          beat {board.refs_needed.join(", ")} wait
+          {board.refs_needed.length === 1 ? "s" : ""} on reference pictures — add those on the
+          scene itself, up to {board.max_refs} each
+        </p>
+      ) : null}
+
       <input
         ref={picker}
         type="file"
@@ -183,7 +194,12 @@ function assign(files: File[], board: Board): { targets: Target[]; unused: File[
   const named = sorted.map((file) => {
     const numbers = (file.name.match(/\d+/g) ?? [])
       .map(Number)
-      .filter((value) => board.beats.some((beat) => beat.n === value));
+      // A reference beat is not a target for a bulk fill: it has no keyframe slot to fill,
+      // and uploading a still to it would swap its pictures for a cut. Its images go on the
+      // node itself, where the order they land in is visible.
+      .filter((value) =>
+        board.beats.some((beat) => beat.n === value && beat.source !== "reference"),
+      );
     // Ambiguous on purpose: "01-02.png" or a date stamp that happens to contain a beat
     // number is not a placement, so it falls through to the order rule below.
     return numbers.length === 1 ? numbers[0] : null;

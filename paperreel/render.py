@@ -30,6 +30,7 @@ JOIN_LOG = {
     board_mod.SOURCE_ASSET: "opening on its own still",
     board_mod.SOURCE_CHAIN: "continuing from the clip before",
     board_mod.SOURCE_BRIDGE: "continuing from the clip before, landing on its own still",
+    board_mod.SOURCE_REFERENCE: "composed from its reference pictures",
 }
 
 
@@ -65,6 +66,11 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
         # A bridge needs BOTH, so these are two independent checks rather than a branch.
         if board_mod.uses_asset(source) and not board.asset_path(n).exists():
             raise FileNotFoundError(f"beat {n} needs its own still ({board.asset_path(n).name})")
+        if board_mod.uses_refs(source) and not board.ref_paths(n):
+            raise FileNotFoundError(
+                f"beat {n} is conditioned on reference pictures but has none; upload at "
+                f"least one (up to {config.MAX_REF_IMAGES})"
+            )
         if board_mod.chains(source):
             upstream = board.upstream(n)
             if upstream is None:
@@ -125,18 +131,26 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                         step=0, step_max=steps, beat_started_at=time.time(),
                     )
 
-                    frame, end_frame, frame_ids = _frames(board, n, sources[n])
+                    frame, end_frame, refs, frame_ids = _frames(board, n, sources[n])
+                    join = JOIN_LOG[sources[n]]
+                    if refs:
+                        join += f" ({len(refs)} of {config.MAX_REF_IMAGES})"
                     runner.log(job, f"[render] beat {n}: {frames[n]} frames, {steps} steps, "
-                                    f"{JOIN_LOG[sources[n]]}")
+                                    f"{join}")
                     started = time.monotonic()
                     outputs = comfy.run_graph(
                         http,
                         comfy.build_graph(
-                            first_frame=comfy.upload_image(http, frame),
+                            # None on a reference beat: ref2va has no keyframe input at all,
+                            # and the pictures below take its place.
+                            first_frame=comfy.upload_image(http, frame) if frame else None,
                             # Only a bridge has one. The node reads its absence as
                             # "no destination", which is the i2v behaviour every other join wants.
                             last_frame=(comfy.upload_image(http, end_frame)
                                         if end_frame else None),
+                            # Uploaded in <Picture i> order and passed as one list, because
+                            # position is meaning: the prompt names them by it.
+                            ref_images=[comfy.upload_image(http, path) for path in refs],
                             prompt=config.build_prompt(
                                 beat.get("action", ""),
                                 # Where the shot is, not just what moves in it. Both are
@@ -149,6 +163,9 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # actually handing over.
                                 continues=board_mod.chains(sources[n]),
                                 lands=end_frame is not None,
+                                # Switches the scaffold to the <Picture i> instructions and,
+                                # in build_graph, the checkpoint to ref2va.
+                                refs=len(refs),
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
                         ),
@@ -214,31 +231,44 @@ def _frames(board: board_mod.Board, n: int, source: str):
 
     This is where the wire on the canvas becomes real:
 
-      * "asset"  -- the beat's own still, fitted onto the generation grid, as the first frame
-      * "chain"  -- the previous clip's true last frame as the first frame, nothing after it
-      * "bridge" -- both: the previous clip's last frame to start from AND the beat's own
-                    still as the frame the clip has to arrive at
+      * "asset"     -- the beat's own still, fitted onto the generation grid, as the first frame
+      * "chain"     -- the previous clip's true last frame as the first frame, nothing after it
+      * "bridge"    -- both: the previous clip's last frame to start from AND the beat's own
+                       still as the frame the clip has to arrive at
+      * "reference" -- no keyframe at all: up to nine pictures of the cast and the set, which
+                       the ref2va checkpoint conditions on for the whole clip
 
     `source` is passed in rather than read from the board, because uploading a still can flip
     a beat's join -- and a batch must render what was queued, not change shape halfway
     through because somebody dropped a file on a later node.
 
-    Returns (first, last, frame_ids). `last` is None unless this is a bridge. The hashes are
+    Returns (first, last, refs, frame_ids). `last` is None unless this is a bridge, `first`
+    is None only on a reference beat, and `refs` is empty on every other join. The hashes are
     taken here, at the moment of use, so the recorded fingerprint names the images really
     rendered rather than whatever is on disk when the beat finishes.
     """
     asset = board.asset_path(n)
+    if source == board_mod.SOURCE_REFERENCE:
+        # Handed over at their own size: the node scales each one itself, down only and
+        # aspect-preserving, so cover-cropping them onto the 9:16 grid first would throw
+        # away parts of the design for nothing.
+        refs = board.ref_paths(n)
+        return (None, None, refs,
+                board_mod.FrameIds(
+                    refs=board_mod.fingerprint(*(board_mod.file_hash(p) for p in refs))))
+
     if source == board_mod.SOURCE_ASSET:
-        return (media.fit_frame(asset, board.frame_path(n)), None,
+        return (media.fit_frame(asset, board.frame_path(n)), None, [],
                 board_mod.FrameIds(asset=board_mod.file_hash(asset)))
 
     video = board.video_path(board.upstream(n)["n"])
     first = media.last_frame(video, board.frame_path(n))
     if source == board_mod.SOURCE_CHAIN:
-        return first, None, board_mod.FrameIds(upstream=board_mod.file_hash(video))
+        return first, None, [], board_mod.FrameIds(upstream=board_mod.file_hash(video))
     return (
         first,
         media.fit_frame(asset, board.end_frame_path(n)),
+        [],
         board_mod.FrameIds(asset=board_mod.file_hash(asset),
                            upstream=board_mod.file_hash(video)),
     )
