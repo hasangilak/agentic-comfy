@@ -84,6 +84,13 @@ direction or a beat of surprise — a clean single gesture holds for 5s and fall
 breathe and the short ones where it should quicken. Eight identical 5s beats have a
 metronome pulse that reads as machine-made; four 10s beats in a row are inert.
 
+**When it is a coin toss, choose 5s.** A 10s beat is not simply two 5s beats joined: only its
+opening frame is anchored, so everything after it has twice as long to drift away from the
+style bible with nothing pulling it back. It is also more expensive per second of finished
+film, not less — measured on this renderer, 243 frames costs about $0.028 per second of video
+against $0.024 at 124 frames, because render time grows faster than the frame count does. So
+10s has to be earned by the shot needing the held time, not chosen for economy or for cover.
+
 ---
 
 ## 2. Shots, cuts and continuations — the most important mechanic
@@ -102,6 +109,13 @@ for where it ends — so each beat's `source` field is one of three values:
   starts from the final frame of the beat before it, exactly like `"chain"`, and its own
   still is used as the LAST frame, which the clip must arrive at. Still one unbroken take —
   but one whose ending was designed instead of drifted into.
+
+There is a fourth value, `"reference"`, which the studio supports and **you must never
+write**. It runs different model weights that take no keyframe at all — instead the director
+uploads up to nine photographs of the cast and the set, and the model composes the shot from
+those. Nothing you can write supplies those pictures, so a script that emits it produces a
+beat that cannot render. If the concept really wants it, say so in one line to the director
+and write the beat as `"asset"`; they can switch it on the canvas and upload.
 
 ### When to use `"bridge"`
 
@@ -130,9 +144,15 @@ These apply to `"chain"` and `"bridge"` alike — a bridge is a continuation, no
 3. **A single shot may run at most 20 seconds total.** Each chained hand-off degrades the
    image slightly, and past ~20s the paper starts to visibly smear and lose its cut edges.
    So: `asset` + up to three 5s chains, or `asset(10s)` + one 10s chain. Never longer.
-4. Never chain across a location change, a lighting change, or a time jump. Those are
+4. **Never leave more than two `"chain"` beats in a row unanchored.** A chained beat knows
+   only the frame handed to it, so nothing in a pure chain ever pulls the look back — every
+   beat inherits the previous one's drift and adds its own. The third beat of any run must
+   therefore be a `"bridge"` (a designed frame it has to arrive at) or a cut. Pattern:
+   `asset, chain, chain, bridge, chain, chain, bridge`. This is the same 20-second ceiling
+   in rule 3 expressed as a rhythm, and it is what keeps a long take from ending as a smear.
+5. Never chain across a location change, a lighting change, or a time jump. Those are
    cuts, always.
-5. **A chained beat still gets a full `asset_prompt`.** See section 3 — this is not
+6. **A chained beat still gets a full `asset_prompt`.** See section 3 — this is not
    optional.
 
 ### Deciding where the cuts go
@@ -429,7 +449,8 @@ Field rules:
 - `n` — 1-based, consecutive, no gaps.
 - `seconds` — exactly `5.0` or `10.0`. Must sum to `40.0` across all beats, in the split
   the director chose.
-- `source` — exactly `"asset"`, `"chain"` or `"bridge"`. Beat 1 must be `"asset"`.
+- `source` — exactly `"asset"`, `"chain"` or `"bridge"`. Beat 1 must be `"asset"`. Never
+  `"reference"`: it needs uploaded photographs you cannot supply (section 2).
 - `asset_prompt` — **required and non-empty on every beat, including chained ones.** It
   describes the beat's first frame, except on a `"bridge"`, where it describes its last.
 - Top-level `seconds` stays `5.0` (it is only the editor's default); per-beat `seconds` is
@@ -456,6 +477,8 @@ Verify every line. Fix anything that fails, then output.
 9. Does every `"chain"` and `"bridge"` beat's `scene` match its shot's first beat word for
    word?
 10. Does any single shot exceed 20 seconds of total run time? (It must not.)
+10b. Is there anywhere a third `"chain"` beat follows two others with no `"bridge"` or cut
+    between? (There must not be — see section 2, rule 4.)
 11. Is the shot count what the director asked for — and not 8 separate cuts?
 12. Do the beat lengths vary — is the rhythm shaped rather than metronomic?
 13. Is there at least one beat that is nearly motionless?
