@@ -137,6 +137,28 @@ def last_frame(video: Path, out_path: Path) -> Path:
     return out_path
 
 
+def tail_clip(video: Path, out_path: Path, seconds: float, *, mute: bool = False) -> Path:
+    """Cut the last `seconds` off a clip, for use as a reference video.
+
+    Re-encoded rather than stream-copied: a copy starts at the nearest keyframe before the cut
+    and H3's output has few of them, so the "3 second" tail would arrive as anything from 3 to
+    10 seconds -- and reference frames are paid for through every sampling step. Encoding a
+    few seconds is fast next to the render it feeds.
+
+    Frame rate is pinned because the model reads reference video as 24 fps; handing it 30 fps
+    frames would have it read the motion as slower than it was.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    run_ffmpeg([
+        "-sseof", f"-{seconds:.2f}", "-i", str(video),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-r", str(config.FPS),
+        *(["-an"] if mute else ["-c:a", "aac", "-b:a", "128k"]),
+        str(out_path),
+    ])
+    return out_path
+
+
 def _delivery_filter() -> str:
     return (
         f"scale=-2:{config.REEL_HEIGHT}:flags=lanczos,"

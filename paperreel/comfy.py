@@ -132,6 +132,7 @@ def progress_listener(on_progress, *, log=print, closers=None, stop_event=None) 
 def build_graph(*, first_frame: str | None, prompt: str, length: int,
                 steps: int, seed: int, last_frame: str | None = None,
                 ref_images: list[str] | None = None,
+                ref_videos: list[str] | None = None,
                 filename_prefix: str = "video/reel") -> dict:
     """The 15-node H3 graph in ComfyUI API format, in one of its two conditioning modes.
 
@@ -149,24 +150,37 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
     A keyframe latent is re-injected at every step and never denoised, so neither image
     drifts -- and the cost of adding one is a VAE encode, not more sampling.
 
-    REFERENCE MODE (`ref_images` non-empty) runs MiniMaxH3ReferenceToVideo on the `ref2va`
-    checkpoint: up to config.MAX_REF_IMAGES pictures of the cast and the set, and no keyframe
-    at all. That is a different set of weights, not a flag, which is why the two modes are
-    mutually exclusive here rather than merged -- ref2va has no first_frame input to fill.
-    The references are shown to the text encoder as <Picture 1>..<Picture N> in the order
-    given, and their tokens ride through every sampling step, so each one costs render time
-    for the whole clip rather than a single encode.
+    REFERENCE MODE (`ref_images` or `ref_videos` non-empty) runs MiniMaxH3ReferenceToVideo on
+    the `ref2va` checkpoint: up to config.MAX_REF_IMAGES pictures of the cast and the set, up
+    to config.MAX_REF_VIDEOS clips, and no keyframe at all. That is a different set of
+    weights, not a flag, which is why the two modes are mutually exclusive here rather than
+    merged -- ref2va has no first_frame input to fill. The references are shown to the text
+    encoder as <Picture 1>..<Picture N> and <Video 1>..<Video N> in the order given, and their
+    tokens ride through every sampling step, so each one costs render time for the whole clip
+    rather than a single encode.
+
+    `ref_videos` are names in ComfyUI's input directory, uploaded the same way images are. The
+    node wants frames rather than a container, so each one goes through LoadVideo ->
+    GetVideoComponents; the node itself resizes them, caps them at this clip's length and
+    trims onto the 17k+5 grid, and refuses anything under 5 frames.
     """
     ref_images = list(ref_images or [])
-    if ref_images and (first_frame or last_frame):
+    ref_videos = list(ref_videos or [])
+    references = ref_images or ref_videos
+    if references and (first_frame or last_frame):
         raise ValueError(
             "reference mode and keyframes are separate checkpoints: ref2va has no first or "
-            "last frame input. Pass either ref_images or first_frame/last_frame, not both."
+            "last frame input. Pass either references or first_frame/last_frame, not both."
         )
     if len(ref_images) > config.MAX_REF_IMAGES:
         raise ValueError(
             f"MiniMax H3 takes at most {config.MAX_REF_IMAGES} reference images, "
             f"got {len(ref_images)}"
+        )
+    if len(ref_videos) > config.MAX_REF_VIDEOS:
+        raise ValueError(
+            f"MiniMax H3 takes at most {config.MAX_REF_VIDEOS} reference videos, "
+            f"got {len(ref_videos)}"
         )
 
     h3_inputs: dict = {
@@ -206,9 +220,9 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
                "inputs": {"video": ["14", 0], "filename_prefix": filename_prefix,
                           "format": "auto", "codec": "auto"}},
     }
-    if ref_images:
-        # The reference node also encodes audio references, so it wants the audio VAE too --
-        # unused here, but required, and node 5 already has it loaded for the decode.
+    if references:
+        # The reference node encodes audio references through the audio VAE, so it wants it
+        # whether or not one is wired -- and node 5 already has it loaded for the decode.
         graph["6"]["class_type"] = "MiniMaxH3ReferenceToVideo"
         h3_inputs["audio_vae"] = ["5", 0]
         h3_inputs["ref_image_size"] = config.REF_IMAGE_SIZE
@@ -219,6 +233,16 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
             # ref_image_0 is what the prompt calls <Picture 1>. Sending them flat as
             # "ref_image_0" fails with required_input_missing.
             h3_inputs[f"ref_images.ref_image_{index}"] = [node_id, 0]
+        for index, video in enumerate(ref_videos):
+            loader, components = str(30 + index * 2), str(31 + index * 2)
+            graph[loader] = {"class_type": "LoadVideo", "inputs": {"file": video}}
+            graph[components] = {"class_type": "GetVideoComponents",
+                                 "inputs": {"video": [loader, 0]}}
+            # GetVideoComponents outputs (images, audio, fps, bit_depth); the node wants the
+            # frames, and optionally the same clip's soundtrack in the index-paired slot.
+            h3_inputs[f"ref_videos.ref_video_{index}"] = [components, 0]
+            if config.REF_VIDEO_WITH_AUDIO:
+                h3_inputs[f"ref_video_audios.ref_video_audio_{index}"] = [components, 1]
         return graph
 
     if first_frame:
@@ -261,6 +285,24 @@ def upload_image(http: httpx.Client, path: Path, *, subfolder: str = "reel") -> 
     response = http.post(
         "/upload/image",
         files={"image": (name, path.read_bytes(), "image/png")},
+        data={"type": "input", "overwrite": "true", "subfolder": subfolder},
+    )
+    response.raise_for_status()
+    body = response.json()
+    return f"{body.get('subfolder', '')}/{body['name']}".lstrip("/")
+
+
+def upload_video(http: httpx.Client, path: Path, *, subfolder: str = "reel") -> str:
+    """Upload a clip for LoadVideo to read.
+
+    Same endpoint as an image: /upload/image writes whatever bytes it is given into the input
+    directory and does not care about the extension, and LoadVideo resolves its `file` input
+    against that directory. There is no separate video route to use instead.
+    """
+    name = f"{uuid.uuid4().hex}{path.suffix.lower() or '.mp4'}"
+    response = http.post(
+        "/upload/image",
+        files={"image": (name, path.read_bytes(), "video/mp4")},
         data={"type": "input", "overwrite": "true", "subfolder": subfolder},
     )
     response.raise_for_status()

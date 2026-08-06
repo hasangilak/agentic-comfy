@@ -130,6 +130,16 @@ export const api = {
       (r) => r.board,
     ),
 
+  /**
+   * Throw away a beat's rendered clip. The beat goes back to `ready` and everything chained
+   * below it reads as following a change. The file is moved into the reel's `.discarded/`,
+   * not deleted.
+   */
+  discardClip: (slug: string, n: number) =>
+    call<{ board: Board; discarded: string }>(`/api/reels/${slug}/beats/${n}/video`, {
+      method: "DELETE",
+    }).then((r) => r.board),
+
   caption: (slug: string) =>
     post<{ job: Job }>(`/api/reels/${slug}/caption`).then((r) => r.job),
 

@@ -50,6 +50,15 @@ export interface Beat {
    * been said. It goes into the render, so editing one marks the beat stale.
    */
   ref_prompts: string[];
+  /**
+   * Reference scenes only: the tail of the previous clip goes in as a reference VIDEO. It is
+   * how this join gets continuity at all — ref2va has no keyframe slot to hand a frame to —
+   * and it makes the scene depend on the one before it again, so upstream re-renders
+   * invalidate it.
+   */
+  carry: boolean;
+  /** The cut tail actually sent, once it has been. */
+  carry_clip: string | null;
   video: string | null;
   predicted_seconds: number;
   predicted_cost: number;

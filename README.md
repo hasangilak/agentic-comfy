@@ -124,7 +124,8 @@ disabled, so a scene cannot branch, connect twice, point backward, or form a loo
   on a composition you chose. One image from the quota, same as a cut.
 - **no wire in, labelled `◈`** — a **reference** beat: no keyframe at all. It is shown up to
   **nine** uploaded pictures of the cast and the set and composes its own opening frame.
-  Uploads, so no quota.
+  Uploads, so no quota. It can optionally carry the previous clip in as a reference *video*,
+  which is this join's version of a continuation.
 
 The bridge exists because H3 takes two keyframes, a first and a last, and the wire only ever
 used the first. Click a beat's join line to walk the four. Use it when a continuous shot has
@@ -166,9 +167,20 @@ collapses back to one. The notes go into the render prompt, so editing one marks
 stale, exactly like editing the action. `reel.py --ref-note` is the same thing from the CLI,
 paired to `--ref` by position.
 
+**Carrying the previous clip.** A reference beat has no keyframe slot, so continuity cannot be
+a frame handoff — but the node takes reference *video* (3 clips, 2–15 s each), and the tick box
+on the node puts the **last 3 seconds of the previous clip** in as `<Video 1>`. The prompt then
+swaps "compose the opening frame yourself" for "open on the moment `<Video 1>` ends and carry
+its movement onward, same set, same camera, no restart". Only the tail is sent: reference
+tokens ride through every sampling step, so a whole 10 s clip would cost ~9× this for motion
+that stopped mattering seconds ago. Turning it on makes the scene depend on the one before it
+again — re-rendering upstream marks it `follows a change`, and it re-enters the render
+cascade. `config.REF_VIDEO_SECONDS` is the tail length; `config.REF_VIDEO_WITH_AUDIO` (off)
+also pairs the clip's soundtrack into the matching audio slot.
+
 Use it when what you have is a cast — turnarounds, an outfit, a set — rather than a frame.
-What it costs is the handoff: a reference beat cannot continue from the clip before it and
-cannot land on a still, since those inputs do not exist on these weights. It also cannot be
+What it costs is the handoff: a reference beat cannot land on a still, and its continuity is
+"here is where the take had got to" rather than a frame-exact join. It also cannot be
 generated into: ✦ generate is gone from the node and the server refuses an asset job for it
 with a 409, because generating a still there would spend quota *and* silently turn the scene
 into a cut. Render time grows with the number of pictures, too — reference tokens ride through
@@ -198,6 +210,13 @@ and generation can be switched off entirely, per reel. Supplying or generating a
 that beat a new shot, so its wire switches to a cut — unless it is already a bridge, where the
 still is the frame it lands on and the continuation is left alone. Anything far from 9:16 gets
 a crop warning before you pay to discover it.
+
+A take you don't like is discardable: **× clip** on the rendered-output header, twice (it
+disarms after four seconds). The beat drops back to `ready`, everything chained below it reads
+as following a change, and the render button re-prices itself to include them. The file is
+moved to the reel's `.discarded/` rather than deleted — renders are the only thing here that
+costs money, so a mis-click should not be final. The beat's own still and its reference
+pictures are left alone.
 
 A beat is either **5 s or 10 s** — two buttons, no stepper (see the measured numbers for
 why). Editing a beat marks it `edited` and everything chained below it `follows a change`,

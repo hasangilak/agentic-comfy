@@ -303,6 +303,21 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
         if board_mod.chains(body["source"]) and board.upstream(n) is None:
             raise HTTPException(422, "the first beat has nothing to continue from")
         beat["source"] = body["source"]
+    if "carry" in body:
+        # The reference join's answer to continuity: the tail of the previous clip goes in as
+        # a reference VIDEO, since ref2va has no keyframe slot to hand a frame to.
+        if not board_mod.uses_refs(board.source_for(beat)):
+            raise HTTPException(
+                422,
+                "only a reference scene can carry the previous clip; the keyframe joins "
+                "already take its last frame directly",
+            )
+        if body["carry"] and board.upstream(n) is None:
+            raise HTTPException(422, "the first beat has nothing to carry")
+        if body["carry"]:
+            beat["ref_video"] = board_mod.CARRY_UPSTREAM
+        else:
+            beat.pop("ref_video", None)
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}
@@ -553,6 +568,34 @@ def clear_reference(slug: str) -> dict:
     (board.workdir / board_mod.REFERENCE_NAME).unlink(missing_ok=True)
     runner.publish_board(slug)
     return {"board": board_json(board)}
+
+
+@app.delete("/api/reels/{slug}/beats/{n}/video")
+def discard_clip(slug: str, n: int) -> dict:
+    """Throw away one beat's rendered clip, when the take is simply no good.
+
+    The beat drops back to `ready` and re-enters what the render button covers, and every
+    beat chained below it reads as following a change -- which it is, since the frame those
+    beats open on has just gone away.
+
+    The file is moved into the reel's `.discarded/` rather than deleted. Renders are the only
+    thing here that costs money, so "I didn't like it" should not be the same gesture as
+    "destroy it".
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    # Pulling the file out from under a running render would leave the job downloading into a
+    # path nobody is watching, and the beat would finish by writing the clip straight back.
+    if n in rendering_now(slug):
+        raise HTTPException(409, f"beat {n} is rendering right now; cancel it first")
+    try:
+        moved = board.discard_video(n)
+    except FileNotFoundError:
+        raise HTTPException(404, f"beat {n} has no rendered clip")
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board), "discarded": moved.name}
 
 
 @app.post("/api/reels/{slug}/caption")

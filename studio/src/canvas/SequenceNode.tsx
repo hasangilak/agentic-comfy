@@ -45,6 +45,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   const board = studio.board!;
   const [dropping, setDropping] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Armed for one click, then it disarms itself -- a delete control that stays hot is one
+  // stray click away from throwing away a render.
+  const [confirming, setConfirming] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const look = STATE_LOOK[beat.state];
   const renderSelected = studio.renderSelection.includes(beat.n);
@@ -267,7 +270,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               text-center text-[10px] text-zinc-600">
               <span>drop up to {board.max_refs} reference pictures</span>
               <span className="text-zinc-700">
-                the cast and the set — this scene has no opening frame
+                {beat.carry
+                  ? `the cast and the set — this scene opens where beat ${beat.n - 1} ends`
+                  : "the cast and the set — this scene has no opening frame"}
               </span>
             </div>
           )
@@ -338,6 +343,33 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             >
               ↓ clip
             </a>
+            {/* Two clicks, because this is the one thing on the canvas that cost money.
+                The file is only moved into the reel's .discarded/, so a wrong second click
+                is still recoverable from disk. */}
+            <button
+              onClick={() => {
+                if (!confirming) {
+                  setConfirming(true);
+                  window.setTimeout(() => setConfirming(false), 4000);
+                  return;
+                }
+                setConfirming(false);
+                void studio.guard(() => api.discardClip(board.slug, beat.n));
+              }}
+              disabled={isRendering}
+              className={`nodrag text-[10px] disabled:cursor-not-allowed disabled:opacity-30 ${
+                confirming ? "text-red-400" : "text-zinc-600 hover:text-red-400"
+              }`}
+              title={
+                isRendering
+                  ? "this scene is rendering; cancel the job first"
+                  : confirming
+                    ? "click again to discard — the clip moves to the reel's .discarded folder"
+                    : "not happy with this take? discard it and the scene goes back to ready"
+              }
+            >
+              {confirming ? "discard?" : "× clip"}
+            </button>
           </div>
           <video
             src={beat.video}
@@ -405,6 +437,41 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           )}
         </div>
 
+        {/* The reference join's only route to continuity. ref2va has no keyframe input, so
+            the previous clip cannot be handed over as a frame -- but the node takes reference
+            VIDEO, and its tail in that slot is the same idea: the model is shown where the
+            take had got to instead of being told where to start. */}
+        {isReference && beat.n > 1 ? (
+          <label
+            className="nodrag flex cursor-pointer items-start gap-1.5 rounded px-1 py-0.5
+              text-[10px] leading-snug text-zinc-400 hover:bg-[#26262e]"
+            title={
+              "sends the last few seconds of the previous clip as <Video 1>, and tells the " +
+              "model to open where it ends and carry the movement on. Makes this scene " +
+              "depend on that one again, so re-rendering it marks this one as following a " +
+              "change"
+            }
+          >
+            <input
+              type="checkbox"
+              checked={beat.carry}
+              onChange={(event) =>
+                void studio.guard(() =>
+                  api.patchBeat(board.slug, beat.n, { carry: event.target.checked }),
+                )
+              }
+              className="mt-0.5 h-3 w-3 accent-[#4ade80]"
+            />
+            <span>
+              carry the last seconds of beat {beat.n - 1} as{" "}
+              <code>&lt;Video 1&gt;</code>
+              {beat.carry ? (
+                <span className="text-[#4ade80]"> · continues that take</span>
+              ) : null}
+            </span>
+          </label>
+        ) : null}
+
         {/* One line per picture, numbered to match the badges on the grid above. This is
             what stops the model rendering a reference as a second copy of the character:
             shown a picture with no explanation it assumes the picture IS the scene. */}
@@ -463,7 +530,8 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           {isReference ? (
             <>
               <span className="text-[#d99a4e]">◈</span> composed from {refs.length || "no"}{" "}
-              reference picture{refs.length === 1 ? "" : "s"} · no opening frame
+              reference picture{refs.length === 1 ? "" : "s"} ·{" "}
+              {beat.carry ? `carries beat ${beat.n - 1}` : "no opening frame"}
             </>
           ) : beat.source === "chain" ? (
             <>

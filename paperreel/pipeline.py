@@ -38,6 +38,9 @@ class Shot:
     asset: Path | None = None
     refs: list[Path] = field(default_factory=list)
     ref_notes: list[str] = field(default_factory=list)
+    # Reference beats only: send the tail of the previous clip as a reference video, which is
+    # how this join gets continuity without a keyframe.
+    carry: bool = False
 
 
 @dataclass
@@ -165,6 +168,7 @@ def render_beats(
                 frame = workdir / f"beat{n}_frame.png"
                 end_frame = None
                 refs: list[Path] = []
+                carry: Path | None = None
                 # Whether this beat opens mid-motion decides how the prompt has to describe
                 # its first frame, so it is read off the same branch that chooses the frame.
                 continues = board_mod.chains(shot.source)
@@ -174,7 +178,13 @@ def render_beats(
                     refs = [p for p in shot.refs if p.exists()]
                     frame = None
                     continues = False
-                    log(f"[render] beat {n}: {len(refs)} reference pictures")
+                    if shot.carry and result.beats:
+                        carry = media.tail_clip(result.beats[-1].video,
+                                                workdir / f"beat{n}_carry.mp4",
+                                                config.REF_VIDEO_SECONDS, mute=mute)
+                    log(f"[render] beat {n}: {len(refs)} reference pictures"
+                        + (f" + the last {config.REF_VIDEO_SECONDS:.0f}s of beat "
+                           f"{shots[index - 1].n}" if carry else ""))
                 elif continues:
                     media.last_frame(result.beats[-1].video, frame)
                     log(f"[render] beat {n}: continuing from beat {shots[index - 1].n}")
@@ -196,11 +206,13 @@ def render_beats(
                         last_frame=(comfy.upload_image(http, end_frame)
                                     if end_frame else None),
                         ref_images=[comfy.upload_image(http, path) for path in refs],
+                        ref_videos=[comfy.upload_video(http, carry)] if carry else [],
                         prompt=config.build_prompt(shot.action, scene=shot.scene, mute=mute,
                                                    identity=identity, continues=continues,
                                                    lands=end_frame is not None,
                                                    refs=len(refs),
-                                                   ref_notes=shot.ref_notes),
+                                                   ref_notes=shot.ref_notes,
+                                                   ref_videos=1 if carry else 0),
                         length=length, steps=steps, seed=seed + n,
                     ),
                     log=log,
@@ -262,6 +274,7 @@ def render_reel(
             ],
             # Straight off the document, since a CLI render has no Board object to ask.
             ref_notes=[str(note) for note in (beat.get("ref_prompts") or [])],
+            carry=(beat.get("ref_video") == board_mod.CARRY_UPSTREAM and index > 0),
         ))
 
     result = render_beats(

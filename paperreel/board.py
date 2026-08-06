@@ -60,6 +60,13 @@ def uses_refs(source: str) -> bool:
     """Is this beat conditioned on reference pictures rather than on a keyframe?"""
     return source == SOURCE_REFERENCE
 
+
+# A reference beat's optional link back to the clip before it. ref2va has no keyframe input,
+# so a continuation cannot be a frame handoff here -- but the node does take reference VIDEO,
+# and the tail of the previous clip in that slot is the same idea by other means: the model is
+# shown where the take had got to rather than told where to start.
+CARRY_UPSTREAM = "upstream"
+
 # An explicit character reference, dropped in the reel directory. Every still generated for
 # a cut is conditioned on it, which is what keeps the same characters across a scene change.
 REFERENCE_NAME = "character.png"
@@ -194,6 +201,14 @@ class Board:
     def video_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}.mp4"
 
+    def carry_path(self, n: int) -> Path:
+        """The tail of the previous clip, cut for use as this beat's reference video.
+
+        Written at render time and kept next to the clip it produced, for the same reason
+        `frame_path` is: what was handed to the model should be on disk afterwards.
+        """
+        return self.workdir / f"beat{n}_carry.mp4"
+
     def ref_path(self, n: int, index: int) -> Path:
         """One of a reference beat's pictures, numbered as the prompt names it.
 
@@ -261,6 +276,35 @@ class Board:
         else:
             beat.pop("ref_prompts", None)
 
+    def discard_video(self, n: int) -> Path:
+        """Throw away a beat's rendered clip, so it can be rendered again.
+
+        Moved rather than deleted, exactly like a trashed reel: the clip cost real money and
+        a mis-click must not be final. It goes to `.discarded/` inside the reel, which the
+        media route cannot serve (it only serves files sitting directly in the reel
+        directory), so the canvas stops offering it while the file itself survives.
+
+        The frames go with it. They are render outputs, not inputs -- `beat3_frame.png` is
+        whatever this beat opened on last time -- and leaving them behind would have the node
+        showing a thumbnail from a clip that no longer exists. The beat's own still and its
+        reference pictures are untouched: those are yours.
+
+        The render record is cleared too, which is what puts the beat back to `ready` and
+        marks everything chained below it as following a change.
+        """
+        video = self.video_path(n)
+        if not video.is_file():
+            raise FileNotFoundError(f"beat {n} has no rendered clip")
+        trash = self.workdir / ".discarded"
+        trash.mkdir(parents=True, exist_ok=True)
+        stamp = int(video.stat().st_mtime)
+        moved = trash / f"beat{n}-{stamp}{video.suffix}"
+        video.replace(moved)
+        for derived in (self.frame_path(n), self.end_frame_path(n)):
+            derived.unlink(missing_ok=True)
+        self.beat(n).pop("render", None)
+        return moved
+
     def remove_ref(self, n: int, index: int) -> None:
         """Delete one reference picture and the note that described it, then close the gap.
 
@@ -292,7 +336,8 @@ class Board:
             (lambda n, index=index: self.ref_path(n, index))
             for index in range(1, config.MAX_REF_IMAGES + 1)
         )
-        return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path, *refs)
+        return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path,
+                self.carry_path, *refs)
 
     def reference_path(self) -> Path | None:
         """The still that fixes what the characters look like, for generating a new scene.
@@ -414,6 +459,29 @@ class Board:
             return SOURCE_ASSET
         return explicit if explicit in SOURCES else SOURCE_CHAIN
 
+    def carries_motion(self, beat: dict) -> bool:
+        """Does this reference beat take the previous clip's tail as a reference video?
+
+        Only meaningful on the reference join, and only where there IS a previous beat. The
+        flag is stored per beat rather than derived, because it is a real editorial choice --
+        a reference beat that starts a new shot and one that carries the last one on are the
+        same conditioning with opposite intent.
+        """
+        return (
+            uses_refs(self.source_for(beat))
+            and beat.get("ref_video") == CARRY_UPSTREAM
+            and self.upstream(beat["n"]) is not None
+        )
+
+    def follows_upstream(self, beat: dict) -> bool:
+        """Does anything this beat renders from come out of the beat before it?
+
+        True for both keyframe continuations and for a reference beat carrying motion. This is
+        what staleness and the render cascade key on -- not the join name, since the reference
+        join answers this question either way depending on its flag.
+        """
+        return chains(self.source_for(beat)) or self.carries_motion(beat)
+
     def identity(self) -> str:
         """The style bible: what the characters and the set look like, never how they move.
 
@@ -454,6 +522,7 @@ class Board:
             self.seed_for(beat),
             bool(self.data.get("mute")),
             source,
+            self.carries_motion(beat),
             # The style bible is part of the video prompt now, so rewriting it really does
             # change what every beat would render as. Leaving it out would let the canvas
             # keep calling those clips finished.
@@ -474,9 +543,10 @@ class Board:
         source = self.source_for(beat)
         asset = file_hash(self.asset_path(beat["n"])) if uses_asset(source) else ""
         upstream = ""
-        if chains(source):
+        if self.follows_upstream(beat):
             # Identified by whatever the upstream beat currently renders to, so this changes
-            # the moment upstream is re-rendered.
+            # the moment upstream is re-rendered. A carried reference video hashes the same
+            # file for the same reason: it IS the previous clip.
             up = self.upstream(beat["n"])
             upstream = file_hash(self.video_path(up["n"])) if up else ""
         refs = ""
@@ -504,7 +574,7 @@ class Board:
         upstream_dirty = False
         for beat in self.ordered_beats():
             state = self._own_state(beat, rendering=rendering)
-            if state == RENDERED and upstream_dirty and chains(self.source_for(beat)):
+            if state == RENDERED and upstream_dirty and self.follows_upstream(beat):
                 state = INVALIDATED
             result[beat["n"]] = state
             # Anything other than a settled render means this beat's output will differ
@@ -534,10 +604,11 @@ class Board:
         source = self.source_for(beat)
         if uses_asset(source) and not self.asset_path(n).exists():
             return NEEDS_ASSET
-        # A reference beat has no keyframe to be missing, but it cannot render on zero
-        # pictures either -- ref2va with nothing connected is text-to-video wearing the wrong
-        # checkpoint. Same state, because the answer is the same: put an image on the node.
-        if uses_refs(source) and not self.ref_paths(n):
+        # A reference beat has no keyframe to be missing, but it cannot render on nothing
+        # either -- ref2va with no references connected is text-to-video wearing the wrong
+        # checkpoint. Carrying the previous clip counts as a reference, so a beat doing that
+        # is complete without a single picture.
+        if uses_refs(source) and not self.ref_paths(n) and not self.carries_motion(beat):
             return NEEDS_ASSET
         if beat.get("action"):
             return READY
@@ -564,6 +635,9 @@ class Board:
             self.seed_for(beat),
             bool(self.data.get("mute")),
             self.source_for(beat),
+            # Whether this beat carries the previous clip in as a reference video is its own
+            # editorial choice, not something inherited, so flipping it reads as `edited`.
+            self.carries_motion(beat),
             # Board-wide, so editing it marks every beat `edited` rather than
             # `follows a change` -- correct, because you did edit it, and it is not
             # something a beat inherits from the one before it.
@@ -596,8 +670,9 @@ class Board:
         A bridge does not stop the cascade: it still takes its first frame from the clip
         before it, so a re-render upstream moves the ground under it exactly as it does under
         a plain continuation. A cut breaks the run, because a cut's first frame is a file on
-        disk that nothing upstream can change -- and a reference beat breaks it for the same
-        reason, since it is conditioned only on its own pictures.
+        disk that nothing upstream can change -- and so does a reference beat conditioned only
+        on its own pictures. A reference beat CARRYING motion does not break it: the previous
+        clip is one of its references, so moving that clip moves it too.
         """
         chosen = set(beats)
         dirty = False
@@ -605,9 +680,9 @@ class Board:
             if beat["n"] in chosen:
                 dirty = True
                 continue
-            if dirty and chains(self.source_for(beat)):
+            if dirty and self.follows_upstream(beat):
                 chosen.add(beat["n"])
-            elif not chains(self.source_for(beat)):
+            elif not self.follows_upstream(beat):
                 dirty = False
         return sorted(chosen)
 
@@ -675,6 +750,11 @@ class Board:
                 # What each of those pictures is for, same order, same length. Empty string
                 # where nothing has been said about one yet.
                 "ref_prompts": self.ref_prompts(n),
+                # A reference beat can also be shown the tail of the previous clip, which is
+                # how this join gets continuity without a keyframe.
+                "carry": self.carries_motion(beat),
+                # The clip that was actually sent, once it has been.
+                "carry_clip": self.media_url(self.carry_path(n)),
                 "video": self.media_url(self.video_path(n)),
                 "predicted_seconds": round(
                     config.predict_render_seconds(frames, steps=self.steps()), 1

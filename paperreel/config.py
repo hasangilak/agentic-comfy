@@ -160,10 +160,30 @@ AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
 # which is the tag the text encoder is trained on. Off-by-one matters: image N in the graph
 # is <Picture N+1> in the prompt.
 MAX_REF_IMAGES = 9
+MAX_REF_VIDEOS = 3
 # "match" scales each reference down to the generation's pixel area; "max" uses the reference
 # pipeline's 2048px short edge for better identity fidelity. Reference tokens ride through
 # every sampling step, so "max" can be several times slower -- and slower here is money.
 REF_IMAGE_SIZE = "match"
+
+# ## Carrying motion into a reference beat
+#
+# ref2va has no keyframe, so a reference beat cannot take the previous clip's last frame the
+# way a chained beat does. It CAN take the clip itself: the node accepts up to
+# MAX_REF_VIDEOS reference videos of 2-15 s each, 15 s in total, at 24 fps.
+#
+# Only the tail is sent. A reference video's tokens ride through every sampling step exactly
+# as an image's do, so a whole 10 s clip would be ~9x the reference cost of this for motion
+# that stopped being relevant seconds ago. Three seconds is the recent past -- where the
+# puppet is, how fast it is going, which way it faces.
+#
+# The node trims what it gets down onto the 17k+5 frame grid itself and needs at least 5
+# frames, so 3 s (72 frames at 24 fps) lands at 56 frames after its own trim.
+REF_VIDEO_SECONDS = 3.0
+# The clip's own soundtrack, paired to the video as `ref_video_audio_N`. Off by default:
+# H3 generates each beat's audio anyway, and an audio reference is one more thing for the
+# model to reproduce literally. Turn it on if ambience drifts between beats.
+REF_VIDEO_WITH_AUDIO = False
 
 # ## Antigravity
 PLANNER_MODEL = os.environ.get("PAPERREEL_PLANNER_MODEL", "gemini-3.6-flash-high")
@@ -207,12 +227,28 @@ OPEN_REFERENCE = (
     "No first frame is provided. Instead {tags} are supplied as design references: they fix "
     "what the characters, the set and the materials look like, and nothing else. Reproduce "
     "every subject that appears in them exactly -- same shapes, markings, colours, "
-    "proportions, paper texture, cut edges and palette -- and compose the opening frame "
-    "yourself from the scene line below. The references are not shots: do not show them, do "
-    "not cut between them, do not pan across them, and do not put more than one version of a "
-    "character on screen. A character shown in a reference is the SAME single character that "
-    "performs the action below, not an additional one, and the pose it is in there is only "
-    "how it looks -- not where this shot starts and not something that must also appear. "
+    "proportions, paper texture, cut edges and palette. The references are not shots: do not "
+    "show them, do not cut between them, do not pan across them, and do not put more than one "
+    "version of a character on screen. A character shown in a reference is the SAME single "
+    "character that performs the action below, not an additional one, and the pose it is in "
+    "there is only how it looks -- not where this shot starts and not something that must "
+    "also appear. "
+)
+# Where the shot begins, when nothing says otherwise. Separate from the paragraph above
+# because a carried reference video answers the same question differently -- it says open on
+# the moment that clip ends -- and the two instructions must never both be present.
+COMPOSE_OPENING = "Compose the opening frame yourself from the scene line below. "
+# What a carried reference video is, and it has to be said in the same breath as "compose the
+# opening frame yourself" -- otherwise the two instructions fight and the model either ignores
+# the clip or treats it as footage to replay. This is the reference join's answer to
+# OPEN_CONTINUATION: not a frame handoff, but the same take, carried on from where it ended.
+CARRY_VIDEO = (
+    "{tag} is the last few seconds of the shot immediately before this one, and this shot is "
+    "that same take carrying on. Open on the moment {tag} ends -- same set, same camera, same "
+    "lighting, the subject in the pose, position and scale it is in on that final moment -- "
+    "and continue its movement onward at the same speed and in the same direction. Do not "
+    "replay {tag}, do not cut to it, do not re-establish the scene, and do not let the "
+    "subject settle to rest and start again. "
 )
 # What each picture is FOR, when the user has said. Without this the model has to guess from
 # the picture alone, and it guesses "this is the scene" -- which is how a reference showing the
@@ -310,7 +346,7 @@ def reference_roles(notes: list[str]) -> str:
 
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
                  continues: bool = False, lands: bool = False, refs: int = 0,
-                 ref_notes: list[str] | None = None) -> str:
+                 ref_notes: list[str] | None = None, ref_videos: int = 0) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -330,13 +366,22 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     ignored rather than silently
     describing frames the model was never given.
     """
-    if refs > 0:
-        parts = [MEDIUM, OPEN_REFERENCE.format(tags=reference_tags(refs))]
-        # Straight after the paragraph that says what a reference IS, because these are the
-        # exceptions to it: which picture is the cast, which is only the set, which prop.
-        roles = reference_roles(list(ref_notes or []))
-        if roles:
-            parts.append(REFERENCE_ROLES.format(roles=roles))
+    if refs > 0 or ref_videos > 0:
+        parts = [MEDIUM]
+        if refs > 0:
+            parts.append(OPEN_REFERENCE.format(tags=reference_tags(refs)))
+            # Straight after the paragraph that says what a reference IS, because these are
+            # the exceptions to it: which picture is the cast, which is only the set, which
+            # prop.
+            roles = reference_roles(list(ref_notes or []))
+            if roles:
+                parts.append(REFERENCE_ROLES.format(roles=roles))
+        # Exactly one of these two: a carried clip says where the shot opens, so telling the
+        # model to compose an opening as well is telling it to do two different things.
+        if ref_videos > 0:
+            parts.append(CARRY_VIDEO.format(tag="<Video 1>"))
+        elif refs > 0:
+            parts.append(COMPOSE_OPENING)
     else:
         parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
         if lands:

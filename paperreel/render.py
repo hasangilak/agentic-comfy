@@ -66,12 +66,13 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
         # A bridge needs BOTH, so these are two independent checks rather than a branch.
         if board_mod.uses_asset(source) and not board.asset_path(n).exists():
             raise FileNotFoundError(f"beat {n} needs its own still ({board.asset_path(n).name})")
-        if board_mod.uses_refs(source) and not board.ref_paths(n):
+        if (board_mod.uses_refs(source) and not board.ref_paths(n)
+                and not board.carries_motion(board.beat(n))):
             raise FileNotFoundError(
-                f"beat {n} is conditioned on reference pictures but has none; upload at "
-                f"least one (up to {config.MAX_REF_IMAGES})"
+                f"beat {n} is conditioned on references but has none; upload at least one "
+                f"picture (up to {config.MAX_REF_IMAGES}) or have it carry the previous clip"
             )
-        if board_mod.chains(source):
+        if board.follows_upstream(board.beat(n)):
             upstream = board.upstream(n)
             if upstream is None:
                 raise ValueError(f"beat {n} is set to continue from the previous beat, but "
@@ -131,10 +132,16 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                         step=0, step_max=steps, beat_started_at=time.time(),
                     )
 
-                    frame, end_frame, refs, frame_ids = _frames(board, n, sources[n])
+                    frame, end_frame, refs, carry, frame_ids = _frames(board, n, sources[n])
                     join = JOIN_LOG[sources[n]]
-                    if refs:
-                        join += f" ({len(refs)} of {config.MAX_REF_IMAGES})"
+                    if refs or carry:
+                        detail = [f"{len(refs)} of {config.MAX_REF_IMAGES} pictures"]
+                        if carry:
+                            detail.append(
+                                f"carrying the last {config.REF_VIDEO_SECONDS:.0f}s of beat "
+                                f"{board.upstream(n)['n']}"
+                            )
+                        join += f" ({', '.join(detail)})"
                     runner.log(job, f"[render] beat {n}: {frames[n]} frames, {steps} steps, "
                                     f"{join}")
                     started = time.monotonic()
@@ -151,6 +158,9 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                             # Uploaded in <Picture i> order and passed as one list, because
                             # position is meaning: the prompt names them by it.
                             ref_images=[comfy.upload_image(http, path) for path in refs],
+                            # One clip, the previous beat's tail. The node takes up to
+                            # config.MAX_REF_VIDEOS; nothing on the canvas asks for more yet.
+                            ref_videos=[comfy.upload_video(http, carry)] if carry else [],
                             prompt=config.build_prompt(
                                 beat.get("action", ""),
                                 # Where the shot is, not just what moves in it. Both are
@@ -170,6 +180,9 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # rather than up front for the same reason the images are:
                                 # the batch renders what it queued.
                                 ref_notes=board.ref_prompts(n) if refs else None,
+                                # Swaps "compose the opening frame yourself" for "open on the
+                                # moment <Video 1> ends and carry it on".
+                                ref_videos=1 if carry else 0,
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
                         ),
@@ -240,16 +253,18 @@ def _frames(board: board_mod.Board, n: int, source: str):
       * "bridge"    -- both: the previous clip's last frame to start from AND the beat's own
                        still as the frame the clip has to arrive at
       * "reference" -- no keyframe at all: up to nine pictures of the cast and the set, which
-                       the ref2va checkpoint conditions on for the whole clip
+                       the ref2va checkpoint conditions on for the whole clip, and optionally
+                       the tail of the previous clip as a reference VIDEO
 
     `source` is passed in rather than read from the board, because uploading a still can flip
     a beat's join -- and a batch must render what was queued, not change shape halfway
     through because somebody dropped a file on a later node.
 
-    Returns (first, last, refs, frame_ids). `last` is None unless this is a bridge, `first`
-    is None only on a reference beat, and `refs` is empty on every other join. The hashes are
-    taken here, at the moment of use, so the recorded fingerprint names the images really
-    rendered rather than whatever is on disk when the beat finishes.
+    Returns (first, last, refs, carry, frame_ids). `last` is None unless this is a bridge,
+    `first` is None only on a reference beat, `refs` is empty on every other join, and `carry`
+    is the cut tail of the previous clip -- present only on a reference beat set to carry
+    motion. The hashes are taken here, at the moment of use, so the recorded fingerprint names
+    the images really rendered rather than whatever is on disk when the beat finishes.
     """
     asset = board.asset_path(n)
     if source == board_mod.SOURCE_REFERENCE:
@@ -257,22 +272,40 @@ def _frames(board: board_mod.Board, n: int, source: str):
         # aspect-preserving, so cover-cropping them onto the 9:16 grid first would throw
         # away parts of the design for nothing.
         refs = board.ref_paths(n)
-        return (None, None, refs,
+        carry, upstream_hash = None, ""
+        if board.carries_motion(board.beat(n)):
+            # Only the tail. The whole clip would be paid for through every sampling step,
+            # for motion that stopped mattering seconds ago.
+            source_video = board.video_path(board.upstream(n)["n"])
+            carry = media.tail_clip(source_video, board.carry_path(n),
+                                    config.REF_VIDEO_SECONDS,
+                                    mute=bool(board.data.get("mute")))
+            upstream_hash = board_mod.file_hash(source_video)
+        else:
+            # A beat that used to carry and no longer does must not leave the old tail on
+            # disk, where the canvas would still show it as this beat's input.
+            board.carry_path(n).unlink(missing_ok=True)
+        return (None, None, refs, carry,
                 board_mod.FrameIds(
-                    refs=board_mod.fingerprint(*(board_mod.file_hash(p) for p in refs))))
+                    refs=board_mod.fingerprint(
+                        *(board_mod.file_hash(p) for p in refs),
+                        *board.ref_prompts(n),
+                    ),
+                    upstream=upstream_hash))
 
     if source == board_mod.SOURCE_ASSET:
-        return (media.fit_frame(asset, board.frame_path(n)), None, [],
+        return (media.fit_frame(asset, board.frame_path(n)), None, [], None,
                 board_mod.FrameIds(asset=board_mod.file_hash(asset)))
 
     video = board.video_path(board.upstream(n)["n"])
     first = media.last_frame(video, board.frame_path(n))
     if source == board_mod.SOURCE_CHAIN:
-        return first, None, [], board_mod.FrameIds(upstream=board_mod.file_hash(video))
+        return first, None, [], None, board_mod.FrameIds(upstream=board_mod.file_hash(video))
     return (
         first,
         media.fit_frame(asset, board.end_frame_path(n)),
         [],
+        None,
         board_mod.FrameIds(asset=board_mod.file_hash(asset),
                            upstream=board_mod.file_hash(video)),
     )
