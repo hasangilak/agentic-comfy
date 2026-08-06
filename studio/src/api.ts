@@ -1,4 +1,4 @@
-import type { Board, ChatTurn, Estimate, Job, ReelSummary } from "./types";
+import type { Board, ChatTurn, Estimate, Job, ReelSummary, Source } from "./types";
 
 const UNREACHABLE =
   "the studio server is not answering on 127.0.0.1:8787 — restart it with `uv run studio.py`";
@@ -72,9 +72,15 @@ export const api = {
   assets: (slug: string, beats?: number[]) =>
     post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats }).then((r) => r.job),
 
-  uploadAsset: (slug: string, n: number, file: File) => {
+  /**
+   * `source` says which keyframe slot the picture is for: "asset" makes it this beat's
+   * opening frame (a cut), "bridge" keeps the continuation and makes it the frame the clip
+   * has to arrive at.
+   */
+  uploadAsset: (slug: string, n: number, file: File, source: Source = "asset") => {
     const form = new FormData();
     form.append("file", file);
+    form.append("source", source);
     return call<{ board: Board }>(`/api/reels/${slug}/beats/${n}/asset`, {
       method: "POST",
       body: form,

@@ -62,12 +62,13 @@ function buildNodes(board: Board, existing: Node[]): Node[] {
 /**
  * The wire IS the frame handoff, so it is drawn from what each beat actually does: solid
  * green where a beat continues from the previous clip, dashed amber where it opens on its
- * own still and therefore costs an image from the quota.
+ * own still and therefore costs an image from the quota. A bridge does both, so it keeps the
+ * green of an unbroken take and is labelled with what the image is spent on.
  */
 function buildEdges(board: Board): Edge[] {
   const list: Edge[] = [];
   board.beats.forEach((beat, index) => {
-    const chained = beat.source === "chain" && index > 0;
+    const chained = beat.source !== "asset" && index > 0;
     list.push({
       id: `wire-${beat.n}`,
       source: index === 0 ? "script" : `beat-${board.beats[index - 1].n}`,
@@ -77,7 +78,7 @@ function buildEdges(board: Board): Edge[] {
       style: chained
         ? { stroke: "#4ade80", strokeWidth: 1.5 }
         : { stroke: "#d99a4e", strokeWidth: 1.5, strokeDasharray: "5 4" },
-      label: chained ? undefined : "cut",
+      label: beat.source === "bridge" ? "→ still" : chained ? undefined : "cut",
       labelStyle: { fill: "#d99a4e", fontSize: 9 },
       labelBgStyle: { fill: "#16161b" },
     });

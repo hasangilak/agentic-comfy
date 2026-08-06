@@ -23,6 +23,15 @@ from . import board as board_mod
 from . import comfy, config, media, pipeline
 from .jobs import Job, Runner
 
+# What a beat's join is, in the log, in the words the canvas uses. A batch that prints
+# "first frame from bridge" is naming an implementation detail at the one moment the user is
+# watching money being spent.
+JOIN_LOG = {
+    board_mod.SOURCE_ASSET: "opening on its own still",
+    board_mod.SOURCE_CHAIN: "continuing from the clip before",
+    board_mod.SOURCE_BRIDGE: "continuing from the clip before, landing on its own still",
+}
+
 
 def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
            *, seconds: float | None = None) -> dict:
@@ -52,11 +61,11 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
     # silently turn a chained beat into a cut halfway through.
     sources = {n: board.source_for(board.beat(n)) for n in ordered}
     for n in ordered:
-        beat = board.beat(n)
-        if sources[n] == board_mod.SOURCE_ASSET:
-            if not board.asset_path(n).exists():
-                raise FileNotFoundError(f"beat {n} needs its own still ({board.asset_path(n).name})")
-        else:
+        source = sources[n]
+        # A bridge needs BOTH, so these are two independent checks rather than a branch.
+        if board_mod.uses_asset(source) and not board.asset_path(n).exists():
+            raise FileNotFoundError(f"beat {n} needs its own still ({board.asset_path(n).name})")
+        if board_mod.chains(source):
             upstream = board.upstream(n)
             if upstream is None:
                 raise ValueError(f"beat {n} is set to continue from the previous beat, but "
@@ -116,14 +125,18 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                         step=0, step_max=steps, beat_started_at=time.time(),
                     )
 
-                    frame, frame_id = _first_frame(board, n, sources[n])
+                    frame, end_frame, frame_ids = _frames(board, n, sources[n])
                     runner.log(job, f"[render] beat {n}: {frames[n]} frames, {steps} steps, "
-                                    f"first frame from {sources[n]}")
+                                    f"{JOIN_LOG[sources[n]]}")
                     started = time.monotonic()
                     outputs = comfy.run_graph(
                         http,
                         comfy.build_graph(
                             first_frame=comfy.upload_image(http, frame),
+                            # Only a bridge has one. The node reads its absence as
+                            # "no destination", which is the i2v behaviour every other join wants.
+                            last_frame=(comfy.upload_image(http, end_frame)
+                                        if end_frame else None),
                             prompt=config.build_prompt(
                                 beat.get("action", ""),
                                 # Where the shot is, not just what moves in it. Both are
@@ -132,9 +145,10 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 mute=bool(board.data.get("mute")),
                                 identity=board.identity(),
                                 # From the source captured up front, not read fresh: the
-                                # instruction has to describe the frame this batch is
+                                # instruction has to describe the frames this batch is
                                 # actually handing over.
-                                continues=sources[n] == board_mod.SOURCE_CHAIN,
+                                continues=board_mod.chains(sources[n]),
+                                lands=end_frame is not None,
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
                         ),
@@ -146,7 +160,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
 
                     comfy.download(http, comfy.only_video(outputs), board.video_path(n))
                     _record(board, n, elapsed, frames[n], steps,
-                            draft=seconds is not None, frame_id=frame_id)
+                            draft=seconds is not None, frame_ids=frame_ids)
                     rendered.append(n)
                     # Announce immediately: the browser attaches this clip to its node and
                     # the user can watch it while the rest of the batch renders.
@@ -195,31 +209,43 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
     }
 
 
-def _first_frame(board: board_mod.Board, n: int, source: str):
-    """Produce the exact opening frame this beat renders from, and identify it.
+def _frames(board: board_mod.Board, n: int, source: str):
+    """Produce the exact keyframes this beat renders from, and identify them.
 
-    This is where the wire on the canvas becomes real: "asset" fits the beat's own still
-    onto the generation grid, "chain" pulls the last frame out of the previous clip.
+    This is where the wire on the canvas becomes real:
 
-    `source` is passed in rather than read from the board, because uploading a still flips
-    a beat from chained to its own image -- and a batch must render what was queued, not
-    change shape halfway through because somebody dropped a file on a later node.
+      * "asset"  -- the beat's own still, fitted onto the generation grid, as the first frame
+      * "chain"  -- the previous clip's true last frame as the first frame, nothing after it
+      * "bridge" -- both: the previous clip's last frame to start from AND the beat's own
+                    still as the frame the clip has to arrive at
 
-    Returns (frame, frame_id) where frame_id is the still's content hash taken here, at the
-    moment of use, so the recorded fingerprint names the image really rendered.
+    `source` is passed in rather than read from the board, because uploading a still can flip
+    a beat's join -- and a batch must render what was queued, not change shape halfway
+    through because somebody dropped a file on a later node.
+
+    Returns (first, last, frame_ids). `last` is None unless this is a bridge. The hashes are
+    taken here, at the moment of use, so the recorded fingerprint names the images really
+    rendered rather than whatever is on disk when the beat finishes.
     """
-    target = board.frame_path(n)
+    asset = board.asset_path(n)
     if source == board_mod.SOURCE_ASSET:
-        return media.fit_frame(board.asset_path(n), target), board_mod.file_hash(
-            board.asset_path(n)
-        )
-    upstream = board.upstream(n)
-    video = board.video_path(upstream["n"])
-    return media.last_frame(video, target), board_mod.file_hash(video)
+        return (media.fit_frame(asset, board.frame_path(n)), None,
+                board_mod.FrameIds(asset=board_mod.file_hash(asset)))
+
+    video = board.video_path(board.upstream(n)["n"])
+    first = media.last_frame(video, board.frame_path(n))
+    if source == board_mod.SOURCE_CHAIN:
+        return first, None, board_mod.FrameIds(upstream=board_mod.file_hash(video))
+    return (
+        first,
+        media.fit_frame(asset, board.end_frame_path(n)),
+        board_mod.FrameIds(asset=board_mod.file_hash(asset),
+                           upstream=board_mod.file_hash(video)),
+    )
 
 
 def _record(board: board_mod.Board, n: int, elapsed: float, frames: int, steps: int,
-            *, draft: bool = False, frame_id: str | None = None) -> None:
+            *, draft: bool = False, frame_ids: board_mod.FrameIds | None = None) -> None:
     """Stamp a beat with what it was made from, so staleness can be detected later."""
     beat = board.beat(n)
     beat["render"] = {
@@ -234,8 +260,8 @@ def _record(board: board_mod.Board, n: int, elapsed: float, frames: int, steps: 
         # Fingerprinted on the frame count ACTUALLY rendered and computed after the file
         # lands, so a chained beat hashes the clip it truly follows and a draft does not
         # masquerade as the finished article.
-        "fingerprint": board.render_fingerprint(beat, frames=frames, frame_id=frame_id),
-        "own": board.own_fingerprint(beat, frames=frames, frame_id=frame_id),
+        "fingerprint": board.render_fingerprint(beat, frames=frames, frame_ids=frame_ids),
+        "own": board.own_fingerprint(beat, frames=frames, frame_ids=frame_ids),
     }
     board.save()
 

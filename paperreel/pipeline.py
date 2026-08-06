@@ -12,7 +12,24 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import board as board_mod
 from . import comfy, config, media
+
+
+@dataclass
+class Shot:
+    """One beat as the renderer needs it: what moves, where, and where its frames come from.
+
+    `source` is one of the three joins in board.py. `asset` is the still this beat owns, and
+    which of the two keyframe slots it lands in depends on the join: the first frame for a
+    cut, the last frame for a bridge. Unused by a plain continuation, which has no still.
+    """
+
+    n: int
+    action: str
+    scene: str = ""
+    source: str = board_mod.SOURCE_CHAIN
+    asset: Path | None = None
 
 
 @dataclass
@@ -24,6 +41,7 @@ class Beat:
     first_frame: Path
     seconds: float
     render_seconds: float
+    last_frame: Path | None = None
 
 
 @dataclass
@@ -79,14 +97,12 @@ def gpu_app(manage: bool = True, log=print):
 
 
 def render_beats(
-    shots: list[tuple[int, str, str]],
+    shots: list[Shot],
     workdir: Path,
     *,
-    opening_frame: Path | None,
     seconds: float,
     steps: int = config.DEFAULT_STEPS,
     seed: int = 1101,
-    chain: bool = True,
     mute: bool = False,
     identity: str = "",
     manage_app: bool = True,
@@ -94,17 +110,28 @@ def render_beats(
 ) -> BatchResult:
     """Render every beat on ONE warm container.
 
-    `shots` is [(beat number, what moves, where it happens)] -- the beat's action and its
-    scene line, both of which go into the instruction. When `chain` is set, beat N starts
-    from beat N-1's final frame, so only `opening_frame` is needed -- which is what makes
-    a multi-beat reel cost a single image against the scarce image quota. Chaining is
-    inherently serial; there is nothing to parallelise, and parallelising across
+    Each `Shot` carries its own join, so one batch can mix all three: a cut opens on its own
+    still, a continuation opens on the previous clip's final frame, and a bridge does both --
+    it opens on the previous clip and is given its own still as the frame it must arrive at.
+    Continuations are what make a multi-beat reel cost a single image against the scarce image
+    quota; bridges spend one image to put the drift back where you designed it.
+
+    Chaining is inherently serial; there is nothing to parallelise, and parallelising across
     containers would cost more anyway, since each container repays the model load.
     """
     if not shots:
         raise ValueError("no beats to render")
-    if opening_frame is None and chain is False:
-        raise ValueError("non-chained rendering needs a first frame per beat")
+    # Checked before the container is deployed. Discovering a missing still three beats in
+    # means having paid for three beats to learn it.
+    if board_mod.chains(shots[0].source):
+        raise ValueError(f"beat {shots[0].n} is first in this batch and has nothing to "
+                         "continue from; give it its own still")
+    absent = [shot.n for shot in shots
+              if board_mod.uses_asset(shot.source)
+              and not (shot.asset and shot.asset.exists())]
+    if absent:
+        raise FileNotFoundError(f"beats {absent} need their own still; generate the assets "
+                                "or drop your own PNGs in place")
 
     length = config.frame_count(seconds)
     if length > config.PROVEN_MAX_FRAMES:
@@ -117,21 +144,21 @@ def render_beats(
     with gpu_app(manage_app, log=log):
         with comfy.client() as http:
             comfy.wake(http, log=log)
-            for index, (n, action, scene) in enumerate(shots):
+            for index, shot in enumerate(shots):
+                n = shot.n
                 frame = workdir / f"beat{n}_frame.png"
+                end_frame = None
                 # Whether this beat opens mid-motion decides how the prompt has to describe
                 # its first frame, so it is read off the same branch that chooses the frame.
-                continues = False
-                if chain and result.beats:
+                continues = board_mod.chains(shot.source)
+                if continues:
                     media.last_frame(result.beats[-1].video, frame)
-                    continues = True
-                    log(f"[render] beat {n}: continuing from beat {shots[index - 1][0]}")
-                elif opening_frame is not None:
-                    media.fit_frame(
-                        opening_frame if index == 0 or chain
-                        else workdir / f"beat{n}_asset.png",
-                        frame,
-                    )
+                    log(f"[render] beat {n}: continuing from beat {shots[index - 1].n}")
+                    if shot.source == board_mod.SOURCE_BRIDGE:
+                        end_frame = media.fit_frame(shot.asset, workdir / f"beat{n}_end.png")
+                        log(f"[render] beat {n}: landing on {shot.asset.name}")
+                elif shot.asset is not None:
+                    media.fit_frame(shot.asset, frame)
                 else:
                     frame = None  # text-to-video
 
@@ -142,8 +169,11 @@ def render_beats(
                     http,
                     comfy.build_graph(
                         first_frame=uploaded,
-                        prompt=config.build_prompt(action, scene=scene, mute=mute,
-                                                   identity=identity, continues=continues),
+                        last_frame=(comfy.upload_image(http, end_frame)
+                                    if end_frame else None),
+                        prompt=config.build_prompt(shot.action, scene=shot.scene, mute=mute,
+                                                   identity=identity, continues=continues,
+                                                   lands=end_frame is not None),
                         length=length, steps=steps, seed=seed + n,
                     ),
                     log=log,
@@ -153,7 +183,8 @@ def render_beats(
                 video = comfy.download(http, comfy.only_video(outputs), workdir / f"beat{n}.mp4")
                 result.beats.append(
                     Beat(n=n, video=video, first_frame=frame or workdir / f"beat{n}_frame.png",
-                         seconds=length / config.FPS, render_seconds=elapsed)
+                         seconds=length / config.FPS, render_seconds=elapsed,
+                         last_frame=end_frame)
                 )
 
     log(f"[render] {result.container_seconds:.0f} container-seconds "
@@ -174,25 +205,30 @@ def render_reel(
     out_name: str = "reel",
     log=print,
 ) -> BatchResult:
-    """Render a whole storyboard and stitch it into one deliverable."""
+    """Render a whole storyboard and stitch it into one deliverable.
+
+    `chain` is the CLI's global default for boards that never named a join. Where a beat DOES
+    name one -- an imported script, or a board built in the studio -- that wins, so a script
+    that mixes cuts, continuations and bridges renders as written. `--scenes` (chain=False) is
+    the deliberate override: every beat opens on its own still, whatever the document says.
+    """
     beats = board["beats"]
-    opening = workdir / f"beat{beats[0]['n']}_asset.png"
-    if not opening.exists():
-        raise FileNotFoundError(
-            f"missing opening asset {opening}. Generate it with the asset stage, or drop "
-            "your own PNG there."
-        )
-    if not chain:
-        absent = [b["n"] for b in beats if not (workdir / f"beat{b['n']}_asset.png").exists()]
-        if absent:
-            raise FileNotFoundError(f"scene mode needs an asset per beat; missing {absent}")
+    shots = []
+    for index, beat in enumerate(beats):
+        if index == 0 or not chain:
+            source = board_mod.SOURCE_ASSET
+        else:
+            named = beat.get("source")
+            source = named if named in board_mod.SOURCES else board_mod.SOURCE_CHAIN
+        shots.append(Shot(
+            n=beat["n"], action=beat["action"], scene=beat.get("scene", ""), source=source,
+            asset=workdir / f"beat{beat['n']}_asset.png",
+        ))
 
     result = render_beats(
-        [(b["n"], b["action"], b.get("scene", "")) for b in beats],
-        workdir,
-        opening_frame=opening,
+        shots, workdir,
         seconds=seconds, steps=steps, seed=seed,
-        chain=chain, mute=mute, identity=board.get("style_bible", ""),
+        mute=mute, identity=board.get("style_bible", ""),
         manage_app=manage_app, log=log,
     )
     result.reel = media.stitch(

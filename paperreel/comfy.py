@@ -134,8 +134,19 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
                 filename_prefix: str = "video/reel") -> dict:
     """The 15-node H3 image-to-video graph in ComfyUI API format.
 
-    `first_frame` is optional at the node level: omitting it makes this pure
-    text-to-video, which is the escape hatch when no source art is available.
+    Both keyframes are optional at the node level, which is what gives this three modes off
+    one checkpoint (the weights are `fl2va` -- first/last frame to video plus audio):
+
+      * neither     -- pure text-to-video, the escape hatch when there is no source art
+      * first only  -- image-to-video, the normal case
+      * first+last  -- the clip is the move between two supplied stills
+
+    The node treats the two differently, and it matters for what you hand it. `first_frame`
+    is the geometry anchor and is plain-stretched onto the canvas; `last_frame` is
+    aspect-preserving cover-cropped. Both are also shown to the text encoder alongside the
+    prompt, so a supplied last frame conditions the whole clip's look, not just its end.
+    A keyframe latent is re-injected at every step and never denoised, so neither image
+    drifts -- and the cost of adding one is a VAE encode, not more sampling.
     """
     h3_inputs: dict = {
         "clip": ["3", 0],

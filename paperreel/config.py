@@ -173,6 +173,19 @@ OPEN_CONTINUATION = (
     "settle to rest and start again, and do not re-establish the scene: same set, same "
     "camera, same lighting, same moment continuing. "
 )
+# H3 takes a last frame as well as a first, and this is what has to be said when both are
+# supplied. Without it the model treats the second image as another shot to cut to, and the
+# clip arrives there early and then sits still -- or worse, jumps. Said this way, the two
+# stills become the two ends of one move and the beat is the move between them.
+ARRIVE_ON_LAST = (
+    "A final frame is provided as well: this take must arrive at exactly that composition, "
+    "and reach it only on its very last frame. Treat it as the pose, position and framing "
+    "this same continuous move settles into at the end -- not a different shot, not somewhere "
+    "to jump to, and not somewhere to arrive early and then wait. Everything between the two "
+    "provided frames is one unbroken take at an even, unhurried pace, and the set, camera and "
+    "lighting are identical in both, so nothing but the moving subject may differ between "
+    "them. "
+)
 # The style bible, verbatim. Over 5-10 seconds of sampling a generic "keep the character
 # identical" has nothing to hold on to, so the model drifts towards its own idea of a
 # paper fox rather than the one this board designed.
@@ -223,7 +236,7 @@ def snap_seconds(value: float | int | str) -> float:
 
 
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
-                 continues: bool = False) -> str:
+                 continues: bool = False, lands: bool = False) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -232,9 +245,12 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     infer the setting from a single still, which is where a background quietly turns into
     a different place halfway through a clip. `continues` says this beat opens on the
     previous clip's final frame rather than on a still of its own, which changes how the
-    first frame must be read; see the scaffold above.
+    first frame must be read; see the scaffold above. `lands` says a final frame was given
+    too, so the clip has a destination it must reach and not overshoot.
     """
     parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
+    if lands:
+        parts.append(ARRIVE_ON_LAST)
     identity = " ".join(identity.split())
     if identity:
         parts.append(IDENTITY_PREFIX + identity.rstrip(".") + ". ")

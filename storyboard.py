@@ -23,6 +23,7 @@ import json
 import re
 from pathlib import Path
 
+from paperreel import board as board_mod
 from paperreel import config, pipeline, planner, script as script_mod
 
 
@@ -45,7 +46,8 @@ def main() -> None:
     parser.add_argument("--draft", action="store_true",
                         help=f"{config.DRAFT_SECONDS:.0f}s beats -- cheap approval pass")
     parser.add_argument("--chain", action="store_true", default=True,
-                        help="continue each beat from the previous clip (default)")
+                        help="honour each beat's own join, continuing from the previous clip "
+                             "where the board does not say otherwise (default)")
     parser.add_argument("--scenes", dest="chain", action="store_false",
                         help="independent shots; needs one asset per beat")
     parser.add_argument("--steps", type=int, default=config.DEFAULT_STEPS)
@@ -100,13 +102,11 @@ def main() -> None:
         for note in script_mod.notes(board):
             print(f"[script] {note}")
         lengths = {beat["seconds"] for beat in board["beats"]}
-        sources = {beat["source"] for beat in board["beats"]}
-        if len(lengths) > 1 or sources == {"asset", "chain"}:
-            # --render here applies one length and one join to the whole reel; only the
-            # studio renders a board beat by beat as written.
-            print("[script] this script mixes beat lengths or cuts with continuations, which "
-                  "--render flattens to --seconds/--chain. Open it in the studio to render it "
-                  "as written.")
+        if len(lengths) > 1:
+            # --render applies one --seconds to the whole reel; only the studio renders a
+            # board beat by beat at the length each one asks for. The joins ARE honoured.
+            print("[script] this script mixes beat lengths, which --render flattens to one "
+                  "--seconds. Open it in the studio to render it as written.")
     elif do_plan:
         print(f"[plan] {args.beats} beats x {args.seconds:.0f}s via {config.PLANNER_MODEL}")
         board = planner.plan(args.concept, args.beats, args.seconds, workdir)
@@ -125,7 +125,10 @@ def main() -> None:
         # rather than one or all. Otherwise: chaining needs only the opening frame, which is
         # what keeps a reel inside the tight image quota, and scene mode needs one per beat.
         if any(beat.get("source") for beat in board["beats"]):
-            wanted = [b for b in board["beats"] if b.get("source", "chain") == "asset"]
+            # Bridges are in here too: their still is the frame they land on rather than the
+            # one they open on, but it is just as much a file that has to exist first.
+            wanted = [b for b in board["beats"]
+                      if board_mod.uses_asset(b.get("source") or board_mod.SOURCE_CHAIN)]
         else:
             wanted = board["beats"][:1] if args.chain else board["beats"]
         # In scene mode every beat is a hard cut, so each still has to be generated from the

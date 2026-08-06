@@ -119,13 +119,29 @@ disabled, so a scene cannot branch, connect twice, point backward, or form a loo
   at all: the same take carrying on, same set, same camera. Costs no image quota.
 - **dashed amber** — this beat opens on its own still. A clean cut to somewhere else, one
   image from the quota.
+- **solid green, labelled `→ still`** — a **bridge**: it continues from the previous clip
+  *and* is given its own still as the frame it has to arrive at. One unbroken take that ends
+  on a composition you chose. One image from the quota, same as a cut.
+
+The bridge exists because H3 takes two keyframes, a first and a last, and the wire only ever
+used the first. Click a beat's join line to walk the three. Use it when a continuous shot has
+to reach a specific state — the lamp lit, the character back on its mark — or when a long run
+of continuations has drifted and needs pinning back to a still: the model has to land on that
+frame, so the drift is corrected inside the beat instead of accumulating past it. Its
+**closing still** slot is the same upload and generate you already have, and its
+`asset_prompt` describes the ending rather than the opening. Everything downstream still
+follows it: a bridge takes its first frame from the clip before, so re-rendering upstream
+invalidates it exactly like a plain continuation.
 
 Each join is told to the model as what it is, which is most of what continuity comes down
 to. A cut is instructed to open on its still and hold that framing; a continuation is
 instructed that its first frame is a freeze from the middle of a take already in motion, to
 be carried on from that exact pose without re-posing, re-centring or re-establishing
 anything. Given the cut wording, a continuation reads a mid-stride pose as a starting pose,
-settles the puppet back to rest and begins again — the jolt you see at a seam.
+settles the puppet back to rest and begins again — the jolt you see at a seam. A bridge gets
+the continuation wording plus an instruction that the second still is where this same move
+ends and must be reached only on the last frame — without that, the model treats it as another
+shot to cut to, arrives early and then sits there.
 
 The other half is that both kinds hold the same cast. The **cast reference** on the script
 node is one image that every generated still is conditioned on, so a cut changes the setting
@@ -144,8 +160,9 @@ can be prepared before any video rendering starts. Dragging an image onto a fram
 and the script node fills a whole reel's stills from one multi-file selection. Uploading costs
 no quota, which matters because image generation is capped at roughly five per five hours —
 and generation can be switched off entirely, per reel. Supplying or generating a still makes
-that beat a new shot, so its wire switches to a cut; anything far from 9:16 gets a crop
-warning before you pay to discover it.
+that beat a new shot, so its wire switches to a cut — unless it is already a bridge, where the
+still is the frame it lands on and the continuation is left alone. Anything far from 9:16 gets
+a crop warning before you pay to discover it.
 
 A beat is either **5 s or 10 s** — two buttons, no stepper (see the measured numbers for
 why). Editing a beat marks it `edited` and everything chained below it `follows a change`,
@@ -183,10 +200,10 @@ work is skipped.
 Add `--draft` for a cheap 5 s-per-beat approval pass before committing.
 
 `--assets` on a board that names a source per beat — an imported script, or one built in the
-studio — generates exactly the stills its cuts need. `--render` here does not: it applies one
-`--seconds` and one `--chain`/`--scenes` to the whole reel, so a script mixing 5 s and 10 s
-beats, or cuts with continuations, renders as written only in the studio. The CLI says so when
-it adopts one.
+studio — generates exactly the stills its cuts and bridges need. `--render` honours those joins
+too, but it applies one `--seconds` to the whole reel, so a script mixing 5 s and 10 s beats
+renders as written only in the studio. The CLI says so when it adopts one. `--scenes` is the
+deliberate override: every beat opens on its own still, whatever the board says.
 
 For a single clip, `reel.py` composes a frame from a separate background and character:
 

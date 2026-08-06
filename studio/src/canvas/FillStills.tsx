@@ -42,11 +42,18 @@ export function FillStills() {
     setBusy({ done: 0, total: targets.length });
     const landed: string[] = [];
     const failed: string[] = [];
-    // Sequential rather than parallel: each upload flips its beat to a cut and republishes
-    // the board, and the canvas is more legible filling in one node at a time than all at once.
+    // Sequential rather than parallel: each upload changes its beat's join and republishes the
+    // board, and the canvas is more legible filling in one node at a time than all at once.
     for (const [index, target] of targets.entries()) {
       try {
-        await api.uploadAsset(board.slug, target.beat, target.file);
+        // A bridge keeps its join -- its still is the frame it lands on, and a bulk fill must
+        // not quietly turn a continuation the user chose into a cut. Every other beat treats a
+        // supplied still as its opening frame.
+        const join =
+          board.beats.find((beat) => beat.n === target.beat)?.source === "bridge"
+            ? "bridge"
+            : "asset";
+        await api.uploadAsset(board.slug, target.beat, target.file, join);
         landed.push(`beat ${target.beat} ← ${target.file.name}`);
       } catch (problem) {
         failed.push(String(problem));

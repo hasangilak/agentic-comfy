@@ -17,9 +17,34 @@ from typing import Any, Iterator
 
 from . import config
 
-# Where a beat's opening frame comes from. This is what the wire between two nodes means.
-SOURCE_ASSET = "asset"  # its own generated still -- a new shot, costs one image quota
-SOURCE_CHAIN = "chain"  # the previous beat's last frame -- continuous motion, free
+# Where a beat's frames come from. This is what the wire between two nodes means.
+#
+# H3 conditions on up to two keyframes -- a first and a last -- so a beat has three
+# useful joins, not two. The third is what lets a beat both continue AND be given a
+# picture: the continuation goes in the first slot and the picture in the last, and the
+# clip is the move between them.
+SOURCE_ASSET = "asset"    # its own still as the FIRST frame -- a new shot, one image quota
+SOURCE_CHAIN = "chain"    # the previous beat's last frame -- continuous motion, free
+SOURCE_BRIDGE = "bridge"  # continues from the previous clip AND lands on its own still
+SOURCES = (SOURCE_ASSET, SOURCE_CHAIN, SOURCE_BRIDGE)
+
+
+def chains(source: str) -> bool:
+    """Does this beat's first frame come out of the clip before it?
+
+    True for both continuations, which is what makes staleness propagate the same way
+    down either of them: re-rendering a beat moves the frame the next one opens on.
+    """
+    return source in (SOURCE_CHAIN, SOURCE_BRIDGE)
+
+
+def uses_asset(source: str) -> bool:
+    """Does this beat need a still of its own on disk?
+
+    A cut opens on it; a bridge arrives at it. Either way the file has to be there before
+    the beat can be rendered, and either way it costs one image from the quota.
+    """
+    return source in (SOURCE_ASSET, SOURCE_BRIDGE)
 
 # An explicit character reference, dropped in the reel directory. Every still generated for
 # a cut is conditioned on it, which is what keeps the same characters across a scene change.
@@ -78,6 +103,20 @@ def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
+@dataclass(frozen=True)
+class FrameIds:
+    """Content hashes of the images one beat is conditioned on, at one moment in time.
+
+    Kept as two fields rather than one, because the halves mean opposite things to
+    staleness: `asset` is a still the user put there, so changing it is an edit they made;
+    `upstream` is inherited from the clip before, so changing it is a change to follow.
+    A bridge beat has both, which is the whole reason this is a pair.
+    """
+
+    asset: str = ""
+    upstream: str = ""
+
+
 @dataclass
 class Board:
     slug: str
@@ -124,8 +163,24 @@ class Board:
     def frame_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}_frame.png"
 
+    def end_frame_path(self, n: int) -> Path:
+        """The still a bridge beat has to arrive at, fitted onto the generation grid.
+
+        Written at render time from `asset_path`, exactly as `frame_path` is for a cut, so
+        what was handed to the model is on disk next to the clip it produced.
+        """
+        return self.workdir / f"beat{n}_end.png"
+
     def video_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}.mp4"
+
+    def media_makers(self) -> tuple:
+        """Every per-beat file, so a move or a delete cannot leave one of them behind.
+
+        One list in one place: a stale `beat3_end.png` after a delete is exactly the kind of
+        orphan that later reads as somebody else's finished work.
+        """
+        return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path)
 
     def reference_path(self) -> Path | None:
         """The still that fixes what the characters look like, for generating a new scene.
@@ -198,12 +253,12 @@ class Board:
         if moves:
             # Two passes through a temp name, so a 3->2 shift cannot clobber beat 2's files.
             for beat, target in moves:
-                for maker in (self.asset_path, self.frame_path, self.video_path):
+                for maker in self.media_makers():
                     src = maker(beat["n"])
                     if src.exists():
                         src.rename(src.with_name(f"tmp_{target}_{src.name}"))
             for beat, target in moves:
-                for maker in (self.asset_path, self.frame_path, self.video_path):
+                for maker in self.media_makers():
                     final = maker(target)
                     staged = final.with_name(f"tmp_{target}_{maker(beat['n']).name}")
                     if staged.exists():
@@ -231,11 +286,15 @@ class Board:
         )
 
     def source_for(self, beat: dict) -> str:
-        """Default the opening beat to its own asset; later beats inherit unless told."""
+        """Default the opening beat to its own asset; later beats inherit unless told.
+
+        A beat with nothing before it can only open on a still, whatever the document says --
+        both continuations need an upstream clip to take their first frame from.
+        """
         explicit = beat.get("source")
-        if explicit in (SOURCE_ASSET, SOURCE_CHAIN):
-            return explicit
-        return SOURCE_ASSET if self.upstream(beat["n"]) is None else SOURCE_CHAIN
+        if self.upstream(beat["n"]) is None:
+            return SOURCE_ASSET
+        return explicit if explicit in SOURCES else SOURCE_CHAIN
 
     def identity(self) -> str:
         """The style bible: what the characters and the set look like, never how they move.
@@ -252,21 +311,21 @@ class Board:
         return int(self.data.get("seed") or 1101) + beat["n"]
 
     def render_fingerprint(self, beat: dict, *, frames: int | None = None,
-                           frame_id: str | None = None) -> str:
+                           frame_ids: FrameIds | None = None) -> str:
         """What this beat WOULD be rendered from right now.
 
         `frames` overrides the length, so a draft pass can stamp what it ACTUALLY rendered
         rather than what the board asks for. Without that, a 5s draft would record the
         fingerprint of the 10s final and the canvas would call it finished.
 
-        `frame_id` does the same for the opening still. A render reads the still off disk at
-        the moment it starts a beat; if a new one is uploaded while the batch is still
-        running, recomputing the hash afterwards would stamp the clip with an image it was
+        `frame_ids` does the same for the conditioning stills. A render reads them off disk
+        at the moment it starts a beat; if a new one is uploaded while the batch is still
+        running, recomputing the hashes afterwards would stamp the clip with an image it was
         never made from -- and the beat would show as finished when it needs redoing.
         """
         source = self.source_for(beat)
-        if frame_id is None:
-            frame_id = self.frame_id_for(beat)
+        if frame_ids is None:
+            frame_ids = self.frame_ids_for(beat)
         return fingerprint(
             beat.get("action", ""),
             # The scene line is in the video prompt too, so rewriting where a shot happens
@@ -281,17 +340,26 @@ class Board:
             # change what every beat would render as. Leaving it out would let the canvas
             # keep calling those clips finished.
             self.identity(),
-            frame_id,
+            frame_ids.asset,
+            frame_ids.upstream,
         )
 
-    def frame_id_for(self, beat: dict) -> str:
-        """Content hash of the still this beat opens on, as things stand right now."""
-        if self.source_for(beat) == SOURCE_ASSET:
-            return file_hash(self.asset_path(beat["n"]))
-        # Chained: identified by whatever the upstream beat currently renders to, so this
-        # changes the moment upstream is re-rendered.
-        up = self.upstream(beat["n"])
-        return file_hash(self.video_path(up["n"])) if up else ""
+    def frame_ids_for(self, beat: dict) -> FrameIds:
+        """Content hashes of the stills this beat is conditioned on, as things stand now.
+
+        A bridge carries both: its own still is the last frame it has to reach, and the
+        upstream clip is the first frame it starts from. Swapping either one really does
+        change what the beat would render as.
+        """
+        source = self.source_for(beat)
+        asset = file_hash(self.asset_path(beat["n"])) if uses_asset(source) else ""
+        upstream = ""
+        if chains(source):
+            # Identified by whatever the upstream beat currently renders to, so this changes
+            # the moment upstream is re-rendered.
+            up = self.upstream(beat["n"])
+            upstream = file_hash(self.video_path(up["n"])) if up else ""
+        return FrameIds(asset=asset, upstream=upstream)
 
     def states(self, *, rendering: set[int] | None = None) -> dict[int, str]:
         """Every beat's state in one downstream pass.
@@ -306,7 +374,7 @@ class Board:
         upstream_dirty = False
         for beat in self.ordered_beats():
             state = self._own_state(beat, rendering=rendering)
-            if state == RENDERED and upstream_dirty and self.source_for(beat) == SOURCE_CHAIN:
+            if state == RENDERED and upstream_dirty and chains(self.source_for(beat)):
                 state = INVALIDATED
             result[beat["n"]] = state
             # Anything other than a settled render means this beat's output will differ
@@ -333,23 +401,23 @@ class Board:
             return STALE if own_changed else INVALIDATED
         if has_video:
             return STALE  # rendered by an older tool that left no fingerprint
-        if self.source_for(beat) == SOURCE_ASSET and not self.asset_path(n).exists():
+        if uses_asset(self.source_for(beat)) and not self.asset_path(n).exists():
             return NEEDS_ASSET
         if beat.get("action"):
             return READY
         return PLANNED
 
     def own_fingerprint(self, beat: dict, *, frames: int | None = None,
-                        frame_id: str | None = None) -> str:
+                        frame_ids: FrameIds | None = None) -> str:
         """What this beat is, ignoring anything inherited from upstream.
 
         Compared against the recorded value to tell "you changed this" from "the beat before
         it changed" -- only the first is the user's own doing, only the second cascades.
 
-        A beat opening on its OWN still counts that still as part of itself: swapping the
-        image is an edit you made, so it must read as `edited`, not as `follows a change` --
-        which would be nonsense on beat 1, where there is nothing before it to follow.
-        A chained beat's frame comes from upstream, so it stays out, which is exactly what
+        A beat with a still of its OWN counts that still as part of itself -- whether it
+        opens on it or arrives at it. Swapping the image is an edit you made, so it must read
+        as `edited`, not as `follows a change`, which would be nonsense on beat 1 where there
+        is nothing before it to follow. The inherited frame stays out, which is exactly what
         keeps the two labels meaningful.
         """
         parts: list = [
@@ -365,8 +433,9 @@ class Board:
             # something a beat inherits from the one before it.
             self.identity(),
         ]
-        if self.source_for(beat) == SOURCE_ASSET:
-            parts.append(frame_id if frame_id is not None else self.frame_id_for(beat))
+        if uses_asset(self.source_for(beat)):
+            ids = frame_ids if frame_ids is not None else self.frame_ids_for(beat)
+            parts.append(ids.asset)
         return fingerprint(*parts)
 
     def pending(self, *, rendering: set[int] | None = None) -> list[int]:
@@ -382,14 +451,20 @@ class Board:
         ]
 
     def cascade(self, beats: list[int]) -> list[int]:
-        """Expand a manual selection to include everything chained downstream of it."""
+        """Expand a manual selection to include everything chained downstream of it.
+
+        A bridge does not stop the cascade: it still takes its first frame from the clip
+        before it, so a re-render upstream moves the ground under it exactly as it does under
+        a plain continuation. Only a cut breaks the run, because a cut's first frame is a file
+        on disk that nothing upstream can change.
+        """
         chosen = set(beats)
         dirty = False
         for beat in self.ordered_beats():
             if beat["n"] in chosen:
                 dirty = True
                 continue
-            if dirty and self.source_for(beat) == SOURCE_CHAIN:
+            if dirty and chains(self.source_for(beat)):
                 chosen.add(beat["n"])
             elif self.source_for(beat) == SOURCE_ASSET:
                 dirty = False
@@ -451,6 +526,8 @@ class Board:
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
                 "frame": self.media_url(self.frame_path(n)),
+                # And, for a bridge, the frame it was told to arrive at.
+                "end_frame": self.media_url(self.end_frame_path(n)),
                 "video": self.media_url(self.video_path(n)),
                 "predicted_seconds": round(
                     config.predict_render_seconds(frames, steps=self.steps()), 1
@@ -491,7 +568,7 @@ class Board:
             "spent": self.spent(),
             "assets_needed": [
                 b["n"] for b in self.ordered_beats()
-                if self.source_for(b) == SOURCE_ASSET and not self.asset_path(b["n"]).exists()
+                if uses_asset(self.source_for(b)) and not self.asset_path(b["n"]).exists()
             ],
         }
 

@@ -16,7 +16,7 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -298,9 +298,9 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
     if "seconds" in body:
         beat["seconds"] = config.snap_seconds(body["seconds"])
     if "source" in body:
-        if body["source"] not in (board_mod.SOURCE_ASSET, board_mod.SOURCE_CHAIN):
-            raise HTTPException(422, "source must be 'asset' or 'chain'")
-        if body["source"] == board_mod.SOURCE_CHAIN and board.upstream(n) is None:
+        if body["source"] not in board_mod.SOURCES:
+            raise HTTPException(422, f"source must be one of {', '.join(board_mod.SOURCES)}")
+        if board_mod.chains(body["source"]) and board.upstream(n) is None:
             raise HTTPException(422, "the first beat has nothing to continue from")
         beat["source"] = body["source"]
     board.save()
@@ -382,9 +382,12 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
     # An explicit per-node request means "prepare this scene with its own image", even if
     # it currently continues from the previous clip. Record that choice immediately so the
     # canvas and render queue agree about the scene boundary while generation is queued.
+    # A bridge already has its own image -- as the frame it lands on -- so it is left alone;
+    # promoting it to a cut would throw away the continuation the user chose.
     if requested is not None:
         for n in beats:
-            board.beat(n)["source"] = board_mod.SOURCE_ASSET
+            if board.source_for(board.beat(n)) != board_mod.SOURCE_BRIDGE:
+                board.beat(n)["source"] = board_mod.SOURCE_ASSET
         board.save()
         runner.publish_board(slug)
 
@@ -393,19 +396,40 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
 
 
 @app.post("/api/reels/{slug}/beats/{n}/asset")
-async def upload_asset(slug: str, n: int, file: UploadFile = File(...)) -> dict:
-    """Use your own image as a beat's opening still.
+async def upload_asset(slug: str, n: int, file: UploadFile = File(...),
+                       source: str = Form(board_mod.SOURCE_ASSET)) -> dict:
+    """Use your own image as a beat's still.
 
     The way around the image quota, which allows roughly five generations per five hours.
+
+    `source` says which of H3's two keyframe slots the picture is for, because a supplied
+    image answers two different questions:
+
+      * "asset" (the default) -- it is where this beat STARTS, so the beat becomes a cut
+      * "bridge" -- it is where this beat ENDS, and the beat still opens on the previous
+        clip's final frame. Use this when the shot has to carry straight on from the beat
+        before AND arrive at a composition you drew.
+
+    Either way the still is stored in the same place; only the join changes, and with it
+    which slot the render hands it to.
     """
     board = load(slug)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
+    if source not in (board_mod.SOURCE_ASSET, board_mod.SOURCE_BRIDGE):
+        raise HTTPException(
+            422, "an uploaded still is either this beat's opening frame ('asset') or the "
+                 "frame it lands on ('bridge')",
+        )
+    if source == board_mod.SOURCE_BRIDGE and board.upstream(n) is None:
+        raise HTTPException(422, "the first beat has nothing to continue from, so its still "
+                                 "can only be its opening frame")
     await store_upload(file, board.asset_path(n))
 
-    # Supplying a still means this beat opens on it rather than continuing from the one
-    # before -- which is a real story change, so the wire on the canvas changes to match.
-    board.beat(n)["source"] = board_mod.SOURCE_ASSET
+    # Supplying a still is a real story change -- either this beat now opens on it instead of
+    # continuing from the one before, or it now has a composition it must arrive at -- so the
+    # wire on the canvas changes to match.
+    board.beat(n)["source"] = source
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}

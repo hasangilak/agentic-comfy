@@ -25,7 +25,7 @@ OPS = [
     "set_beat",      # scene / action / asset_prompt / seconds on beat n
     "add_beat",      # insert a beat at position n
     "remove_beat",   # delete beat n
-    "set_source",    # n + source: "asset" (own still) or "chain" (previous last frame)
+    "set_source",    # n + source: "asset" | "chain" | "bridge" -- see SYSTEM below
     "set_caption",   # the Instagram caption on the reel node
     "set_reel",      # board-wide seconds / steps
 ]
@@ -58,7 +58,8 @@ CHAT_SCHEMA = {
                     "seconds": {"type": "number", "enum": [5, 10],
                                 "description": "beat length; only 5 or 10 are allowed"},
                     "steps": {"type": "integer"},
-                    "source": {"type": "string", "enum": ["asset", "chain"]},
+                    "source": {"type": "string",
+                               "enum": list(board_mod.SOURCES)},
                     "caption": {"type": "string"},
                 },
             },
@@ -84,22 +85,34 @@ Every beat is either 5 or 10 seconds. There is no other length -- anything else 
 will be snapped to the nearer of the two, so choose one of them deliberately. Use 5 for a
 quick gesture and 10 for a beat that needs room to breathe.
 
-Each beat's opening frame comes from one of two places. This is the single most important
-choice on the board, because it decides what the beat is:
-- "asset": its own generated still. A hard cut to somewhere else -- new setting, new
-  framing, new composition. The still is generated from the reel's locked character
-  reference, so the cast stays identical across the cut; only the world around them
+The video model takes up to two still frames per beat -- one for where the clip starts and
+one for where it ends -- so a beat's frames come from one of three places. This is the single
+most important choice on the board, because it decides what the beat is:
+- "asset": its own generated still as the FIRST frame. A hard cut to somewhere else -- new
+  setting, new framing, new composition. The still is generated from the reel's locked
+  character reference, so the cast stays identical across the cut; only the world around them
   changes. Costs one image from a quota of roughly five per five hours, so it is the
   scarce resource.
-- "chain": the previous beat's final frame. Not a new shot at all -- the same take
-  continuing, same set, same camera, same lighting, with the movement carrying straight
-  through. Free.
+- "chain": the previous beat's final frame as the FIRST frame, and no end frame. Not a new
+  shot at all -- the same take continuing, same set, same camera, same lighting, with the
+  movement carrying straight through. Free.
+- "bridge": both. It opens on the previous beat's final frame AND is given its own still as
+  the frame it must ARRIVE at. The take carries on unbroken, and it also lands on a
+  composition that was designed rather than one the model drifted into. Costs one image, same
+  as a cut. Choose it when a continuous shot has to reach a specific state -- the lamp lit,
+  the character back in position -- or when a long chain of continuations is drifting away
+  from the style bible and needs pinning back to a still.
 
-So choose "asset" when the story genuinely moves somewhere else, and "chain" when the
-movement should carry on unbroken. A chained beat's `action` must read as the continuation
-of the beat before it -- it starts from the pose that beat ended in and takes the movement
-onward. Writing it as a fresh instruction ("the fox sits down in the meadow") makes the
-model reset the puppet and start over, which is visible as a jolt at the join.
+So choose "asset" when the story genuinely moves somewhere else, "chain" when the movement
+should carry on unbroken and where it ends does not matter, and "bridge" when it should carry
+on unbroken TO somewhere specific. A chained or bridged beat's `action` must read as the
+continuation of the beat before it -- it starts from the pose that beat ended in and takes the
+movement onward. Writing it as a fresh instruction ("the fox sits down in the meadow") makes
+the model reset the puppet and start over, which is visible as a jolt at the join.
+
+On a "bridge" beat the `asset_prompt` describes the LAST frame, not the first: the composition
+the clip has to end on. Everything else about writing it is the same, and it must still match
+the style bible word for word.
 
 Reply briefly, then return the ops that carry out what was asked. Return ops ONLY for what
 the user actually asked to change. Return JSON only."""
@@ -113,7 +126,7 @@ def board_digest(board: board_mod.Board) -> str:
         state = board.state_of(beat)
         lines.append(
             f'BEAT {beat["n"]} [{state}, {board.seconds_for(beat):.0f}s, '
-            f'first frame from {board.source_for(beat)}]\n'
+            f'frames from {board.source_for(beat)}]\n'
             f'  scene: {beat.get("scene", "")}\n'
             f'  action: {beat.get("action", "")}'
         )
@@ -205,21 +218,23 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
             old = existing["n"]
             if old < position:
                 continue
-            for maker in (board.asset_path, board.frame_path, board.video_path):
+            for maker in board.media_makers():
                 source = maker(old)
                 if source.exists():
                     source.replace(maker(old + 1))
             existing["n"] = old + 1
+        requested_source = op.get("source")
         board.beats.append({
             "n": position,
             "scene": op.get("scene", ""),
             "action": op.get("action", ""),
             "asset_prompt": op.get("asset_prompt", ""),
             # A new first scene cannot continue from anything. Every other insertion joins
-            # the existing linear handoff unless the caller explicitly asks for a cut.
+            # the existing linear handoff unless the caller explicitly asks for another join.
             "source": (
                 board_mod.SOURCE_ASSET if position == 1
-                else op.get("source") or board_mod.SOURCE_CHAIN
+                else requested_source if requested_source in board_mod.SOURCES
+                else board_mod.SOURCE_CHAIN
             ),
         })
         reset_sequence_layout(board)
@@ -228,17 +243,17 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
     if kind == "remove_beat":
         n = int(op["n"])
         board.data["beats"] = [b for b in board.beats if b["n"] != n]
-        for path in (board.asset_path(n), board.frame_path(n), board.video_path(n)):
-            path.unlink(missing_ok=True)
+        for maker in board.media_makers():
+            maker(n).unlink(missing_ok=True)
         reset_sequence_layout(board)
         return f"removed beat {n}"
 
     if kind == "set_source":
         source = op.get("source")
-        if source not in (board_mod.SOURCE_ASSET, board_mod.SOURCE_CHAIN):
+        if source not in board_mod.SOURCES:
             raise ValueError(f"bad source {source!r}")
         board.beat(int(op["n"]))["source"] = source
-        return f'beat {op["n"]}: first frame from {source}'
+        return f'beat {op["n"]}: frames from {source}'
 
     if kind == "set_caption":
         board.data["caption"] = op.get("caption", "")

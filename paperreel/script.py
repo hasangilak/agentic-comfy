@@ -80,7 +80,7 @@ def normalise(data: dict) -> dict:
             # says. Later beats default to chaining, which is the free join.
             "source": (
                 board_mod.SOURCE_ASSET if index == 1
-                else source if source in (board_mod.SOURCE_ASSET, board_mod.SOURCE_CHAIN)
+                else source if source in board_mod.SOURCES
                 else board_mod.SOURCE_CHAIN
             ),
         })
@@ -127,6 +127,17 @@ def notes(plan: dict) -> list[str]:
             "generate has nothing to work from. Upload a still there, or write the prompt."
         )
 
+    # A bridge is the one join that needs its asset_prompt to describe the LAST frame, so a
+    # missing one is worth its own note rather than being folded in with the cuts above.
+    landless = [b["n"] for b in plan["beats"]
+                if b["source"] == board_mod.SOURCE_BRIDGE and not b["asset_prompt"]]
+    if landless:
+        found.append(
+            f"beat {', '.join(map(str, landless))} -- continues from the beat before and is "
+            "meant to land on a still of its own, but has no asset_prompt for it. Upload the "
+            "frame it should end on, write the prompt, or make it a plain continuation."
+        )
+
     unpromotable = [b["n"] for b in plan["beats"]
                     if b["source"] == board_mod.SOURCE_CHAIN and not b["asset_prompt"]]
     if unpromotable:
@@ -167,6 +178,9 @@ def adopt(data: dict, *, slug: str | None = None,
     plan = normalise(data)
     plan["manual_stills"] = manual_stills
     cuts = [b["n"] for b in plan["beats"] if b["source"] == board_mod.SOURCE_ASSET]
+    # Every beat that needs an image of its own, which is not the same list: a bridge needs
+    # one too, as the frame it lands on rather than the one it opens on.
+    stills = [b["n"] for b in plan["beats"] if board_mod.uses_asset(b["source"])]
     total = sum(b["seconds"] for b in plan["beats"])
     # One turn, so the panel opens with the shape of what arrived rather than empty, and so
     # agy's next turn replays a transcript that says where the board came from.
@@ -177,8 +191,8 @@ def adopt(data: dict, *, slug: str | None = None,
             f'{len(cuts)} shot{"" if len(cuts) == 1 else "s"}. '
             + ("Every beat opens on its own still, so nothing is chained."
                if len(cuts) == len(plan["beats"]) else
-               f'Stills needed for beat {", ".join(map(str, cuts))}; the others continue from '
-               "the beat before them.")
+               f'Stills needed for beat {", ".join(map(str, stills))}; the others continue '
+               "from the beat before them.")
             + (" Image generation is off -- those stills are yours to supply."
                if manual_stills else "")
         ),
