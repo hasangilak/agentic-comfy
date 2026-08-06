@@ -79,7 +79,7 @@ def gpu_app(manage: bool = True, log=print):
 
 
 def render_beats(
-    actions: list[tuple[int, str]],
+    shots: list[tuple[int, str, str]],
     workdir: Path,
     *,
     opening_frame: Path | None,
@@ -94,13 +94,14 @@ def render_beats(
 ) -> BatchResult:
     """Render every beat on ONE warm container.
 
-    `actions` is [(beat number, motion description)]. When `chain` is set, beat N starts
+    `shots` is [(beat number, what moves, where it happens)] -- the beat's action and its
+    scene line, both of which go into the instruction. When `chain` is set, beat N starts
     from beat N-1's final frame, so only `opening_frame` is needed -- which is what makes
     a multi-beat reel cost a single image against the scarce image quota. Chaining is
     inherently serial; there is nothing to parallelise, and parallelising across
     containers would cost more anyway, since each container repays the model load.
     """
-    if not actions:
+    if not shots:
         raise ValueError("no beats to render")
     if opening_frame is None and chain is False:
         raise ValueError("non-chained rendering needs a first frame per beat")
@@ -116,7 +117,7 @@ def render_beats(
     with gpu_app(manage_app, log=log):
         with comfy.client() as http:
             comfy.wake(http, log=log)
-            for index, (n, action) in enumerate(actions):
+            for index, (n, action, scene) in enumerate(shots):
                 frame = workdir / f"beat{n}_frame.png"
                 # Whether this beat opens mid-motion decides how the prompt has to describe
                 # its first frame, so it is read off the same branch that chooses the frame.
@@ -124,7 +125,7 @@ def render_beats(
                 if chain and result.beats:
                     media.last_frame(result.beats[-1].video, frame)
                     continues = True
-                    log(f"[render] beat {n}: continuing from beat {actions[index - 1][0]}")
+                    log(f"[render] beat {n}: continuing from beat {shots[index - 1][0]}")
                 elif opening_frame is not None:
                     media.fit_frame(
                         opening_frame if index == 0 or chain
@@ -134,15 +135,15 @@ def render_beats(
                 else:
                     frame = None  # text-to-video
 
-                log(f"[render] beat {n}/{len(actions)}: {length} frames, {steps} steps")
+                log(f"[render] beat {n}/{len(shots)}: {length} frames, {steps} steps")
                 started = time.monotonic()
                 uploaded = comfy.upload_image(http, frame) if frame else None
                 outputs = comfy.run_graph(
                     http,
                     comfy.build_graph(
                         first_frame=uploaded,
-                        prompt=config.build_prompt(action, mute=mute, identity=identity,
-                                                   continues=continues),
+                        prompt=config.build_prompt(action, scene=scene, mute=mute,
+                                                   identity=identity, continues=continues),
                         length=length, steps=steps, seed=seed + n,
                     ),
                     log=log,
@@ -187,7 +188,7 @@ def render_reel(
             raise FileNotFoundError(f"scene mode needs an asset per beat; missing {absent}")
 
     result = render_beats(
-        [(b["n"], b["action"]) for b in beats],
+        [(b["n"], b["action"], b.get("scene", "")) for b in beats],
         workdir,
         opening_frame=opening,
         seconds=seconds, steps=steps, seed=seed,

@@ -126,6 +126,9 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                             first_frame=comfy.upload_image(http, frame),
                             prompt=config.build_prompt(
                                 beat.get("action", ""),
+                                # Where the shot is, not just what moves in it. Both are
+                                # fingerprinted, so editing either marks the beat stale.
+                                scene=beat.get("scene", ""),
                                 mute=bool(board.data.get("mute")),
                                 identity=board.identity(),
                                 # From the source captured up front, not read fresh: the

@@ -76,6 +76,9 @@ Hard rules of the medium -- breaking these wastes the user's money:
 - The same character appears in every beat and must be described identically. The
   style_bible holds that description; reuse its exact wording in every asset_prompt.
 - An `action` describes only what MOVES. Appearance belongs in the style_bible.
+- A `scene` is one line: where this beat happens and at what scale. It is rendered too --
+  the video prompt is the style_bible, then the scene, then the action -- so it must never
+  contain movement, and beats that belong to one continuous shot must carry the same line.
 
 Every beat is either 5 or 10 seconds. There is no other length -- anything else you ask for
 will be snapped to the nearer of the two, so choose one of them deliberately. Use 5 for a

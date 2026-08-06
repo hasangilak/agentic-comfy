@@ -23,8 +23,8 @@ concept ──agy──▶ ┐
 ## Setup
 
 ```bash
-uvx modal setup                                        # once
-uvx modal run comfyui_minimax_h3.py::download_models   # once, ~40 GiB into a Volume
+make login                                             # once — uvx modal setup
+make models                                            # once, ~40 GiB into a Volume
 ```
 
 The download is separate on purpose: it lands in a persistent Volume, so cold starts
@@ -57,6 +57,18 @@ PAPERREEL_PUBLIC=1 uvx modal deploy comfyui_minimax_h3.py
 ## The studio
 
 A node canvas: talk to agy, get a script and a chain of shots, render when you're ready.
+
+```bash
+make install                                           # npm + the uv environment
+make run                                               # :8787 API, :5173 UI — use the Vite URL
+```
+
+`make run` starts both servers and takes them down together, so Ctrl-C never leaves one
+holding a port. `make serve` builds the frontend instead and serves everything from
+:8787; `make backend` and `make frontend` run one at a time; `make stop` kills either.
+`make help` lists the rest. Nothing in the Makefile can start a paid render.
+
+By hand, if you prefer:
 
 ```bash
 cd studio && npm install && npm run build && cd ..
@@ -120,6 +132,12 @@ node is one image that every generated still is conditioned on, so a cut changes
 rather than the characters; the style bible goes into the video prompt as well, so a beat
 that drifts mid-clip drifts toward that description rather than toward the model's own idea
 of a paper fox. Beat 1's still is the reference by default — pin your own to override it.
+
+A beat's video prompt is **the style bible, then its scene line, then its action**: what the
+production looks like, where this shot is, and what moves. The scene line is an input to the
+render, not a note to yourself — editing it on the node marks the beat stale, exactly like
+editing the action. Without it the model has only one still to infer the setting from, which
+is how a background quietly becomes a different place halfway through a clip.
 
 Every beat has its own persistent **upload** and **generate** controls, so all scene assets
 can be prepared before any video rendering starts. Dragging an image onto a frame works too,
@@ -241,6 +259,7 @@ comfyui_minimax_h3.py   the Modal GPU app
 studio.py               the studio server
 studio/                 React + TypeScript + React Flow canvas
 prompts/                the authoring prompt for writing a script elsewhere
+Makefile                install, run, and the one-time Modal steps
 storyboard.py           CLI: full reel
 reel.py                 CLI: single clip
 minimax_h3.py           alternative: full-precision BF16 on 4×H200 via SGLang

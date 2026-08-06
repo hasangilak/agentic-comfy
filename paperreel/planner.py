@@ -37,7 +37,14 @@ PLAN_SCHEMA = {
                 "required": ["n", "scene", "action", "asset_prompt"],
                 "properties": {
                     "n": {"type": "integer"},
-                    "scene": {"type": "string", "description": "one line on where this beat happens"},
+                    "scene": {
+                        "type": "string",
+                        "description": (
+                            "One line on where this beat happens and at what scale. Goes into "
+                            "the video prompt with the action, so: setting only, never motion, "
+                            "and identical wording for beats in one continuous shot."
+                        ),
+                    },
                     "action": {
                         "type": "string",
                         "description": (

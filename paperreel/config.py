@@ -147,8 +147,8 @@ AGY_HOME = Path.home() / ".gemini" / "antigravity-cli"
 # ## Prompt scaffold
 #
 # H3 holds a paper-cutout look far better when the instruction pins down what must
-# NOT change. Callers supply the action, the board's identity paragraph, and which kind of
-# join this beat opens on; this assembles the rest.
+# NOT change. Callers supply the beat's scene and action, the board's identity paragraph,
+# and which kind of join this beat opens on; this assembles the rest.
 #
 # The join is the part that matters most, because the same first frame means two opposite
 # things. On a cut it is the deliberate opening composition of a new shot. On a
@@ -179,6 +179,13 @@ OPEN_CONTINUATION = (
 IDENTITY_PREFIX = (
     "The characters and the set are already designed and must not be reinterpreted: "
 )
+# The beat's own scene line. The style bible says what the production looks like everywhere;
+# this says where THIS shot is and at what scale, which is the part that differs between
+# beats and the part the model otherwise has to guess at from one still. Labelled rather
+# than woven into a sentence, because a scene line is sometimes a place ("a cobblestone
+# street at twilight") and sometimes a framing ("macro close-up of the lantern housing"),
+# and no single connecting phrase reads correctly for both.
+SCENE_PREFIX = "Scene: "
 CRAFT = (
     " Animate it as real paper puppetry: crisp cut edges, visible paper grain, layered "
     "cardstock depth with soft contact shadows, joints pivoting like split-pin cutouts. "
@@ -215,19 +222,25 @@ def snap_seconds(value: float | int | str) -> float:
     return min(BEAT_LENGTHS, key=lambda option: abs(option - wanted))
 
 
-def build_prompt(action: str, *, mute: bool = False, identity: str = "",
+def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
                  continues: bool = False) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
-    never how they move. `continues` says this beat opens on the previous clip's final
-    frame rather than on a still of its own, which changes how the first frame must be
-    read; see the scaffold above.
+    never how they move. `scene` is the beat's own line: where it happens and at what
+    scale. `action` is what moves. All three go in: the action alone leaves the model to
+    infer the setting from a single still, which is where a background quietly turns into
+    a different place halfway through a clip. `continues` says this beat opens on the
+    previous clip's final frame rather than on a still of its own, which changes how the
+    first frame must be read; see the scaffold above.
     """
     parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
     identity = " ".join(identity.split())
     if identity:
         parts.append(IDENTITY_PREFIX + identity.rstrip(".") + ". ")
+    scene = " ".join(scene.split()).strip().rstrip(".")
+    if scene:
+        parts.append(SCENE_PREFIX + scene + ". ")
     action = action.strip().rstrip(".")
     if action:
         parts.append(action + ".")

@@ -345,8 +345,14 @@ moves**, for a camera that does not move.
 
 ## 9. The `scene` line — one per beat
 
-One short line naming where and when this beat happens. All beats belonging to the same
-shot share **identical** `scene` text.
+One short line naming where and when this beat happens, and at what scale. All beats
+belonging to the same shot share **identical** `scene` text.
+
+**This line is rendered.** The video prompt for every beat is the style bible, then this
+scene line, then the action — so it is what holds the setting still while the clip plays,
+and the same rules apply as anywhere else: setting only, never motion, never story, no
+camera moves. Write it as a place or a framing ("a cobblestone street at twilight", "macro
+close-up of the lantern housing"), not as a sentence about what happens.
 
 ---
 

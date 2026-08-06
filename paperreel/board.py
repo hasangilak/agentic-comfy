@@ -269,6 +269,9 @@ class Board:
             frame_id = self.frame_id_for(beat)
         return fingerprint(
             beat.get("action", ""),
+            # The scene line is in the video prompt too, so rewriting where a shot happens
+            # really does change what it would render as.
+            beat.get("scene", ""),
             frames if frames is not None else config.frame_count(self.seconds_for(beat)),
             self.steps(),
             self.seed_for(beat),
@@ -351,6 +354,7 @@ class Board:
         """
         parts: list = [
             beat.get("action", ""),
+            beat.get("scene", ""),
             frames if frames is not None else config.frame_count(self.seconds_for(beat)),
             self.steps(),
             self.seed_for(beat),

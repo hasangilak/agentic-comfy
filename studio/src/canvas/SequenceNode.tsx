@@ -26,6 +26,11 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   const action = useDraft(beat.action, (next) =>
     void studio.guard(() => api.patchBeat(board.slug, beat.n, { action: next })),
   );
+  // In the video prompt alongside the action, so it is an input to the render rather than a
+  // note to yourself -- which is why it is editable here and marks the beat stale when changed.
+  const scene = useDraft(beat.scene, (next) =>
+    void studio.guard(() => api.patchBeat(board.slug, beat.n, { scene: next })),
+  );
 
   const job = studio.activeJob;
   const isRendering = beat.state === "rendering";
@@ -268,6 +273,16 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             </Button>
           )}
         </div>
+
+        <input
+          className={inputClass}
+          value={scene.draft}
+          onChange={(event) => scene.change(event.target.value)}
+          onBlur={scene.flush}
+          placeholder="where this shot happens"
+          title="the setting, in the prompt with the action: where this beat is and at what
+            scale. Beats in one continuous shot should carry the same line"
+        />
 
         <textarea
           className={`${inputClass} thin h-20 leading-relaxed`}
