@@ -405,6 +405,28 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           )}
         </div>
 
+        {/* One line per picture, numbered to match the badges on the grid above. This is
+            what stops the model rendering a reference as a second copy of the character:
+            shown a picture with no explanation it assumes the picture IS the scene. */}
+        {isReference && refs.length ? (
+          <div className="space-y-1">
+            {refs.map((src, index) => (
+              <ReferenceNote
+                key={src}
+                slug={board.slug}
+                n={beat.n}
+                index={index + 1}
+                value={beat.ref_prompts?.[index] ?? ""}
+              />
+            ))}
+            <p className="text-[10px] leading-snug text-zinc-600">
+              The prompt calls these <code>&lt;Picture 1&gt;</code>…
+              <code>&lt;Picture {refs.length}&gt;</code>. Say what each one is FOR — “the same
+              single Moth that performs the action”, “the set only, no puppet”.
+            </p>
+          </div>
+        ) : null}
+
         <input
           className={inputClass}
           value={scene.draft}
@@ -507,6 +529,50 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       </div>
 
       <Handle type="source" position={Position.Right} />
+    </div>
+  );
+}
+
+/**
+ * The job of one reference picture, in the model's own words.
+ *
+ * Its own component because each row needs its own debounced draft, and a hook cannot live
+ * inside a map. Saving marks the beat stale, exactly like editing the action -- these words
+ * are in the render prompt, not a note to yourself.
+ */
+function ReferenceNote({
+  slug,
+  n,
+  index,
+  value,
+}: {
+  slug: string;
+  n: number;
+  index: number;
+  value: string;
+}) {
+  const studio = useStudio();
+  const note = useDraft(value, (next) =>
+    void studio.guard(() => api.describeRef(slug, n, index, next)),
+  );
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className="w-4 shrink-0 text-center text-[10px] text-zinc-500"
+        title={`the prompt calls this <Picture ${index}>`}
+      >
+        {index}
+      </span>
+      <input
+        className={inputClass}
+        value={note.draft}
+        onChange={(event) => note.change(event.target.value)}
+        onBlur={note.flush}
+        placeholder={`what <Picture ${index}> is for`}
+        title="what the model should take from this picture — identity, set, a prop. Leave
+          empty and it decides for itself"
+      />
     </div>
   );
 }

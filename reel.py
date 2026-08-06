@@ -45,6 +45,10 @@ def main() -> None:
                         help=f"reference picture of the cast or set; repeatable, up to "
                              f"{config.MAX_REF_IMAGES}. Runs the ref2va checkpoint with no "
                              "keyframe at all")
+    parser.add_argument("--ref-note", action="append", dest="ref_notes", metavar="TEXT",
+                        help="what the reference in the same position is FOR, e.g. 'the "
+                             "single Moth puppet that performs the action'. Without it the "
+                             "model decides, and it decides the picture is the scene")
     parser.add_argument("--seconds", type=float, default=5.0,
                         help=f"clip length; >{config.PROVEN_MAX_FRAMES / config.FPS:.0f}s is unproven")
     parser.add_argument("--steps", type=int, default=config.DEFAULT_STEPS)
@@ -59,6 +63,14 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
 
     refs: list[Path] = list(args.refs or [])
+    ref_notes: list[str] = list(args.ref_notes or [])
+    if ref_notes and not refs:
+        raise SystemExit("--ref-note describes a --ref; pass the pictures too")
+    if len(ref_notes) > len(refs):
+        raise SystemExit(
+            f"{len(ref_notes)} --ref-note values for {len(refs)} --ref images; they pair up "
+            "by position"
+        )
     if refs:
         # Checked before anything is deployed: the two modes are different weights, so there
         # is no graph that honours both, and finding out from a rejected prompt would cost a
@@ -97,7 +109,8 @@ def main() -> None:
             outputs = comfy.run_graph(http, comfy.build_graph(
                 first_frame=uploaded,
                 ref_images=[comfy.upload_image(http, path) for path in refs],
-                prompt=config.build_prompt(args.prompt, mute=args.mute, refs=len(refs)),
+                prompt=config.build_prompt(args.prompt, mute=args.mute, refs=len(refs),
+                                           ref_notes=ref_notes),
                 length=length, steps=args.steps, seed=args.seed,
             ))
             raw = comfy.download(http, comfy.only_video(outputs),

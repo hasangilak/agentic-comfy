@@ -489,22 +489,45 @@ async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) ->
     return {"board": board_json(board), "stored": stored}
 
 
+@app.patch("/api/reels/{slug}/beats/{n}/refs/{index}")
+def describe_ref(slug: str, n: int, index: int, body: dict = Body(...)) -> dict:
+    """Say what one reference picture is FOR, in the model's own words.
+
+    This is the fix for the two-of-the-same-character problem: shown a picture of the cast
+    standing in the finished set, ref2va reproduces it AND acts the beat out with a second
+    copy of the same puppet. Told "<Picture 1> is the same single Moth that performs the
+    action, not an extra one", it collapses them back into one.
+
+    Free, and it marks the beat stale, because these words go into the render.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    try:
+        board.set_ref_prompt(n, index, str(body.get("prompt") or ""))
+    except IndexError:
+        raise HTTPException(404, f"beat {n} has no reference picture {index}")
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
 @app.delete("/api/reels/{slug}/beats/{n}/refs/{index}")
 def remove_ref(slug: str, n: int, index: int) -> dict:
     """Drop one reference picture, by the number the prompt calls it.
 
     The survivors are renumbered to close the gap, because the prompt numbers them by
     position: leaving a hole would have the model told about a <Picture 2> that is really the
-    third image, or a picture with no tag at all.
+    third image, or a picture with no tag at all. Their descriptions move with them.
     """
     board = load(slug)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
-    path = board.ref_path(n, index) if 1 <= index <= config.MAX_REF_IMAGES else None
-    if path is None or not path.is_file():
+    try:
+        board.remove_ref(n, index)
+    except IndexError:
         raise HTTPException(404, f"beat {n} has no reference picture {index}")
-    path.unlink()
-    board.compact_refs(n)
+    board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}
 

@@ -156,6 +156,16 @@ the node numbers them, and the prompt tells the model about them as `<Picture 1>
 `<Picture 9>` in exactly that order. Remove one and the rest renumber, because the numbers are
 what the prompt refers to.
 
+Each picture gets its own one-line **prompt** on the node, numbered to match: what the model
+should take *from* that picture. It matters more than it sounds. Shown a picture with no
+explanation, ref2va assumes the picture is the scene — hand it a still of the cast standing in
+the finished set and it will reproduce that *and* act the beat out with a second copy of the
+same puppet, which is two moths on one lamp post. Told `<Picture 1> is the same single Moth
+that performs the action, not an extra one` and `<Picture 2> is the set only, no puppet`, it
+collapses back to one. The notes go into the render prompt, so editing one marks the beat
+stale, exactly like editing the action. `reel.py --ref-note` is the same thing from the CLI,
+paired to `--ref` by position.
+
 Use it when what you have is a cast — turnarounds, an outfit, a set — rather than a frame.
 What it costs is the handoff: a reference beat cannot continue from the clip before it and
 cannot land on a still, since those inputs do not exist on these weights. It also cannot be

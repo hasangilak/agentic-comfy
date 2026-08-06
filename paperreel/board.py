@@ -221,17 +221,64 @@ class Board:
                 return index
         return None
 
-    def compact_refs(self, n: int) -> None:
-        """Close the gap after a deletion, so the numbers on disk are 1..N with no holes.
+    def ref_prompts(self, n: int) -> list[str]:
+        """What each reference picture is FOR, aligned to `ref_paths` position by position.
 
-        Without this, deleting <Picture 1> of three leaves <Picture 2> and <Picture 3> -- and
-        the prompt, which numbers by connection order, would then call them 1 and 2. The
-        images and the words for them have to agree.
+        A reference is not self-explanatory: ref2va reproduces every subject it is shown, so
+        a picture of the cast standing in the finished set reads as "this is what exists" and
+        the model renders it AND the character the action describes -- two of the same puppet
+        in one shot. Saying "<Picture 1> is the same single Moth that acts in this shot" is
+        what collapses them back into one.
+
+        Always exactly as long as the picture list. Missing entries come back empty rather
+        than short, so index i of one list always describes index i of the other even after a
+        hand-edit of the storyboard.
         """
+        stored = self.beat(n).get("ref_prompts") or []
+        count = len(self.ref_paths(n))
+        return [str(stored[i]) if i < len(stored) else "" for i in range(count)]
+
+    def set_ref_prompt(self, n: int, index: int, text: str) -> None:
+        """Describe picture `index` (1-based, as the prompt names it)."""
+        prompts = self.ref_prompts(n)
+        if not 1 <= index <= len(prompts):
+            raise IndexError(f"beat {n} has no reference picture {index}")
+        prompts[index - 1] = " ".join(text.split())
+        self._store_ref_prompts(n, prompts)
+
+    def _store_ref_prompts(self, n: int, prompts: list[str]) -> None:
+        """Write the list back, or drop the key when there is nothing left to say.
+
+        Trailing empties are trimmed so a board where nobody described anything carries no
+        `ref_prompts` at all -- the document stays readable, and the difference between "no
+        notes" and "notes that happen to be blank" never has to be meaningful.
+        """
+        while prompts and not prompts[-1]:
+            prompts.pop()
+        beat = self.beat(n)
+        if prompts:
+            beat["ref_prompts"] = prompts
+        else:
+            beat.pop("ref_prompts", None)
+
+    def remove_ref(self, n: int, index: int) -> None:
+        """Delete one reference picture and the note that described it, then close the gap.
+
+        Both halves move together or the board starts lying: deleting <Picture 1> of three
+        leaves files 2 and 3, which the prompt -- numbering by connection order -- would then
+        call 1 and 2. If the notes did not shift with them, picture 1 would be rendered under
+        the description written for the one that was deleted.
+        """
+        prompts = self.ref_prompts(n)
+        if not 1 <= index <= len(prompts):
+            raise IndexError(f"beat {n} has no reference picture {index}")
+        self.ref_path(n, index).unlink(missing_ok=True)
+        del prompts[index - 1]
         for target, path in enumerate(self.ref_paths(n), start=1):
             wanted = self.ref_path(n, target)
             if path != wanted:
                 path.replace(wanted)
+        self._store_ref_prompts(n, prompts)
 
     def media_makers(self) -> tuple:
         """Every per-beat file, so a move or a delete cannot leave one of them behind.
@@ -435,8 +482,13 @@ class Board:
         refs = ""
         if uses_refs(source):
             # Positional, so reordering the pictures counts as an edit -- which it is, since
-            # the prompt names them by position.
-            refs = fingerprint(*(file_hash(p) for p in self.ref_paths(beat["n"])))
+            # the prompt names them by position. The notes are in here for the same reason
+            # the action is: they are words the model is given, so rewriting one really does
+            # change what the beat would render as.
+            refs = fingerprint(
+                *(file_hash(p) for p in self.ref_paths(beat["n"])),
+                *self.ref_prompts(beat["n"]),
+            )
         return FrameIds(asset=asset, upstream=upstream, refs=refs)
 
     def states(self, *, rendering: set[int] | None = None) -> dict[int, str]:
@@ -620,6 +672,9 @@ class Board:
                 # A reference beat's pictures, in <Picture i> order -- index 0 of this list
                 # is what the prompt calls <Picture 1>.
                 "refs": [self.media_url(p) for p in self.ref_paths(n)],
+                # What each of those pictures is for, same order, same length. Empty string
+                # where nothing has been said about one yet.
+                "ref_prompts": self.ref_prompts(n),
                 "video": self.media_url(self.video_path(n)),
                 "predicted_seconds": round(
                     config.predict_render_seconds(frames, steps=self.steps()), 1

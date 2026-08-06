@@ -166,6 +166,10 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # Switches the scaffold to the <Picture i> instructions and,
                                 # in build_graph, the checkpoint to ref2va.
                                 refs=len(refs),
+                                # What each picture is for, in the same order. Read here
+                                # rather than up front for the same reason the images are:
+                                # the batch renders what it queued.
+                                ref_notes=board.ref_prompts(n) if refs else None,
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
                         ),

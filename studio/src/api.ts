@@ -101,6 +101,15 @@ export const api = {
     }).then((r) => r.board);
   },
 
+  /**
+   * Describe one reference picture — what the model should take FROM it. `index` is 1-based,
+   * the number the prompt uses. Marks the beat stale: these words are part of the render.
+   */
+  describeRef: (slug: string, n: number, index: number, prompt: string) =>
+    patch<{ board: Board }>(`/api/reels/${slug}/beats/${n}/refs/${index}`, { prompt }).then(
+      (r) => r.board,
+    ),
+
   /** `index` is 1-based: the number in the prompt, not the array position. */
   removeRef: (slug: string, n: number, index: number) =>
     call<{ board: Board }>(`/api/reels/${slug}/beats/${n}/refs/${index}`, {

@@ -26,7 +26,9 @@ class Shot:
 
     `refs` is the other conditioning mode: up to config.MAX_REF_IMAGES pictures of the cast
     and the set, in <Picture i> order, which the ref2va checkpoint uses INSTEAD of a keyframe.
-    Only read when the join is "reference", and empty on every other one.
+    Only read when the join is "reference", and empty on every other one. `ref_notes` says
+    what each of those pictures is for, by position -- without it the model decides for
+    itself, and it decides "this is the scene".
     """
 
     n: int
@@ -35,6 +37,7 @@ class Shot:
     source: str = board_mod.SOURCE_CHAIN
     asset: Path | None = None
     refs: list[Path] = field(default_factory=list)
+    ref_notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -196,7 +199,8 @@ def render_beats(
                         prompt=config.build_prompt(shot.action, scene=shot.scene, mute=mute,
                                                    identity=identity, continues=continues,
                                                    lands=end_frame is not None,
-                                                   refs=len(refs)),
+                                                   refs=len(refs),
+                                                   ref_notes=shot.ref_notes),
                         length=length, steps=steps, seed=seed + n,
                     ),
                     log=log,
@@ -256,6 +260,8 @@ def render_reel(
                     for i in range(1, config.MAX_REF_IMAGES + 1)
                 ) if path.exists()
             ],
+            # Straight off the document, since a CLI render has no Board object to ask.
+            ref_notes=[str(note) for note in (beat.get("ref_prompts") or [])],
         ))
 
     result = render_beats(

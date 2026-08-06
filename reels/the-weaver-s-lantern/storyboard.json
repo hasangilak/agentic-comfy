@@ -5,39 +5,39 @@
       "asset_prompt": "FOREGROUND: A dark silhouette of a cut paper iron fence along the bottom left corner, cut from matte black chipboard, standing 5mm proud of the base board and casting a long soft shadow rightward.\nMIDGROUND: The lower half of a 25cm tall victorian streetlamp cut from matte black chipboard, positioned along the right third vertical gridline. The street consists of overlapping storm slate-blue cardstock cobbles. On the upper left third, fully visible against the upper background, the Moth puppet (4cm tall, cut from pale parchment ivory cardstock with fine hand-inked dark brown cross-hatch lines, raw umber kraft brown torso, glossy black pin-head bead eyes, black chipboard antennae, Silver pin rivets at shoulders) hovers in mid-air, facing right. It holds a small 5mm burnt sienna paper ember disc attached by a single strand of beige thread. Leave the central vertical space around the lamp housing clear for the moth's arrival.\nBACKGROUND: Receding flat paper silhouettes of row houses in deep midnight navy and raw umber kraft brown, stacked in three distinct physical depth layers.\nUPPER THIRD / SKY: Flat storm slate-blue cardstock sky plane with small, hand-punched star slits showing pale parchment ivory behind.\nATMOSPHERE: Clear, no haze or smoke.\nLIGHT: Warm sienna key light raking sharply from the upper left at 45 degrees, casting long shadows to the lower right.\nCOMPOSITION: Tall vertical 9:16 portrait. The tall black lamp post anchors the right third; the upper left quadrant holds the subject with significant open negative space in the centre.",
       "n": 1,
       "render": {
-        "at": "2026-08-06T19:25:52+00:00",
-        "cost": 0.2967,
+        "at": "2026-08-06T19:52:35+00:00",
+        "cost": 0.124,
         "draft": false,
-        "fingerprint": "0b62a03d097acbea",
-        "frames": 243,
-        "own": "c824af3c36e63a6b",
-        "render_seconds": 272.5,
-        "seconds": 10.12,
+        "fingerprint": "75237cca159da3b0",
+        "frames": 124,
+        "own": "0a5db41751e2c94f",
+        "render_seconds": 113.9,
+        "seconds": 5.17,
         "seed": 1102,
         "steps": 8
       },
       "scene": "A quiet cobblestone street beneath a dark victorian paper lamp post at twilight.",
-      "seconds": 10.0,
+      "seconds": 5.0,
       "source": "asset"
     },
     {
-      "action": "Carrying straight on from the descent, the Moth puppet settles onto the side of the black chipboard lamp housing, its wings folding flat and coming to a complete rest while the hanging ember swings once and stops.",
+      "action": "image one is showing how the moth should be settles onto the side of the black chipboard lamp housing Carrying straight on from the descent, the Moth puppet settles onto the side of the black chipboard lamp housing, its wings folding flat and coming to a complete rest while the hanging ember swings once and stops.",
       "asset_prompt": "",
       "n": 2,
       "render": {
-        "at": "2026-08-06T19:30:07+00:00",
-        "cost": 0.276,
+        "at": "2026-08-06T19:54:15+00:00",
+        "cost": 0.1088,
         "draft": false,
-        "fingerprint": "327d220a741ef2c4",
-        "frames": 243,
-        "own": "1ba44892f20096c0",
-        "render_seconds": 253.5,
-        "seconds": 10.12,
+        "fingerprint": "b7efd784fda5df9c",
+        "frames": 124,
+        "own": "5ea45b93cfd3252b",
+        "render_seconds": 99.9,
+        "seconds": 5.17,
         "seed": 1103,
         "steps": 8
       },
       "scene": "A quiet cobblestone street beneath a dark victorian paper lamp post at twilight.",
-      "seconds": 10.0,
+      "seconds": 5.0,
       "source": "reference"
     },
     {
@@ -72,8 +72,8 @@
         "y": 278
       },
       "beat-2": {
-        "x": 318,
-        "y": 272
+        "x": 334,
+        "y": 277
       },
       "beat-3": {
         "x": 643,
@@ -111,9 +111,19 @@
     }
   ],
   "concept": "A solitary paper-cut moth attempts to light a cold paper streetlamp using a glowing ember tied to its thread, succeeding just as dusk falls completely.",
+  "last_render": {
+    "at": "2026-08-06T19:54:17+00:00",
+    "beats": [
+      1,
+      2
+    ],
+    "container_seconds": 251.7,
+    "cost": 0.2741
+  },
   "manual_stills": true,
   "seconds": 5.0,
   "seed": 1101,
+  "spend_seconds": 1175.6,
   "steps": 8,
   "style_bible": "Handcrafted layered paper-cutout stop motion photographed on a physical tabletop diorama rig. Made from heavy cold-press cardstock with visible organic paper tooth, rough kraft paper, translucent parchment vellum, and matte black chipboard. Every layer is physically separated in depth by 2-5mm spacers, casting soft natural contact shadows on the planes behind. Edges are hand-cut with a sharp craft knife, remaining crisp but slightly irregular and showing a pale, raw paper core along cut edges. Motion is visibly animated on twos with slight mechanical stepping. Palette is strictly limited to 6 named colors: storm slate-blue, deep midnight navy, pale parchment ivory, raw umber kraft brown, burnt sienna, and warm ember amber. Lighting is locked to a single key directional setup: warm sienna key light raking sharply from the upper left at a 45-degree angle, with a faint cool navy ambient fill from the lower right, highlighting the tactile paper texture and raw cut edges. Recurring Character: The Moth puppet is 4cm tall, cut from pale parchment ivory cardstock with fine, hand-inked cross-hatched dark brown ink lines outlining its wings. Its body is a small cylinder of raw umber kraft brown with two glossy black pin-head beads for eyes, and two tiny feathery antennae cut from black chipboard. Its wings are hinged to the torso with tiny visible silver pin rivets. Recurring Object: The Lamp is a 25cm tall victorian streetlamp cut from matte black chipboard, featuring a hexagonal glass housing made of clear vellum paper, resting on a cobblestone street constructed from overlapping storm slate-blue cardstock shapes. Framing is strict 9:16 vertical portrait format. No digital gradients, 3D renders, airbrushing, or smooth computer interpolation.",
   "title": "The Weaver's Lantern"

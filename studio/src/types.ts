@@ -45,6 +45,11 @@ export interface Beat {
   end_frame: string | null;
   /** A reference beat's pictures, in prompt order: refs[0] is <Picture 1>. Empty elsewhere. */
   refs: string[];
+  /**
+   * What each picture is FOR, same order and same length as `refs`; "" where nothing has
+   * been said. It goes into the render, so editing one marks the beat stale.
+   */
+  ref_prompts: string[];
   video: string | null;
   predicted_seconds: number;
   predicted_cost: number;

@@ -210,8 +210,15 @@ OPEN_REFERENCE = (
     "proportions, paper texture, cut edges and palette -- and compose the opening frame "
     "yourself from the scene line below. The references are not shots: do not show them, do "
     "not cut between them, do not pan across them, and do not put more than one version of a "
-    "character on screen. "
+    "character on screen. A character shown in a reference is the SAME single character that "
+    "performs the action below, not an additional one, and the pose it is in there is only "
+    "how it looks -- not where this shot starts and not something that must also appear. "
 )
+# What each picture is FOR, when the user has said. Without this the model has to guess from
+# the picture alone, and it guesses "this is the scene" -- which is how a reference showing the
+# cast in the finished set ends up rendered as-is AND acted out a second time by the same
+# puppet. Only pictures with a note appear here; the rest are covered by the paragraph above.
+REFERENCE_ROLES = "What each reference is for: {roles} "
 # H3 takes a last frame as well as a first, and this is what has to be said when both are
 # supplied. Without it the model treats the second image as another shot to cut to, and the
 # clip arrives there early and then sits still -- or worse, jumps. Said this way, the two
@@ -286,8 +293,24 @@ def reference_tags(count: int) -> str:
     return ", ".join(tags[:-1]) + " and " + tags[-1]
 
 
+def reference_roles(notes: list[str]) -> str:
+    """One sentence per described picture: "<Picture 1> is the Moth puppet itself."
+
+    Positional: notes[0] describes <Picture 1>. Undescribed pictures are skipped rather than
+    given a placeholder -- an empty note means the user had nothing to add, not that the
+    picture is unimportant, and inventing a role for it would be worse than silence.
+    """
+    said = [
+        f"{tag} is {note.strip().rstrip('.')}."
+        for tag, note in ((f"<Picture {i}>", note) for i, note in enumerate(notes, start=1))
+        if note and note.strip()
+    ]
+    return " ".join(said)
+
+
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
-                 continues: bool = False, lands: bool = False, refs: int = 0) -> str:
+                 continues: bool = False, lands: bool = False, refs: int = 0,
+                 ref_notes: list[str] | None = None) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -299,13 +322,21 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     first frame must be read; see the scaffold above. `lands` says a final frame was given
     too, so the clip has a destination it must reach and not overshoot.
 
-    `refs` is how many reference pictures this beat is conditioned on instead of a keyframe.
-    Non-zero puts the beat on the ref2va checkpoint, which has no first or last frame inputs
-    at all -- so `continues` and `lands` cannot apply and are ignored rather than silently
+    `refs` is how many reference pictures this beat is conditioned on instead of a keyframe,
+    and `ref_notes` is what each of them is FOR, by position -- the difference between the
+    model treating a picture as the design of a character and treating it as the scene it
+    should reproduce. Non-zero `refs` puts the beat on the ref2va checkpoint, which has no
+    first or last frame inputs at all -- so `continues` and `lands` cannot apply and are
+    ignored rather than silently
     describing frames the model was never given.
     """
     if refs > 0:
         parts = [MEDIUM, OPEN_REFERENCE.format(tags=reference_tags(refs))]
+        # Straight after the paragraph that says what a reference IS, because these are the
+        # exceptions to it: which picture is the cast, which is only the set, which prop.
+        roles = reference_roles(list(ref_notes or []))
+        if roles:
+            parts.append(REFERENCE_ROLES.format(roles=roles))
     else:
         parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
         if lands:
