@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { api } from "../api";
 import { useDraft, useStudio } from "../useStudio";
 import { Field, inputClass } from "../ui";
+import { FillStills } from "./FillStills";
 
 /**
  * The head of the board. Holds the title, the style bible -- the paragraph of appearance
@@ -74,6 +75,10 @@ export function ScriptNode() {
           </p>
         )}
 
+        {/* Every beat has its own upload, but a whole imported script's worth of stills is
+            one selection here -- and this is also where generation is switched off entirely. */}
+        <FillStills />
+
         <div className="flex items-start gap-2 rounded border border-[#26262e] bg-[#0d0d10] p-2">
           {board.reference ? (
             <img
@@ -92,11 +97,13 @@ export function ScriptNode() {
           <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase tracking-wide text-zinc-500">cast reference</p>
             <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">
-              {!board.reference
-                ? "the first still generated will set the look"
-                : board.reference_explicit
-                  ? "every new still is matched to this image"
-                  : "using scene 1’s still — every new still is matched to it"}
+              {board.manual_stills
+                ? "only used when a still is generated, which is off for this reel"
+                : !board.reference
+                  ? "the first still generated will set the look"
+                  : board.reference_explicit
+                    ? "every new still is matched to this image"
+                    : "using scene 1’s still — every new still is matched to it"}
             </p>
             <div className="mt-1 flex gap-2 text-[10px]">
               <button

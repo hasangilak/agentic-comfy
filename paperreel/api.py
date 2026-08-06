@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import agent, board as board_mod, comfy, config, planner, render
+from . import agent, board as board_mod, comfy, config, planner, render, script
 from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
@@ -214,6 +214,33 @@ def create_reel(body: dict = Body(...)) -> dict:
     return {"job": job.to_json()}
 
 
+@app.post("/api/reels/import")
+def import_reel(body: dict = Body(...)) -> dict:
+    """Adopt a script the user wrote themselves, instead of asking agy to write one.
+
+    Synchronous, unlike POST /api/reels: nothing here calls agy or a GPU, so there is no job
+    worth watching. The reel exists by the time this answers and the client can open it.
+
+    `notes` is what is thin about the script -- a missing style bible, a cut with no prompt.
+    Advice, not errors: every one of them is fixable for free on the canvas.
+
+    `manual_stills` adopts the script with image generation switched off, for the case where
+    the opening frames are the author's own work as well.
+    """
+    raw = body.get("script")
+    try:
+        if isinstance(raw, str):
+            raw = script.parse(raw)
+        if not isinstance(raw, dict):
+            raise script.BadScript("send the script as JSON text, or as a JSON object")
+        board = script.adopt(raw, manual_stills=bool(body.get("manual_stills")))
+    except script.BadScript as bad:
+        raise HTTPException(422, str(bad))
+    # So a second open tab's rail picks the new reel up rather than waiting for a reload.
+    runner.publish_board(board.slug)
+    return {"slug": board.slug, "board": board_json(board), "notes": script.notes(board.data)}
+
+
 @app.get("/api/reels/{slug}")
 def get_reel(slug: str) -> dict:
     board = load(slug)
@@ -238,6 +265,8 @@ def patch_reel(slug: str, body: dict = Body(...)) -> dict:
         board.data["seed"] = int(body["seed"])
     if "mute" in body:
         board.data["mute"] = bool(body["mute"])
+    if "manual_stills" in body:
+        board.data["manual_stills"] = bool(body["manual_stills"])
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}
@@ -333,6 +362,15 @@ def chat(slug: str, body: dict = Body(...)) -> dict:
 @app.post("/api/reels/{slug}/assets")
 def assets(slug: str, body: dict = Body(default={})) -> dict:
     board = load(slug)
+    # The bypass, enforced here rather than only hidden in the UI. A board whose stills are
+    # the user's own work must not be able to spend the scarce image quota by accident --
+    # from a stale tab, a bookmarked request, or a script poking the API.
+    if board.data.get("manual_stills"):
+        raise HTTPException(
+            409,
+            "this reel supplies its own opening stills, so image generation is off. Upload "
+            "them, or switch the stills back to generated on the script node.",
+        )
     requested = body.get("beats")
     beats = board.to_json()["assets_needed"] if requested is None else requested
     unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]

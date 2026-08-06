@@ -39,6 +39,13 @@ export const api = {
   createReel: (concept: string, beats: number, seconds: number) =>
     post<{ job: Job }>("/api/reels", { concept, beats, seconds }).then((r) => r.job),
 
+  /** Adopt a script written outside the studio. No agy turn, so the reel exists on return. */
+  importReel: (script: string, manualStills: boolean) =>
+    post<{ slug: string; board: Board; notes: string[] }>("/api/reels/import", {
+      script,
+      manual_stills: manualStills,
+    }),
+
   board: (slug: string) =>
     call<{ board: Board; chat: ChatTurn[] }>(`/api/reels/${slug}`),
 

@@ -248,20 +248,25 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           >
             {uploading ? "uploading…" : beat.asset ? "⤒ replace" : "⤒ upload"}
           </Button>
-          <Button
-            tone="ghost"
-            disabled={isGenerating}
-            onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
-            title={
-              board.reference
-                ? "generate an opening still for this scene and make it a clean cut — the " +
-                  "cast is matched to the reference on the script node, so only the setting changes"
-                : "generate an opening still for this scene and make it a clean cut — this " +
-                  "is the first still, so it will become the reel's cast reference"
-            }
-          >
-            {isGenerating ? "generating…" : beat.asset ? "✦ regenerate" : "✦ generate"}
-          </Button>
+          {/* Absent, not disabled, when the reel supplies its own stills: a greyed button
+              still reads as "the way this is meant to work". The switch back is on the
+              script node, next to the count of what is missing. */}
+          {board.manual_stills ? null : (
+            <Button
+              tone="ghost"
+              disabled={isGenerating}
+              onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
+              title={
+                board.reference
+                  ? "generate an opening still for this scene and make it a clean cut — the " +
+                    "cast is matched to the reference on the script node, so only the setting changes"
+                  : "generate an opening still for this scene and make it a clean cut — this " +
+                    "is the first still, so it will become the reel's cast reference"
+              }
+            >
+              {isGenerating ? "generating…" : beat.asset ? "✦ regenerate" : "✦ generate"}
+            </Button>
+          )}
         </div>
 
         <textarea

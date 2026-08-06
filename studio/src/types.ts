@@ -61,6 +61,8 @@ export interface Board {
   lengths: number[];
   /** Aspect the model renders at; stills far from this get cropped. */
   gen_aspect: number;
+  /** The stills are the user's own work: no generate affordance, and the API refuses to run one. */
+  manual_stills: boolean;
   /** The still every cut's image is generated from, so the cast survives a scene change. */
   reference: string | null;
   /** False when it is only beat 1's own still standing in. */
@@ -114,7 +116,8 @@ export interface Container {
 }
 
 export interface ChatTurn {
-  role: "user" | "agy";
+  /** "studio" is the board speaking for itself -- e.g. what an imported script arrived as. */
+  role: "user" | "agy" | "studio";
   text: string;
   selection?: number[];
   ops?: { op: string; n?: number; summary: string }[];

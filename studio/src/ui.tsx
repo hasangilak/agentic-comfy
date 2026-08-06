@@ -50,7 +50,7 @@ export const STATE_LOOK: Record<
     label: "needs a still",
     dot: "bg-[#d99a4e]",
     ring: "border-[#d99a4e]/50",
-    hint: "this shot opens on its own image — generate or drop one in",
+    hint: "this shot opens on its own image — drop one in, or generate it",
   },
   ready: {
     label: "ready",

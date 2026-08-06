@@ -124,7 +124,7 @@ export function AgyPanel() {
           <Button tone="primary" onClick={() => send(message)} disabled={thinking || !message.trim()}>
             send
           </Button>
-          {board.assets_needed.length ? (
+          {board.assets_needed.length && !board.manual_stills ? (
             <Button
               tone="quiet"
               onClick={() => void studio.guard(() => api.assets(board.slug))}

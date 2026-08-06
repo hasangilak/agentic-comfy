@@ -5,17 +5,19 @@ paper-cutout stop-motion, using MiniMax-H3 on a single GPU on Modal.
 
 Scripts and still assets come from the Antigravity CLI (`agy`), which bills against
 your Google plan quota rather than a metered API. Only rendering costs money, so the
-stages are deliberately separable: iterate for free, pay once.
+stages are deliberately separable: iterate for free, pay once. A script you wrote
+yourself is imported as it stands, with no planning turn at all.
 
 ```
-concept ──agy──▶ storyboard.json ──agy──▶ opening asset
-                                              │
-                                    compose 9:16 frame (local, free)
-                                              │
-                    ONE warm Modal container: N chained beats  ◀── the only cost
-                       beat N starts from beat N−1's last frame
-                                              │
-                                  stitch ──▶ 1080×1920 H.264/AAC
+concept ──agy──▶ ┐
+                 ├──▶ storyboard.json ──agy──▶ opening asset
+ your own script ┘                                  │
+                                          compose 9:16 frame (local, free)
+                                                    │
+                          ONE warm Modal container: N chained beats  ◀── the only cost
+                             beat N starts from beat N−1's last frame
+                                                    │
+                                        stitch ──▶ 1080×1920 H.264/AAC
 ```
 
 ## Setup
@@ -61,6 +63,40 @@ cd studio && npm install && npm run build && cd ..
 uv run studio.py                                       # http://127.0.0.1:8787
 ```
 
+### Bring your own script
+
+`+ new` offers two ways in. **agy writes it** turns a one-line concept into a shot list, which
+is the fastest way to have something on the canvas. **paste a script** adopts one that already
+exists — hand-written, or written with an AI somewhere else — verbatim: beat order, per-beat
+lengths and which beats are cuts all arrive as written, and no agy turn happens. Talking agy
+into a script you have already finished is slower and loses detail on the way.
+
+`prompts/40s-paper-cutout-script.md` is the prompt that gets an AI to write one. It interviews
+you about beat structure and cast first, then returns the JSON the studio takes. Anything with
+`title` and a `beats` array of `action` lines will import; everything else has a default.
+
+The import is checked but not fussy. Beats are renumbered from their array order, beat 1 is
+forced to open on its own still, lengths snap to 5 s or 10 s, and render settings (steps, seed)
+stay the board's rather than the script's. What is *thin* — no style bible, a cut with no
+`asset_prompt` — is reported as a note and imported anyway, since all of it is free to fix on
+the canvas. An import never overwrites an existing reel; a second copy lands as `-2`.
+
+### Your own stills, and switching generation off
+
+An imported script has already decided its shots, so what is left is one image per cut — and
+those often exist already, made somewhere else. The script node's **opening stills** block
+fills them in one selection: pick or drop several images and they land on the beats that need
+one, in filename order. Name a file `beat3.png` and it goes to that beat exactly, which is also
+how you replace a still or put one on a beat that currently continues from the one before.
+Uploading spends no quota, and each node's own ⤒ upload still works for fixing one.
+
+The **my own** switch beside it turns image generation off for the reel: every ✦ generate
+control disappears and the server refuses an asset job with a 409, so no stale tab or stray
+request can spend the ~5-images-per-5-hours quota on a board whose stills you are supplying
+yourself. `I'll supply the stills` on the import panel starts a reel that way, since otherwise
+the first thing an imported script offers is a button that generates the stills it just
+described. Both are reversible: switch back to **generated** and the controls return.
+
 The board is a fixed chain — a script node, a row of sequence nodes, a reel node — so
 there is no way to wire it wrong. Scenes can be inserted before or after any existing scene
 and removed in place; the immediate neighbors reconnect automatically. Manual wiring stays
@@ -86,10 +122,12 @@ that drifts mid-clip drifts toward that description rather than toward the model
 of a paper fox. Beat 1's still is the reference by default — pin your own to override it.
 
 Every beat has its own persistent **upload** and **generate** controls, so all scene assets
-can be prepared before any video rendering starts. Dragging an image onto a frame works too.
-Uploading costs no quota, which matters because image generation is capped at roughly five
-per five hours. Supplying or generating a still makes that beat a new shot, so its wire
-switches to a cut; anything far from 9:16 gets a crop warning before you pay to discover it.
+can be prepared before any video rendering starts. Dragging an image onto a frame works too,
+and the script node fills a whole reel's stills from one multi-file selection. Uploading costs
+no quota, which matters because image generation is capped at roughly five per five hours —
+and generation can be switched off entirely, per reel. Supplying or generating a still makes
+that beat a new shot, so its wire switches to a cut; anything far from 9:16 gets a crop
+warning before you pay to discover it.
 
 A beat is either **5 s or 10 s** — two buttons, no stepper (see the measured numbers for
 why). Editing a beat marks it `edited` and everything chained below it `follows a change`,
@@ -111,6 +149,7 @@ use the Vite URL — it proxies the API through.
 ```bash
 # 1. plan — free
 uv run storyboard.py --concept "a paper pig finds a hidden pond" --beats 4 --seconds 10
+uv run storyboard.py --script story.json        # or adopt your own, no planner turn
 
 # 2. opening asset — free, but image quota is the scarce resource
 uv run storyboard.py --name <slug> --assets
@@ -124,6 +163,12 @@ rewrite a beat's action or drop in your own `beat1_asset.png` and re-run; comple
 work is skipped.
 
 Add `--draft` for a cheap 5 s-per-beat approval pass before committing.
+
+`--assets` on a board that names a source per beat — an imported script, or one built in the
+studio — generates exactly the stills its cuts need. `--render` here does not: it applies one
+`--seconds` and one `--chain`/`--scenes` to the whole reel, so a script mixing 5 s and 10 s
+beats, or cuts with continuations, renders as written only in the studio. The CLI says so when
+it adopts one.
 
 For a single clip, `reel.py` composes a frame from a separate background and character:
 
@@ -185,6 +230,7 @@ paperreel/config.py     geometry, rates, prompt scaffold, measured constants
 paperreel/media.py      chroma-key cutout, compositing, stitching  (local, free)
 paperreel/comfy.py      ComfyUI client + the 15-node H3 graph
 paperreel/planner.py    agy: storyboard and asset generation
+paperreel/script.py     adopting a script written outside the studio
 paperreel/pipeline.py   app lifecycle + chained batch rendering
 paperreel/board.py      the board document; state derived from disk
 paperreel/agent.py      agy conversation -> board operations
@@ -194,6 +240,7 @@ paperreel/api.py        HTTP + SSE for the studio
 comfyui_minimax_h3.py   the Modal GPU app
 studio.py               the studio server
 studio/                 React + TypeScript + React Flow canvas
+prompts/                the authoring prompt for writing a script elsewhere
 storyboard.py           CLI: full reel
 reel.py                 CLI: single clip
 minimax_h3.py           alternative: full-precision BF16 on 4×H200 via SGLang

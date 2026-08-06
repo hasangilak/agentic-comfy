@@ -8,6 +8,7 @@ Planning and asset generation go through the Antigravity CLI and cost no money; 
 --render touches a GPU. The stages are separable so you can iterate for free and pay once.
 
     uv run storyboard.py --concept "a paper pig finds a pond" --beats 4 --seconds 10
+    uv run storyboard.py --script story.json          # your own script, no planner turn
     uv run storyboard.py --name <slug> --assets
     uv run storyboard.py --name <slug> --render --chain
 
@@ -22,7 +23,7 @@ import json
 import re
 from pathlib import Path
 
-from paperreel import config, pipeline, planner
+from paperreel import config, pipeline, planner, script as script_mod
 
 
 def slugify(text: str) -> str:
@@ -34,6 +35,8 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--concept", help="what the reel is about; runs the planner")
+    parser.add_argument("--script", type=Path,
+                        help="a script you wrote yourself (JSON); skips the planner entirely")
     parser.add_argument("--beats", type=int, default=4)
     parser.add_argument("--seconds", type=float, default=10.0, help="per beat")
     parser.add_argument("--assets", action="store_true", help="generate the still frames")
@@ -55,20 +58,56 @@ def main() -> None:
     if args.draft:
         args.seconds = min(args.seconds, config.DRAFT_SECONDS)
 
+    if args.concept and args.script:
+        parser.error("--concept and --script both write the storyboard; pick one")
+
     do_plan = bool(args.concept)
     do_assets = args.assets or args.all
     do_render = args.render or args.all
-    if not (do_plan or do_assets or do_render):
-        parser.error("give --concept, and/or --assets / --render / --all")
+    if not (do_plan or args.script or do_assets or do_render):
+        parser.error("give --concept or --script, and/or --assets / --render / --all")
 
-    name = args.name or (slugify(args.concept) if args.concept else None)
+    # Read and check the supplied script before anything makes a directory for it, so a
+    # typo in the JSON does not leave an empty reel behind.
+    adopted = None
+    if args.script:
+        try:
+            adopted = script_mod.normalise(script_mod.parse(args.script.read_text()))
+        except (OSError, script_mod.BadScript) as bad:
+            raise SystemExit(f"[script] {bad}")
+
+    name = args.name
+    if name is None and args.concept:
+        name = slugify(args.concept)
+    if name is None and adopted is not None:
+        # free_slug rather than slugify: an import must not land on a reel that may already
+        # hold paid renders. Pass --name to write into an existing directory deliberately.
+        name = script_mod.free_slug(slugify(adopted["title"] or adopted["concept"]))
     if name is None:
-        parser.error("--render without --concept needs --name to find the storyboard")
+        parser.error("--render without --concept or --script needs --name to find the storyboard")
     workdir = config.ROOT / "reels" / name
     workdir.mkdir(parents=True, exist_ok=True)
     board_path = workdir / "storyboard.json"
 
-    if do_plan:
+    if adopted is not None:
+        board = adopted
+        board_path.write_text(json.dumps(board, indent=2))
+        total = sum(beat["seconds"] for beat in board["beats"])
+        print(f'[script] "{board["title"]}" -> {board_path} '
+              f'({len(board["beats"])} beats, {total:.0f}s)')
+        for beat in board["beats"]:
+            print(f"       {beat['n']}. [{beat['source']}, {beat['seconds']:.0f}s] {beat['scene']}")
+        for note in script_mod.notes(board):
+            print(f"[script] {note}")
+        lengths = {beat["seconds"] for beat in board["beats"]}
+        sources = {beat["source"] for beat in board["beats"]}
+        if len(lengths) > 1 or sources == {"asset", "chain"}:
+            # --render here applies one length and one join to the whole reel; only the
+            # studio renders a board beat by beat as written.
+            print("[script] this script mixes beat lengths or cuts with continuations, which "
+                  "--render flattens to --seconds/--chain. Open it in the studio to render it "
+                  "as written.")
+    elif do_plan:
         print(f"[plan] {args.beats} beats x {args.seconds:.0f}s via {config.PLANNER_MODEL}")
         board = planner.plan(args.concept, args.beats, args.seconds, workdir)
         board_path.write_text(json.dumps(board, indent=2))
@@ -81,9 +120,14 @@ def main() -> None:
         board = json.loads(board_path.read_text())
 
     if do_assets:
-        # Chaining needs only the opening frame, which is what keeps a reel inside the
-        # tight image quota. Scene mode needs one asset per beat.
-        wanted = board["beats"][:1] if args.chain else board["beats"]
+        # A board that names a source per beat -- one written in the studio, or an adopted
+        # script -- has already said which beats are cuts, so generate exactly those stills
+        # rather than one or all. Otherwise: chaining needs only the opening frame, which is
+        # what keeps a reel inside the tight image quota, and scene mode needs one per beat.
+        if any(beat.get("source") for beat in board["beats"]):
+            wanted = [b for b in board["beats"] if b.get("source", "chain") == "asset"]
+        else:
+            wanted = board["beats"][:1] if args.chain else board["beats"]
         # In scene mode every beat is a hard cut, so each still has to be generated from the
         # first one rather than from the style bible alone -- otherwise the cast is redesigned
         # once per scene and no two shots share a character.

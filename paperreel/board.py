@@ -471,6 +471,9 @@ class Board:
             "lengths": list(config.BEAT_LENGTHS),
             "gen_aspect": round(config.GEN_WIDTH / config.GEN_HEIGHT, 3),
             "mute": bool(self.data.get("mute")),
+            # Set when the stills are the user's own work: nothing on this board may spend
+            # image quota, and every "generate" affordance is replaced by an upload.
+            "manual_stills": bool(self.data.get("manual_stills")),
             # The still every cut's image is generated from, and whether it was chosen
             # deliberately or is just beat 1 standing in.
             "reference": self.media_url(self.reference_path()),

@@ -1,0 +1,59 @@
+{
+  "beats": [
+    {
+      "action": "The broken raft tilts slowly up the face of the towering paper wave, lifting Odysseus with it as he holds the splintered mast",
+      "asset_prompt": "A tabletop paper diorama of a storm at sea, built as six distinct layers receding into depth. FOREGROUND, along the bottom edge: a torn-edged wave of slate-blue cardstock crossing the full width, its crest fringed with shredded crepe-paper foam in pale grey-white, standing proud of the frame so it throws a soft shadow upward. MIDGROUND, lower third, slightly right of centre: a small broken raft of nine mismatched kraft-paper planks with visibly torn ends and two frayed lashings of real twine, tilted about twenty degrees nose-up as it begins to climb; Odysseus lies low across it, both arms wrapped around a splintered mast snapped at an angle, his wine-red cloak pulled out to one side as a single stiff cut-paper sheet caught mid-snap. BEHIND HIM: one enormous wave built from four nested crescents of progressively darker slate-blue stock, rising up and leaning over the raft, its foam lip curling forward but NOT yet breaking apart -- the wave is still gathering, and he must read as tiny against it. UPPER THIRD: three overlapping banks of storm cloud in deep indigo and charcoal cardstock with soft torn edges, one gap letting a narrow shaft of pale gold light through. Between the clouds and the wave, a sheet of translucent vellum spanning the width for rain haze. Rain rendered as dozens of thin straight slivers of pale grey paper, all leaning at the same slight angle. COMPOSITION: tall vertical; the raft placed low and small at about one third up from the bottom, the wave crest leaning in from the upper right with clear headroom above it, open sea between raft and crest so the scale reads. Leave the lower centre of the frame open water -- the raft descends into it later in the shot. Full figure visible and unobstructed.",
+      "n": 1,
+      "scene": "Open sea at the height of Poseidon's storm \u2014 one locked-off shot, held for all 20 seconds.",
+      "seconds": 5.0,
+      "source": "asset"
+    },
+    {
+      "action": "Continuing the same rise without pause, the wave crest curls forward overhead and its foam lip breaks apart into drifting paper flecks",
+      "asset_prompt": "",
+      "n": 2,
+      "scene": "Open sea at the height of Poseidon's storm \u2014 one locked-off shot, held for all 20 seconds.",
+      "seconds": 5.0,
+      "source": "chain"
+    },
+    {
+      "action": "Carrying straight on from the break, the raft pitches nose-down the far side of the wave and slides into the trough below",
+      "asset_prompt": "",
+      "n": 3,
+      "scene": "Open sea at the height of Poseidon's storm \u2014 one locked-off shot, held for all 20 seconds.",
+      "seconds": 5.0,
+      "source": "chain"
+    },
+    {
+      "action": "Still in the same movement, the water settles and Odysseus slumps forward over the mast, his cloak falling limp against the planks",
+      "asset_prompt": "",
+      "n": 4,
+      "scene": "Open sea at the height of Poseidon's storm \u2014 one locked-off shot, held for all 20 seconds.",
+      "seconds": 5.0,
+      "source": "chain"
+    }
+  ],
+  "chat": [
+    {
+      "role": "user",
+      "selection": [],
+      "text": "20 seconds of the Odyssey in four 5-second beats"
+    },
+    {
+      "ops": [
+        {
+          "op": "set_script",
+          "summary": "created the board"
+        }
+      ],
+      "role": "agy",
+      "text": "Two scenes, two takes: the raft in the storm (beats 1-2) and the shore at dawn (beats 3-4). Beats 1 and 3 need a still; 2 and 4 continue from them."
+    }
+  ],
+  "concept": "20 unbroken seconds of Odysseus' raft riding one enormous wave in Poseidon's storm (Odyssey V) -- one locked-off shot, no cuts",
+  "seconds": 5.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "Handcrafted layered paper-cutout stop-motion, photographed on a tabletop diorama rig: every element is a separate piece of real paper standing a few millimetres in front of the one behind it, so each layer casts a soft contact shadow onto the layer below. The materials read unmistakably as paper -- textured cold-press cardstock with visible tooth and fibre, kraft paper, shredded crepe for foam, translucent vellum for haze -- hand-cut with a craft knife so edges are crisp but very slightly irregular, showing a fine pale core where coloured stock is cut through. Sheets curl and warp a little and the registration between layers is a hair imperfect. The single character is Odysseus, a lean bearded man cut from warm tan paper: short dark bronze beard, deep wine-red cloak, belted oatmeal tunic, bare feet, a thin dark brown ink outline drawn just inside the cut edge, and small brass split-pin joints visible at his shoulders, elbows and hips. Palette: storm slate-blue, deep indigo, sea-foam pale grey-white, wine red, warm tan, pale gold. One warm key light from the upper left with a cool fill, raking across the sheets so the grain and the layer edges catch it. All tone comes from the paper itself and from stacked cut shapes -- no digital gradients, no 3D render, no plastic sheen.",
+  "title": "Odysseus: The Wave"
+}

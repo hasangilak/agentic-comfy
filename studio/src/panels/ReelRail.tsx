@@ -3,12 +3,25 @@ import { api, money } from "../api";
 import { useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 
-/** Reel picker plus the one entry point that creates a board from nothing. */
+/**
+ * Reel picker plus the two entry points that create a board from nothing.
+ *
+ * They exist for opposite situations. "agy writes it" turns a one-line concept into a shot
+ * list for free, which is the fastest way to have something on the canvas. "paste a script"
+ * takes a script that already exists -- written by hand, or with an AI somewhere else --
+ * and adopts it verbatim, because talking agy into a script you have already written is
+ * slower and lossier than handing it over.
+ */
 export function ReelRail() {
   const studio = useStudio();
+  const [mode, setMode] = useState<"write" | "paste">("write");
   const [concept, setConcept] = useState("");
   const [beats, setBeats] = useState(4);
   const [seconds, setSeconds] = useState(10);
+  const [pasted, setPasted] = useState("");
+  const [manualStills, setManualStills] = useState(false);
+  const [notes, setNotes] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
   const [open, setOpen] = useState(false);
 
   const planning = Object.values(studio.jobs).some(
@@ -23,6 +36,34 @@ export function ReelRail() {
     void studio.guard(() => api.createReel(trimmed, beats, seconds));
   };
 
+  const adopt = async () => {
+    const text = pasted.trim();
+    if (!text || importing) return;
+    setImporting(true);
+    setNotes([]);
+    try {
+      const result = await api.importReel(text, manualStills);
+      setPasted("");
+      studio.setError(null);
+      // Notes are worth reading before the panel disappears, so they hold it open. With a
+      // clean script there is nothing to say and the canvas is what you want to look at.
+      setNotes(result.notes);
+      if (!result.notes.length) setOpen(false);
+      await studio.refreshReels();
+      await studio.openReel(result.slug);
+    } catch (problem) {
+      studio.setError(String(problem));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const load = async (file: File | undefined) => {
+    if (!file) return;
+    setNotes([]);
+    setPasted(await file.text());
+  };
+
   return (
     <div className="flex w-52 shrink-0 flex-col border-r border-[#26262e] bg-[#16161b]">
       <div className="flex items-center gap-2 border-b border-[#26262e] px-3 py-2">
@@ -34,48 +75,133 @@ export function ReelRail() {
 
       {open ? (
         <div className="space-y-2 border-b border-[#26262e] p-3">
-          <textarea
-            className={`${inputClass} h-20`}
-            value={concept}
-            onChange={(event) => setConcept(event.target.value)}
-            placeholder="a paper pig finds a hidden pond"
-            autoFocus
-          />
-          <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-            <label className="flex items-center gap-1">
-              <input
-                type="number"
-                min={1}
-                max={8}
-                value={beats}
-                onChange={(event) => setBeats(Number(event.target.value))}
-                className="w-10 rounded bg-[#0d0d10] border border-[#26262e] px-1 py-0.5 text-zinc-200"
-              />
-              beats
-            </label>
-            <span className="flex items-center gap-1">
-              {[5, 10].map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setSeconds(option)}
-                  className={`rounded px-1.5 py-0.5 ${
-                    seconds === option
-                      ? "bg-[#d99a4e] font-medium text-[#1a1208]"
-                      : "bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
-                  }`}
-                >
-                  {option}s
-                </button>
-              ))}
-              each
-            </span>
+          <div className="flex gap-1 text-[10px]">
+            {(["write", "paste"] as const).map((option) => (
+              <button
+                key={option}
+                onClick={() => setMode(option)}
+                className={`flex-1 rounded px-1.5 py-1 ${
+                  mode === option
+                    ? "bg-[#26262e] text-zinc-200"
+                    : "text-zinc-500 hover:bg-[#1f1f26]"
+                }`}
+              >
+                {option === "write" ? "agy writes it" : "paste a script"}
+              </button>
+            ))}
           </div>
-          <Button tone="primary" onClick={create} disabled={planning || !concept.trim()}>
-            {planning ? "writing…" : `write ${beats * seconds}s script`}
-          </Button>
-          <p className="text-[10px] leading-snug text-zinc-600">
-            Free — agy writes the script and the shot list. Nothing renders yet.
-          </p>
+
+          {mode === "write" ? (
+            <>
+              <textarea
+                className={`${inputClass} h-20`}
+                value={concept}
+                onChange={(event) => setConcept(event.target.value)}
+                placeholder="a paper pig finds a hidden pond"
+                autoFocus
+              />
+              <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={8}
+                    value={beats}
+                    onChange={(event) => setBeats(Number(event.target.value))}
+                    className="w-10 rounded bg-[#0d0d10] border border-[#26262e] px-1 py-0.5 text-zinc-200"
+                  />
+                  beats
+                </label>
+                <span className="flex items-center gap-1">
+                  {[5, 10].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setSeconds(option)}
+                      className={`rounded px-1.5 py-0.5 ${
+                        seconds === option
+                          ? "bg-[#d99a4e] font-medium text-[#1a1208]"
+                          : "bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
+                      }`}
+                    >
+                      {option}s
+                    </button>
+                  ))}
+                  each
+                </span>
+              </div>
+              <Button tone="primary" onClick={create} disabled={planning || !concept.trim()}>
+                {planning ? "writing…" : `write ${beats * seconds}s script`}
+              </Button>
+              <p className="text-[10px] leading-snug text-zinc-600">
+                Free — agy writes the script and the shot list. Nothing renders yet.
+              </p>
+            </>
+          ) : (
+            <>
+              <textarea
+                className={`${inputClass} thin h-28 font-mono`}
+                value={pasted}
+                onChange={(event) => setPasted(event.target.value)}
+                placeholder={'{ "title": …, "style_bible": …, "beats": [ … ] }'}
+                spellCheck={false}
+                autoFocus
+              />
+              {/* Decided here rather than after the fact, because the first thing an imported
+                  script otherwise offers is a button that generates the stills it describes. */}
+              <label
+                className="flex cursor-pointer items-start gap-1.5 text-[10px] leading-snug text-zinc-500"
+                title="every generate control disappears and the server refuses to spend image
+                  quota on this reel — reversible on the script node"
+              >
+                <input
+                  type="checkbox"
+                  checked={manualStills}
+                  onChange={(event) => setManualStills(event.target.checked)}
+                  className="mt-0.5 h-3 w-3 accent-[#d99a4e]"
+                />
+                <span>I'll supply the stills — don't generate any</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <Button tone="primary" onClick={() => void adopt()} disabled={importing || !pasted.trim()}>
+                  {importing ? "importing…" : "import script"}
+                </Button>
+                <label
+                  className="cursor-pointer rounded bg-[#26262e] px-2 py-1 text-xs text-zinc-200
+                    transition-colors hover:bg-[#32323c]"
+                >
+                  .json
+                  <input
+                    type="file"
+                    accept=".json,application/json,text/plain"
+                    className="hidden"
+                    onChange={(event) => {
+                      void load(event.target.files?.[0]);
+                      // Cleared so picking the same file twice fires onChange again.
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {notes.length ? (
+                <div className="space-y-1 rounded border border-[#f59e0b]/30 bg-[#f59e0b]/10 p-2">
+                  {notes.map((note) => (
+                    <p key={note} className="text-[10px] leading-snug text-[#f59e0b]">
+                      {note}
+                    </p>
+                  ))}
+                  <p className="text-[10px] leading-snug text-zinc-500">
+                    Imported anyway — all of it is fixable on the canvas for free.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  Free — no agy turn at all. Beat order, lengths and cuts arrive exactly as
+                  written. <code>prompts/40s-paper-cutout-script.md</code> is the prompt that
+                  gets an AI to write one.
+                </p>
+              )}
+            </>
+          )}
         </div>
       ) : null}
 

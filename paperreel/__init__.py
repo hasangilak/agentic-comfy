@@ -11,6 +11,6 @@ touches a GPU. Iterate on the script for free, then pay once.
     print(result.reel, result.cost)
 """
 
-from . import comfy, config, media, pipeline, planner
+from . import comfy, config, media, pipeline, planner, script
 
-__all__ = ["comfy", "config", "media", "pipeline", "planner"]
+__all__ = ["comfy", "config", "media", "pipeline", "planner", "script"]
