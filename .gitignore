@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 
 # uv / tooling caches
+.make/
 .uv-cache/
 .uv-tools/
 .uv-bin/
