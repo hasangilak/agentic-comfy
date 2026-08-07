@@ -41,10 +41,15 @@ export function useStudioState() {
   const [selection, setSelection] = useState<number[]>([]);
   const [renderSelection, setRenderSelection] = useState<number[]>([]);
   const [authOk, setAuthOk] = useState(true);
-  // Where opening stills come from. "agy" is the quota-limited Antigravity backend; the
-  // local mflux renderer next door has no quota at all, so every warning about rationing
-  // images has to be conditional on this rather than baked into the copy.
-  const [stillsBackend, setStillsBackend] = useState<"papercut" | "agy">("agy");
+  // The two local services this studio orchestrates, and both can simply not be running.
+  // Optimistic defaults: the copy that depends on them is a warning, and flashing "the image
+  // server is down" for the few hundred milliseconds before /api/status answers would train
+  // the user to ignore it.
+  const [stillsBackend, setStillsBackend] = useState<"papercut" | "none">("papercut");
+  const [model, setModel] = useState<{ model: string; ready: boolean }>({
+    model: "",
+    ready: true,
+  });
 
   // The container clock arrives every 2s over SSE. Interpolate locally so it counts up
   // smoothly -- a timer that jumps two seconds at a time reads as broken.
@@ -178,7 +183,11 @@ export function useStudioState() {
     try {
       const status = await api.status();
       setAuthOk(status.auth);
-      setStillsBackend(status.stills?.backend ?? "agy");
+      setStillsBackend(status.stills?.backend ?? "none");
+      setModel({
+        model: status.language?.model ?? "",
+        ready: status.language?.ready ?? false,
+      });
     } catch {
       setAuthOk(true);
     }
@@ -235,6 +244,7 @@ export function useStudioState() {
     renderSelection,
     authOk,
     stillsBackend,
+    model,
     setSelection,
     setRenderSelection,
     setError,

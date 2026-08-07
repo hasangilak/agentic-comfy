@@ -5,6 +5,7 @@
 # target must not be able to start a paid render.
 #
 #   make install     dependencies (npm + the uv environment)
+#   make qwen        pull the local language model (one-time, ~23 GiB)
 #   make run         backend on :8787 and the Vite dev server on :5173
 #   make serve       build the frontend and serve everything from :8787
 #
@@ -16,10 +17,13 @@ IMAGE := image
 BACKEND_PORT ?= 8787
 IMAGE_PORT ?= 8791
 STAMP := .make/uv.stamp
+# The model that writes the scripts, edits the board and looks at the stills. Keep in step
+# with config.QWEN_MODEL, or override both together (PAPERREEL_QWEN_MODEL / QWEN_MODEL=...).
+QWEN_MODEL ?= qwen3.6
 
 .DEFAULT_GOAL := help
-.PHONY: help install build run backend frontend serve stop images studio login models deploy \
-        stop-app clean
+.PHONY: help install build run backend frontend serve stop images studio qwen login models \
+        deploy stop-app clean
 
 help:
 	@echo "make install   npm dependencies + resolve the uv environment"
@@ -29,6 +33,7 @@ help:
 	@echo "make frontend  just the Vite dev server"
 	@echo "make images    Papercut Studio's render server on :$(IMAGE_PORT) -- where stills come from"
 	@echo "make studio    make images + make run, together"
+	@echo "make qwen      pull $(QWEN_MODEL) into Ollama -- the script writer and still reviewer"
 	@echo "make stop      kill anything this Makefile started"
 	@echo
 	@echo "one-time, touches Modal:"
@@ -78,12 +83,22 @@ $(IMAGE)/node_modules: $(IMAGE)/package.json $(IMAGE)/package-lock.json
 	npm --prefix $(IMAGE) install
 	@touch $@
 
-# Where opening stills come from. mflux on this machine, so it spends no money and no image
-# quota -- the studio prefers it over agy whenever this is listening, and says which one it
-# used in the job log. Separate target because it holds ~18 GB of weights while rendering and
-# is not wanted on a session that is only editing a script.
+# Where opening stills come from, and the only place they come from: mflux on this machine, so
+# it spends no money. With this not listening a beat's still has to be an upload, which the
+# studio says on the node rather than failing a click. Separate target because it holds ~18 GB
+# of weights while rendering and is not wanted on a session that is only editing a script.
 images: $(IMAGE)/node_modules
 	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server
+
+# Everything the studio needs from Ollama, in one place. The weights are ~23 GiB, so this is
+# a one-time download; Ollama itself has to already be running (`ollama serve`, or the app).
+#
+# It does NOT start Ollama: it is a system service on most installs and a desktop app on the
+# rest, and a Makefile that starts one of those has to know which -- and then owns stopping it.
+# `make studio` reports whether it is answering instead, which is the part that is useful.
+qwen:
+	ollama pull $(QWEN_MODEL)
+	@ollama show $(QWEN_MODEL) | sed -n '/Capabilities/,/^$$/p'
 
 # All three processes. Same `kill 0` trap as `run`: Ctrl-C must not leave the image server
 # holding :$(IMAGE_PORT) with an mflux render attached to it.
@@ -96,6 +111,13 @@ studio: install $(IMAGE)/node_modules
 	@echo "stills   http://127.0.0.1:$(IMAGE_PORT)"
 	@echo "backend  http://127.0.0.1:$(BACKEND_PORT)"
 	@echo "frontend http://127.0.0.1:5173   <- use this one, it proxies the API through"
+	@# Said before the servers start rather than discovered as a failed job three clicks in:
+	@# with no model there is no script, no conversation and no caption.
+	@if ollama list 2>/dev/null | grep -q '^$(QWEN_MODEL)'; then \
+		echo "model    $(QWEN_MODEL) via ollama"; \
+	else \
+		echo "model    $(QWEN_MODEL) NOT AVAILABLE -- run 'make qwen', and start Ollama"; \
+	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server & \
 	uv run studio.py --port $(BACKEND_PORT) & \

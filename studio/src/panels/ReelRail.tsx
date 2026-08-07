@@ -6,11 +6,12 @@ import { Button, inputClass } from "../ui";
 /**
  * Reel picker plus the two entry points that create a board from nothing.
  *
- * They exist for opposite situations. "agy writes it" turns a one-line concept into a shot
- * list for free, which is the fastest way to have something on the canvas. "paste a script"
- * takes a script that already exists -- written by hand, or with an AI somewhere else --
- * and adopts it verbatim, because talking agy into a script you have already written is
- * slower and lossier than handing it over.
+ * They exist for opposite situations. "write it for me" hands the local model the same
+ * authoring prompt a human would paste into an AI (prompts/40s-paper-cutout-script.md) and
+ * turns a one-line concept into a shot list, which is the fastest way to have something on
+ * the canvas. "paste a script" takes a script that already exists -- written by hand, or with
+ * an AI somewhere else -- and adopts it verbatim, because talking a model into a script you
+ * have already written is slower and lossier than handing it over.
  */
 export function ReelRail() {
   const studio = useStudio();
@@ -86,7 +87,7 @@ export function ReelRail() {
                     : "text-zinc-500 hover:bg-[#1f1f26]"
                 }`}
               >
-                {option === "write" ? "agy writes it" : "paste a script"}
+                {option === "write" ? "write it for me" : "paste a script"}
               </button>
             ))}
           </div>
@@ -133,7 +134,8 @@ export function ReelRail() {
                 {planning ? "writing…" : `write ${beats * seconds}s script`}
               </Button>
               <p className="text-[10px] leading-snug text-zinc-600">
-                Free — agy writes the script and the shot list. Nothing renders yet.
+                Free — the local model writes the script, picks where the cuts go, then
+                marks its own work against the brief. A few minutes; nothing renders yet.
               </p>
             </>
           ) : (
@@ -195,9 +197,9 @@ export function ReelRail() {
                 </div>
               ) : (
                 <p className="text-[10px] leading-snug text-zinc-600">
-                  Free — no agy turn at all. Beat order, lengths and cuts arrive exactly as
-                  written. <code>prompts/40s-paper-cutout-script.md</code> is the prompt that
-                  gets an AI to write one.
+                  Free — no model turn at all. Beat order, lengths and cuts arrive exactly
+                  as written. <code>prompts/40s-paper-cutout-script.md</code> is the prompt
+                  that gets an AI to write one — it is the same brief “write it for me” uses.
                 </p>
               )}
             </>

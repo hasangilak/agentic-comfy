@@ -6,18 +6,20 @@ import { Button, inputClass } from "../ui";
 const NUDGES = [
   "make it slower and calmer",
   "add one more beat at the end",
-  "tighten the whole reel to 30 seconds",
   "this action is too busy — one movement only",
+  "generate the stills this reel is missing",
 ];
 
 /**
- * The conversation that drives the board. Every turn returns a reply plus a list of edits,
- * and the edits are shown as they land so the canvas never changes without saying why.
+ * The conversation that drives the board. A turn is a tool loop, so it can edit a beat, read
+ * the board back to see what that did, and ask the image server for the stills the board now
+ * needs -- all in one turn. The edits are listed as they land, so the canvas never changes
+ * without saying why.
  *
- * Note what is missing: agy cannot render. It writes, rewrites, re-times and reorders for
- * free, and spends image quota only when asked. Pressing render stays a human act.
+ * Note what is missing: the model cannot render. It writes, rewrites, re-times and reorders,
+ * and it can ask for stills, all of which are free. Pressing render stays a human act.
  */
-export function AgyPanel() {
+export function StoryPanel() {
   const studio = useStudio();
   const board = studio.board!;
   const [message, setMessage] = useState("");
@@ -41,8 +43,21 @@ export function AgyPanel() {
   return (
     <div className="flex w-80 shrink-0 flex-col border-l border-[#26262e] bg-[#16161b]">
       <div className="flex items-center gap-2 border-b border-[#26262e] px-3 py-2">
-        <span className="text-[10px] uppercase tracking-wide text-zinc-500">agy</span>
-        <span className="ml-auto text-[10px] text-zinc-600">free — plan quota</span>
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+          {studio.model.model || "story editor"}
+        </span>
+        <span
+          className={`ml-auto text-[10px] ${
+            studio.model.ready ? "text-zinc-600" : "text-[#f59e0b]"
+          }`}
+          title={
+            studio.model.ready
+              ? "runs on this machine through Ollama — nothing metered, nothing leaves"
+              : "Ollama is not answering, or the model is not pulled. `make qwen` pulls it."
+          }
+        >
+          {studio.model.ready ? "free — on this machine" : "model offline"}
+        </span>
       </div>
 
       <div ref={scroller} className="thin flex-1 space-y-3 overflow-y-auto p-3">
@@ -118,7 +133,7 @@ export function AgyPanel() {
               send(message);
             }
           }}
-          placeholder="ask agy to change the board…"
+          placeholder="ask for a change to the board…"
         />
         <div className="mt-1.5 flex items-center gap-2">
           <Button tone="primary" onClick={() => send(message)} disabled={thinking || !message.trim()}>
@@ -128,10 +143,13 @@ export function AgyPanel() {
             <Button
               tone="quiet"
               onClick={() => void studio.guard(() => api.assets(board.slug))}
+              disabled={studio.stillsBackend !== "papercut"}
               title={
                 studio.stillsBackend === "papercut"
-                  ? "rendered by mflux on this machine — free and unlimited, ~10–18 s each"
-                  : "roughly five images per five-hour window — the scarcest thing here"
+                  ? "rendered by mflux on this machine, then checked against the reel's cast " +
+                    "reference — free and unlimited, ~10–18 s each"
+                  : "the image server is not running — start it with `make images`, or upload " +
+                    "the stills yourself"
               }
             >
               generate {board.assets_needed.length} still

@@ -1,9 +1,10 @@
 """HTTP layer for the studio: board CRUD, job submission, and one SSE stream.
 
-Runs locally, not on Modal, because it shells out to `agy` and `modal` and both depend on
-credentials already sitting on this machine. That also means the Modal proxy tokens never
-leave the server -- the browser talks only to this process, which is the only arrangement
-that works anyway, since a browser cannot attach auth headers to a WebSocket.
+Runs locally, not on Modal. Everything it orchestrates is on this machine: the language model
+on Ollama, the image server next door, and the `modal` CLI with the credentials that let it
+deploy a GPU. That also means the Modal proxy tokens never leave the server -- the browser
+talks only to this process, which is the only arrangement that works anyway, since a browser
+cannot attach auth headers to a WebSocket.
 """
 
 from __future__ import annotations
@@ -21,7 +22,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import agent, board as board_mod, comfy, config, papercut, planner, render, script
+from . import (agent, board as board_mod, comfy, config, papercut, qwen, render, script,
+               stills as stills_mod)
 from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
@@ -128,79 +130,58 @@ async def store_upload(file: UploadFile, dest: Path) -> None:
 
 def handle_plan(job: Job, run: Runner) -> dict:
     detail = job.detail
-    run.log(job, f'[plan] {detail["beats"]} beats x {detail["seconds"]:.0f}s via {config.PLANNER_MODEL}')
-    board = agent.create(detail["concept"], detail["beats"], detail["seconds"])
+    run.log(job, f'[plan] {detail["beats"]} beats x {detail["seconds"]:.0f}s via {config.QWEN_MODEL}')
+    board = agent.create(detail["concept"], detail["beats"], detail["seconds"],
+                         log=lambda line: run.log(job, line))
     job.slug = board.slug  # the slug only exists once the title does
     run.log(job, f'[plan] "{board.data.get("title")}" -> {board.slug}')
     return {"slug": board.slug}
 
 
 def handle_chat(job: Job, run: Runner) -> dict:
+    """One conversational turn, tools and all.
+
+    A turn can reach the image server, so it can take minutes rather than seconds -- the
+    hooks below are the same ones the still job uses, which is what puts a `generate_stills`
+    tool call in the job log and on the canvas as it happens rather than after the turn ends.
+    """
     board = load(job.slug)
-    run.log(job, f'[agy] {job.detail["message"]}')
-    result = agent.turn(board, job.detail["message"], selection=job.detail.get("selection"))
-    for op in result["ops"]:
-        run.log(job, f'[agy] {op["summary"]}')
+    run.log(job, f'[qwen] {job.detail["message"]}')
+    result = agent.turn(
+        board, job.detail["message"], selection=job.detail.get("selection"),
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )
     return result
 
 
-def stills_backend() -> str:
-    """Which generator a still job would use right now: "papercut" or "agy".
+def still_progress(job: Job, run: Runner):
+    """The image server's 0..1 per-frame fraction, on the fields the UI already has.
 
-    Probed per job rather than cached, because the image server is a separate process the
-    user starts and stops independently -- a value read once at import would send a board to
-    the quota-limited backend for the rest of the session just because mflux was down when
-    the studio booted.
+    The studio's progress strip is built around ComfyUI's step counters, so this scales onto
+    those rather than teaching the UI a second shape.
     """
-    if config.ASSET_BACKEND in ("papercut", "agy"):
-        return config.ASSET_BACKEND
-    return "papercut" if papercut.available() else "agy"
+    return lambda n, fraction: run.update(
+        job, phase=f"still for beat {n}", beat=n,
+        step=round(fraction * config.PAPERCUT_STEPS), step_max=config.PAPERCUT_STEPS)
 
 
 def handle_asset(job: Job, run: Runner) -> dict:
     board = load(job.slug)
-    if stills_backend() == "papercut":
-        return {"beats": papercut.generate(
-            board, job.detail["beats"],
-            log=lambda line: run.log(job, line),
-            # Papercut reports a 0..1 fraction per frame; the studio's progress strip is
-            # already built around ComfyUI's step counters, so scale onto those fields
-            # rather than teaching the UI a second shape.
-            progress=lambda n, fraction: run.update(
-                job, phase=f"still for beat {n}", beat=n,
-                step=round(fraction * config.PAPERCUT_STEPS), step_max=config.PAPERCUT_STEPS),
-            on_still=lambda _n: run.publish_board(board.slug),
-            cancelled=lambda: job.cancelling,
-        )}
-
-    made: list[int] = []
-    for n in job.detail["beats"]:
-        if job.cancelling:
-            break
-        beat = board.beat(n)
-        run.update(job, phase=f"asset for beat {n}", beat=n)
-
-        reference = board.reference_for(n)
-        run.log(job, f"[asset] beat {n}: generating"
-                     + (f", characters locked to {reference.name}" if reference
-                        else " (nothing to match yet -- this defines the look)"))
-        try:
-            planner.generate_asset(beat, board.data.get("style_bible", ""),
-                                   board.asset_path(n), board.workdir,
-                                   reference=reference)
-        except planner.QuotaExhausted as exhausted:
-            run.log(job, f"[asset] {exhausted}")
-            # Not an error: the remaining beats simply have to wait for the window, and
-            # anything already generated stays.
-            break
-        made.append(n)
-        run.publish_board(board.slug)
-    return {"beats": made}
+    return {"beats": stills_mod.generate(
+        board, job.detail["beats"],
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )}
 
 
 def handle_caption(job: Job, run: Runner) -> dict:
     board = load(job.slug)
-    run.log(job, "[agy] writing the caption")
+    run.log(job, "[qwen] writing the caption")
     return {"caption": agent.caption(board)}
 
 
@@ -239,10 +220,10 @@ def create_reel(body: dict = Body(...)) -> dict:
 
 @app.post("/api/reels/import")
 def import_reel(body: dict = Body(...)) -> dict:
-    """Adopt a script the user wrote themselves, instead of asking agy to write one.
+    """Adopt a script the user wrote themselves, instead of asking the model to write one.
 
-    Synchronous, unlike POST /api/reels: nothing here calls agy or a GPU, so there is no job
-    worth watching. The reel exists by the time this answers and the client can open it.
+    Synchronous, unlike POST /api/reels: nothing here calls the model or a GPU, so there is no
+    job worth watching. The reel exists by the time this answers and the client can open it.
 
     `notes` is what is thin about the script -- a missing style bible, a cut with no prompt.
     Advice, not errors: every one of them is fixable for free on the canvas.
@@ -399,46 +380,26 @@ def chat(slug: str, body: dict = Body(...)) -> dict:
 
 @app.post("/api/reels/{slug}/assets")
 def assets(slug: str, body: dict = Body(default={})) -> dict:
-    board = load(slug)
-    # The bypass, enforced here rather than only hidden in the UI. A board whose stills are
-    # the user's own work must not be able to spend the scarce image quota by accident --
-    # from a stale tab, a bookmarked request, or a script poking the API.
-    if board.data.get("manual_stills"):
-        raise HTTPException(
-            409,
-            "this reel supplies its own opening stills, so image generation is off. Upload "
-            "them, or switch the stills back to generated on the script node.",
-        )
-    requested = body.get("beats")
-    beats = board.to_json()["assets_needed"] if requested is None else requested
-    unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]
-    if unknown:
-        raise HTTPException(404, f"no such beats: {unknown}")
-    # A reference beat has no opening still to generate -- it composes its own first frame
-    # from its pictures. Generating one anyway would spend quota AND silently turn the beat
-    # into a cut, dropping the references from the render.
-    referenced = [n for n in beats
-                  if board_mod.uses_refs(board.source_for(board.beat(n)))]
-    if referenced:
-        raise HTTPException(
-            409,
-            f"beats {referenced} are conditioned on reference pictures, not on an opening "
-            "still. Change the join on the node first if you want a still instead.",
-        )
-    if not beats:
-        raise HTTPException(422, "no beat needs a still")
+    """Queue the opening stills for these beats, or for every beat that needs one.
 
-    # An explicit per-node request means "prepare this scene with its own image", even if
-    # it currently continues from the previous clip. Record that choice immediately so the
-    # canvas and render queue agree about the scene boundary while generation is queued.
-    # A bridge already has its own image -- as the frame it lands on -- so it is left alone;
-    # promoting it to a cut would throw away the continuation the user chose.
-    if requested is not None:
-        for n in beats:
-            if board.source_for(board.beat(n)) != board_mod.SOURCE_BRIDGE:
-                board.beat(n)["source"] = board_mod.SOURCE_ASSET
-        board.save()
-        runner.publish_board(slug)
+    Which beats may get a still is decided in `stills.wanted`, not here. There are three ways
+    in now -- this endpoint, a conversation asking for stills, and the CLI -- and every one of
+    them has to refuse a board whose stills are the user's own work and a reference beat that
+    would silently be turned into a cut. The refusal carries the status code to answer with,
+    so moving the rule did not cost the API its precision.
+    """
+    board = load(slug)
+    requested = body.get("beats")
+    try:
+        beats = stills_mod.wanted(board, requested)
+        # An explicit per-node request means "prepare this scene with its own image", even if
+        # it currently continues from the previous clip; `claim` records that before anything
+        # is generated. A request for everything that needs one changes no joins at all.
+        if requested is not None:
+            stills_mod.claim(board, beats)
+            runner.publish_board(slug)
+    except stills_mod.StillsError as refused:
+        raise HTTPException(refused.status, str(refused))
 
     job = runner.submit("asset", slug, {"beats": beats})
     return {"job": job.to_json()}
@@ -449,7 +410,8 @@ async def upload_asset(slug: str, n: int, file: UploadFile = File(...),
                        source: str = Form(board_mod.SOURCE_ASSET)) -> dict:
     """Use your own image as a beat's still.
 
-    The way around the image quota, which allows roughly five generations per five hours.
+    Also the answer when the local image server is not running, or cannot run at all: nothing
+    else generates stills, so an upload is the only other way a beat gets its opening frame.
 
     `source` says which of H3's two keyframe slots the picture is for, because a supplied
     image answers two different questions:
@@ -494,7 +456,7 @@ async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) ->
     the order is meaningful and appending is deliberate -- new pictures land after the ones
     already there rather than shuffling the numbering under the prompt.
 
-    Uploads are free of image quota, exactly like an uploaded still. What they cost is render
+    Uploads cost nothing to place, exactly like an uploaded still. What they cost is render
     time: reference tokens ride through every sampling step, so nine pictures is a slower
     clip than one.
     """
@@ -574,7 +536,7 @@ def remove_ref(slug: str, n: int, index: int) -> dict:
 async def upload_reference(slug: str, file: UploadFile = File(...)) -> dict:
     """Pin what the characters look like, for every still generated from here on.
 
-    Costs nothing and spends no quota, but it changes every future cut: each new scene's
+    Costs nothing, but it changes every future cut: each new scene's
     still is generated conditioned on this image instead of on the style bible alone.
     Existing stills are left exactly as they are -- regenerate the ones you want matched.
     """
@@ -687,10 +649,19 @@ def status() -> dict:
         "auth": bool(comfy.modal_auth_headers()) or config.PUBLIC_ENDPOINT,
         "backend": config.BACKEND_URL,
         "rate_per_second": config.RATE_PER_SEC,
-        # Which generator a still would come from right now. The UI's warnings about the
-        # five-per-five-hours image quota are only true of agy; saying them over a local
-        # mflux render would train the user to ration something that is free.
-        "stills": {"backend": stills_backend(), "papercut_url": config.PAPERCUT_URL},
+        # Both local services, probed per request rather than cached, because each is a
+        # separate process the user starts and stops -- a value read once at import would have
+        # the studio still claiming the image server is down an hour after `make images`.
+        #
+        # Neither is fatal and neither costs anything, but they fail in different ways and the
+        # UI has to be able to say which: with no model there is no script, no conversation and
+        # no caption; with no image server the stills have to be uploads.
+        "stills": {
+            "backend": "papercut" if papercut.available() else "none",
+            "papercut_url": config.PAPERCUT_URL,
+        },
+        "language": qwen.health() or {"url": config.OLLAMA_URL, "model": config.QWEN_MODEL,
+                                      "ready": False, "models": []},
     }
 
 

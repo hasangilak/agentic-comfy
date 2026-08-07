@@ -185,26 +185,78 @@ REF_VIDEO_SECONDS = 3.0
 # model to reproduce literally. Turn it on if ambience drifts between beats.
 REF_VIDEO_WITH_AUDIO = False
 
-# ## Antigravity
-PLANNER_MODEL = os.environ.get("PAPERREEL_PLANNER_MODEL", "gemini-3.6-flash-high")
-IMAGE_MODEL = os.environ.get("PAPERREEL_IMAGE_MODEL", "gemini-3.6-flash-low")
-AGY_HOME = Path.home() / ".gemini" / "antigravity-cli"
+# ## The language model
+#
+# One local model does every job that is words: writing the script, carrying out the board
+# edits a conversation asks for, writing the caption, and -- because it has vision -- looking
+# at each still the image server produced and saying whether it belongs in this reel.
+#
+# It replaced the Antigravity CLI, and one number is why: agy's image tool allowed roughly
+# five generations per five-hour window and its agent turns billed against the same plan
+# quota, so every turn had a price. Ollama on this machine has none, which is what makes the
+# self-review passes below affordable -- they were never worth a quota slot.
+OLLAMA_URL = os.environ.get("PAPERREEL_OLLAMA_URL", "http://127.0.0.1:11434")
+QWEN_MODEL = os.environ.get("PAPERREEL_QWEN_MODEL", "qwen3.6")
+# Vision is a separate name only so a machine whose main model is text-only can still point
+# this at one that sees. Same model by default: qwen3.6 reports `vision` and `tools` and
+# `thinking` together, which is the whole reason it can drive this pipeline alone.
+QWEN_VISION_MODEL = os.environ.get("PAPERREEL_QWEN_VISION_MODEL", QWEN_MODEL)
+# Ollama defaults the context window to a few thousand tokens and TRUNCATES silently past it,
+# which does not fail -- it answers confidently from a prompt whose end is missing.
+#
+# The largest call decides this, and it is the script review: the whole authoring prompt
+# (prompts/40s-paper-cutout-script.md, ~6.7k tokens) plus the draft it is checking plus the
+# corrected script it returns. 32k leaves room for an eight-beat script whose asset prompts
+# are the 150-250 words the brief asks for. qwen3.6 itself tops out at 262144.
+QWEN_NUM_CTX = int(os.environ.get("PAPERREEL_QWEN_NUM_CTX", "32768"))
+# The model ships with temperature 1.0 and presence_penalty 1.5, which is tuned for open
+# chat. Board edits want the opposite, and this is the default for everything except the
+# creative pass, which asks for more (see PLAN_TEMPERATURE).
+QWEN_TEMPERATURE = float(os.environ.get("PAPERREEL_QWEN_TEMPERATURE", "0.3"))
+PLAN_TEMPERATURE = float(os.environ.get("PAPERREEL_PLAN_TEMPERATURE", "0.8"))
+# Reasoning is on by default in a thinking model and it is not free: the same unambiguous
+# board edit measured 0.9s with thinking off and 14s with it on. So it is off everywhere
+# except writing the script, which is the one call whose quality is worth the wall clock.
+PLAN_THINK = os.environ.get("PAPERREEL_PLAN_THINK", "1") == "1"
+# ~23 GiB of weights, about four seconds to load. A session is dozens of short turns, so
+# keeping the model resident is the difference between an edit landing at once and every
+# single one of them paying the load again.
+QWEN_KEEP_ALIVE = os.environ.get("PAPERREEL_QWEN_KEEP_ALIVE", "10m")
+QWEN_TIMEOUT = float(os.environ.get("PAPERREEL_QWEN_TIMEOUT", "900"))
+QWEN_PROBE_TIMEOUT = 2.0
+# A tool loop has to be able to end. Every round is one model turn plus whatever the tools
+# did, and a model that has started calling `read_board` in circles is not going to stop on
+# its own. Eight is far more than any observed turn needs.
+AGENT_MAX_ROUNDS = int(os.environ.get("PAPERREEL_AGENT_MAX_ROUNDS", "8"))
+
+# ## Reviewing its own work
+#
+# Both passes exist because the model is local and unmetered. Neither would have been worth
+# a quota slot; both are worth ten seconds.
+#
+# The script pass re-reads the draft against the rules of the medium -- one continuous
+# locked-off shot per beat, one thing moving, the style bible quoted verbatim in every asset
+# prompt -- and returns a corrected script plus what it changed. Those are the failures that
+# are invisible on the page and obvious in the render.
+PLAN_REVIEW = os.environ.get("PAPERREEL_PLAN_REVIEW", "1") == "1"
+# The stills pass looks at each finished still next to the reel's locked cast reference and
+# says whether the same characters, palette and paper stock came back. A still that missed
+# gets its asset prompt rewritten and is rendered again.
+#
+# One retry, not five: mflux is free but not instant at ~10-18 s a frame, and a still the
+# model rejects twice is usually telling you the style bible is the problem.
+STILL_REVIEW = os.environ.get("PAPERREEL_STILL_REVIEW", "1") == "1"
+STILL_ATTEMPTS = int(os.environ.get("PAPERREEL_STILL_ATTEMPTS", "2"))
 
 # ## Where opening stills come from
 #
-# Two backends produce the same file, `beat<n>_asset.png`, and nothing downstream can tell
-# which one did:
+# `beat<n>_asset.png`, rendered by Papercut Studio in image/ over HTTP on this machine:
+# flux2-klein-4b through mflux, free, unmetered, ~10-18 s per still, and straight onto the H3
+# grid so nothing is cropped on the way to the video model.
 #
-#   papercut -- the local mflux renderer in image/, over HTTP on this machine. Free, no
-#               quota, ~10-18 s per still, and it renders straight onto the H3 grid so no
-#               crop happens on the way to the video model.
-#   agy      -- Antigravity's image tool. No API key, but roughly FIVE images per five-hour
-#               window, which is the tightest constraint anywhere in this pipeline.
-#
-# "auto" prefers papercut and falls back to agy when the image server is not running -- which
-# is also what happens on a machine without Apple Silicon, where mflux cannot run at all.
-# Force one with PAPERREEL_ASSET_BACKEND=papercut / =agy.
-ASSET_BACKEND = os.environ.get("PAPERREEL_ASSET_BACKEND", "auto")
+# It is the only generator. The old fallback was agy, whose five-per-five-hours window is
+# gone along with it -- so on a machine where the image server is not up (or where mflux
+# cannot run at all), stills are uploads. That is what `manual_stills` on a board is for.
 PAPERCUT_URL = os.environ.get("PAPERREEL_PAPERCUT_URL", "http://127.0.0.1:8791")
 # The aspect preset in image/shared/types.ts that matches GEN_WIDTH x GEN_HEIGHT exactly.
 # Anything else gets cover-cropped by media.fit_frame at render time, which is how a still
@@ -215,8 +267,9 @@ PAPERCUT_ASPECT = "9:16-reel"
 PAPERCUT_STEPS = int(os.environ.get("PAPERREEL_PAPERCUT_STEPS", "4"))
 
 # What every still is asked for on top of the board's style bible and the beat's own
-# asset_prompt. Shared by both backends deliberately: two generators that word the medium
-# differently produce two different-looking reels depending on which one happened to be up.
+# asset_prompt. One place, because it is also what the vision review judges a still against:
+# a still is rejected for missing the medium described here, so the words that ask for it and
+# the words that check for it must not be able to drift apart.
 ASSET_STYLE_SUFFIX = (
     "Vertical 9:16 portrait composition, handcrafted layered paper-cutout art, visible "
     "paper grain, soft contact shadows, no text, no watermarks, no signature."

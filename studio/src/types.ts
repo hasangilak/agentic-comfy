@@ -151,8 +151,12 @@ export interface Container {
 }
 
 export interface ChatTurn {
-  /** "studio" is the board speaking for itself -- e.g. what an imported script arrived as. */
-  role: "user" | "agy" | "studio";
+  /**
+   * "studio" is the board speaking for itself -- e.g. what an imported script arrived as.
+   * "agy" is only ever read, never written: it is what the model was called before the studio
+   * moved to a local one, and boards written back then still carry it in their transcript.
+   */
+  role: "user" | "qwen" | "agy" | "studio";
   text: string;
   selection?: number[];
   ops?: { op: string; n?: number; summary: string }[];

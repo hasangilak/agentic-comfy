@@ -136,7 +136,7 @@ export function Canvas() {
   }, [board.slug, nodes, studio]);
 
   /**
-   * Selection is agy's context: "make this slower" needs to know which beat.
+   * Selection is the model's context: "make this slower" needs to know which beat.
    *
    * Only ever set from a non-empty selection. Clicking into the chat box blurs the canvas
    * and React Flow reports an empty selection, which would silently drop the context the

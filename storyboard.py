@@ -4,8 +4,9 @@
 # ///
 """Concept -> script -> assets -> chained clips -> one stitched Reel.
 
-Planning and asset generation go through the Antigravity CLI and cost no money; only
---render touches a GPU. The stages are separable so you can iterate for free and pay once.
+Planning runs on a local model through Ollama and the stills on the local image server; both
+are free. Only --render touches a GPU. The stages are separable so you can iterate for free
+and pay once.
 
     uv run storyboard.py --concept "a paper pig finds a pond" --beats 4 --seconds 10
     uv run storyboard.py --script story.json          # your own script, no planner turn
@@ -25,6 +26,7 @@ from pathlib import Path
 
 from paperreel import board as board_mod
 from paperreel import config, papercut, pipeline, planner, script as script_mod
+from paperreel import stills as stills_mod
 
 
 def slugify(text: str) -> str:
@@ -108,12 +110,19 @@ def main() -> None:
             print("[script] this script mixes beat lengths, which --render flattens to one "
                   "--seconds. Open it in the studio to render it as written.")
     elif do_plan:
-        print(f"[plan] {args.beats} beats x {args.seconds:.0f}s via {config.PLANNER_MODEL}")
-        board = planner.plan(args.concept, args.beats, args.seconds, workdir)
+        print(f"[plan] {args.beats} beats x {args.seconds:.0f}s via {config.QWEN_MODEL}")
+        plan = planner.plan(args.concept, args.beats, args.seconds)
+        plan["seconds"] = args.seconds
+        # Through the same normaliser an imported script takes, because both are now written
+        # against the same brief: numbers compacted, lengths snapped, beat 1 forced onto its
+        # own still, and a beat with no action refused rather than written to disk.
+        board = script_mod.normalise(plan)
         board_path.write_text(json.dumps(board, indent=2))
         print(f'[plan] "{board["title"]}" -> {board_path}')
         for beat in board["beats"]:
-            print(f"       {beat['n']}. {beat['scene']}")
+            print(f"       {beat['n']}. [{beat['source']}, {beat['seconds']:.0f}s] {beat['scene']}")
+        for note in script_mod.notes(board):
+            print(f"[plan] {note}")
     else:
         if not board_path.exists():
             raise SystemExit(f"no storyboard at {board_path}; run with --concept first")
@@ -138,34 +147,27 @@ def main() -> None:
             if (workdir / f"beat{beat['n']}_asset.png").exists():
                 print(f"[asset] beat {beat['n']}: already present, skipping")
 
-        # Prefer the local mflux renderer next door when it is up: no quota, and it renders
-        # straight onto the H3 grid so nothing is cropped on the way to the video model.
-        # Falls back to agy, whose ~five-per-five-hours image window is the tightest limit
-        # anywhere in this pipeline. Same file either way, so the choice is invisible later.
-        if missing() and config.ASSET_BACKEND != "agy" and papercut.available():
-            print(f"[asset] {config.PAPERCUT_URL} -- local mflux, no quota")
+        # The local mflux renderer next door is the only generator: free, unmetered, and it
+        # renders straight onto the H3 grid so nothing is cropped on the way to the video
+        # model. Every still it produces is then looked at by the same local model that wrote
+        # the script -- see paperreel/stills.py. With the server down there is nothing to fall
+        # back to, so the stills have to be supplied by hand.
+        if missing():
+            # Wraps the same dict, so a prompt the review pass rewrites lands in `board` here
+            # as well as on disk.
             live = board_mod.Board(slug=name, path=board_path, data=board)
             try:
-                papercut.generate(live, [b["n"] for b in missing()], log=print)
-            except papercut.PapercutError as gone:
-                # The server can go away between the probe and the render. Whatever landed
-                # stays, and the loop below picks up the rest through agy.
-                print(f"[asset] {gone}")
-
-        # In scene mode every beat is a hard cut, so each still has to be generated from the
-        # first one rather than from the style bible alone -- otherwise the cast is redesigned
-        # once per scene and no two shots share a character.
-        first = workdir / f"beat{board['beats'][0]['n']}_asset.png"
-        for beat in missing():
-            out = workdir / f"beat{beat['n']}_asset.png"
-            reference = first if first.exists() and first != out else None
-            print(f"[asset] beat {beat['n']}: generating"
-                  + (f", characters locked to {reference.name}" if reference else ""))
-            try:
-                planner.generate_asset(beat, board["style_bible"], out, workdir,
-                                       reference=reference)
-            except planner.QuotaExhausted as exhausted:
-                raise SystemExit(f"[asset] {exhausted}")
+                stills_mod.generate(
+                    live, stills_mod.wanted(live, [b["n"] for b in missing()]), log=print,
+                )
+            except (stills_mod.StillsError, papercut.PapercutError) as gone:
+                raise SystemExit(f"[asset] {gone}")
+        short = missing()
+        if short:
+            raise SystemExit(
+                f"[asset] beat {', '.join(str(b['n']) for b in short)} still have no still. "
+                f"Drop a beat<n>_asset.png into {workdir}, or open the reel in the studio."
+            )
         print(f"[asset] assets in {workdir}")
 
     if do_render:

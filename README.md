@@ -3,17 +3,19 @@
 Turn a one-line concept into a vertical 1080×1920 Instagram Reel in handcrafted
 paper-cutout stop-motion, using MiniMax-H3 on a single GPU on Modal.
 
-Scripts come from the Antigravity CLI (`agy`), which bills against your Google plan quota
-rather than a metered API. Opening stills come from **Papercut Studio** in `image/` —
-`flux2-klein-4b` through mflux on this machine, free and unmetered — falling back to agy's
-five-images-per-five-hours pool when that server is not running. Only rendering costs money,
-so the stages are deliberately separable: iterate for free, pay once. A script you wrote
-yourself is imported as it stands, with no planning turn at all.
+Everything except the video is local and unmetered. Scripts come from **qwen3.6 on Ollama**
+on this machine — the same model then carries out board edits, writes the caption, and *looks
+at* every still with its vision head to check it belongs in the reel. Opening stills come from
+**Papercut Studio** in `image/`, `flux2-klein-4b` through mflux, also local. Only rendering
+costs money, so the stages are deliberately separable: iterate for free, pay once. A script you
+wrote yourself is imported as it stands, with no planning turn at all.
 
 ```
-concept ──agy──▶ ┐
-                 ├──▶ storyboard.json ──mflux──▶ opening asset   (image/, local, free)
- your own script ┘                                  │
+concept ──qwen──▶ ┐
+                  ├──▶ storyboard.json ──mflux──▶ opening still  (image/, local, free)
+  your own script ┘                                  │
+                                       qwen looks at it: same cast? ──reject──▶ rewrite, again
+                                                    │
                                           compose 9:16 frame (local, free)
                                                     │
                           ONE warm Modal container: N chained beats  ◀── the only cost
@@ -25,6 +27,7 @@ concept ──agy──▶ ┐
 ## Setup
 
 ```bash
+make qwen                                              # once, ~23 GiB into Ollama
 make login                                             # once — uvx modal setup
 make models                                            # once, ~59 GiB into a Volume
 ```
@@ -58,7 +61,8 @@ PAPERREEL_PUBLIC=1 uvx modal deploy comfyui_minimax_h3.py
 
 ## The studio
 
-A node canvas: talk to agy, get a script and a chain of shots, render when you're ready.
+A node canvas: talk to the local model, get a script and a chain of shots, render when you're
+ready.
 
 ```bash
 make install                                           # npm + the uv environment
@@ -72,25 +76,43 @@ without the image server, which is what you want on a session that is only editi
 `make frontend` and `make images` run one at a time; `make stop` kills any of them.
 `make help` lists the rest. Nothing in the Makefile can start a paid render.
 
-### Where stills come from
+### Where stills come from, and how they are checked
 
-Two backends produce the same file and nothing downstream can tell which one did:
+**Papercut Studio** (`image/`, mflux `flux2-klein-4b`) is the only generator: ~11 s a still,
+~19 s anchored, no quota, and it renders straight onto H3's 768×1344 generation grid so the
+frame reaches the video model exactly as it was approved rather than centre-cropped on the way
+in. With that server not listening there is nothing to fall back to — a beat's still is an
+upload, which is what the **my own** switch below is for. That is also the case on a machine
+without Apple Silicon, where mflux cannot run at all.
 
-| | quota | per still | resolution |
-| --- | --- | --- | --- |
-| **Papercut Studio** (`image/`, mflux `flux2-klein-4b`) | none | ~11 s, ~19 s anchored | renders at 768×1344, no crop |
-| **agy** (Antigravity's image tool) | ~5 per 5 hours | seconds | 9:16, cover-cropped to the grid |
+Papercut is shown the reel's cast reference in **anchor** mode: every still is conditioned on
+one image, so a cut changes the setting rather than the characters. A board with no still at
+all renders its first beat alone, unconditioned — that image becomes the reference the rest are
+anchored to.
 
-The studio prefers Papercut whenever `image/` is listening on :8791 and falls back to agy
-otherwise, which is also what happens on a machine without Apple Silicon, where mflux cannot
-run. Force one with `PAPERREEL_ASSET_BACKEND=papercut` or `=agy`. The job log names the one it
-used. Papercut renders straight onto H3's generation grid, so the frame reaches the video model
-exactly as it was approved rather than centre-cropped on the way in.
+Then the model looks at what came back. A style bible is words, and the same paragraph that
+produced a round-eared pig in beat 1 produces a sharper-eared one in beat 4 — neither prompt
+wrong, and until now nothing ever checked. Each finished still goes to qwen's vision head
+alongside the cast reference, judged on the cast, the medium, the palette and the frame, and
+explicitly *not* on the setting or the framing, which are supposed to differ. A still that
+misses gets its `asset_prompt` rewritten against the specific mismatch and is rendered again:
 
-Papercut is shown the reel's cast reference in **anchor** mode, which is the same job the
-reference does on the agy path: every still is conditioned on one image, so a cut changes the
-setting rather than the characters. A board with no still at all renders its first beat alone,
-unconditioned — that image becomes the reference the rest are anchored to.
+```
+[stills] beat 4: done in 20.3s
+[stills] beat 4: the characters (foxes) do not match the recurring character in the style bible
+[stills] beat 4: the palette (greens, oranges) violates the strict 6-colour limit
+[stills] beat 4: prompt rewritten -> Vertical 9:16 portrait composition of a handcrafted …
+[stills] beats [4]: rendering again from the rewritten prompts
+```
+
+One retry, not five (`PAPERREEL_STILL_ATTEMPTS`): mflux is free but not instant, and a still
+rejected twice is usually telling you the style bible is the problem. The rewritten prompt is
+saved to the board, so the node shows what changed and the next render starts from the
+corrected wording. `PAPERREEL_STILL_REVIEW=0` turns the whole pass off.
+
+The reference-defining beat is rendered and reviewed entirely on its own, before anything else
+starts. Its still *is* the reference the others are matched against, so reviewing it at the end
+of a batch would be too late to matter.
 
 By hand, if you prefer:
 
@@ -101,15 +123,35 @@ uv run studio.py                                       # http://127.0.0.1:8787
 
 ### Bring your own script
 
-`+ new` offers two ways in. **agy writes it** turns a one-line concept into a shot list, which
-is the fastest way to have something on the canvas. **paste a script** adopts one that already
-exists — hand-written, or written with an AI somewhere else — verbatim: beat order, per-beat
-lengths and which beats are cuts all arrive as written, and no agy turn happens. Talking agy
-into a script you have already finished is slower and loses detail on the way.
+`+ new` offers two ways in. **write it for me** turns a one-line concept into a shot list,
+which is the fastest way to have something on the canvas. **paste a script** adopts one that
+already exists — hand-written, or written with an AI somewhere else — verbatim: beat order,
+per-beat lengths and which beats are cuts all arrive as written, and no model turn happens.
+Talking a model into a script you have already finished is slower and loses detail on the way.
 
-`prompts/40s-paper-cutout-script.md` is the prompt that gets an AI to write one. It interviews
-you about beat structure and cast first, then returns the JSON the studio takes. Anything with
-`title` and a `beats` array of `action` lines will import; everything else has a default.
+Both paths are written against the *same* brief. `prompts/40s-paper-cutout-script.md` is the
+prompt that gets an AI to write a script — and it is also, verbatim, what the local model is
+handed by **write it for me**, with only its opening interview replaced by the beat count and
+length the studio already asked you for. There is deliberately no second, shorter copy of those
+rules inside `planner.py`: a summary that drifts from the document would have the two ways into
+a board quietly writing to different specifications.
+
+Then the model marks its own work. The brief ends in a 22-point self-check, so a second pass
+hands the whole brief back with the draft and asks it to run that list — which catches the
+faults that are invisible on the page and unmissable in the render: a chained beat whose action
+does not pick up where the last one ended, a character description that has drifted from the
+style bible, a `[Character Description]` placeholder left in an `asset_prompt`, no genuine
+close-up anywhere in the film. Every correction is named in the job log. Plan plus review is
+about five minutes and costs nothing; `PAPERREEL_PLAN_REVIEW=0` skips it.
+
+The joins are the model's to choose, which they were not before: it decides where the cuts go
+and where a take carries on unbroken, inside the rules of section 2. That used to be overwritten
+with "beat 1 is a cut, everything after it chains", because a cut cost one image from a
+five-per-five-hours quota. Stills are local and free now, so the shape of the film can be
+decided by the shape of the story.
+
+Anything with `title` and a `beats` array of `action` lines will import; everything else has a
+default.
 
 The import is checked but not fussy. Beats are renumbered from their array order, beat 1 is
 forced to open on its own still, lengths snap to 5 s or 10 s, and render settings (steps, seed)
@@ -124,12 +166,13 @@ those often exist already, made somewhere else. The script node's **opening stil
 fills them in one selection: pick or drop several images and they land on the beats that need
 one, in filename order. Name a file `beat3.png` and it goes to that beat exactly, which is also
 how you replace a still or put one on a beat that currently continues from the one before.
-Uploading spends no quota, and each node's own ⤒ upload still works for fixing one.
+Uploading costs nothing, and each node's own ⤒ upload still works for fixing one.
 
 The **my own** switch beside it turns image generation off for the reel: every ✦ generate
 control disappears and the server refuses an asset job with a 409, so no stale tab or stray
-request can spend the ~5-images-per-5-hours quota on a board whose stills you are supplying
-yourself. `I'll supply the stills` on the import panel starts a reel that way, since otherwise
+request can overwrite a still you supplied yourself — and neither can the model, which is
+refused by the same check from the same place. `I'll supply the stills` on the import panel
+starts a reel that way, since otherwise
 the first thing an imported script offers is a button that generates the stills it just
 described. Both are reversible: switch back to **generated** and the controls return.
 
@@ -140,16 +183,16 @@ disabled, so a scene cannot branch, connect twice, point backward, or form a loo
 **wire between two beats is the frame handoff**:
 
 - **solid green** — this beat continues from the previous clip's last frame. Not a new shot
-  at all: the same take carrying on, same set, same camera. Costs no image quota.
+  at all: the same take carrying on, same set, same camera. Needs no still.
 - **dashed amber** — this beat opens on its own still. A clean cut to somewhere else, one
-  image from the quota.
+  local render of ~11–19 s.
 - **solid green, labelled `→ still`** — a **bridge**: it continues from the previous clip
   *and* is given its own still as the frame it has to arrive at. One unbroken take that ends
-  on a composition you chose. One image from the quota, same as a cut.
+  on a composition you chose. Needs a still, same as a cut.
 - **no wire in, labelled `◈`** — a **reference** beat: no keyframe at all. It is shown up to
-  **nine** uploaded pictures of the cast and the set and composes its own opening frame.
-  Uploads, so no quota. It can optionally carry the previous clip in as a reference *video*,
-  which is this join's version of a continuation.
+  **nine** uploaded pictures of the cast and the set and composes its own opening frame. Its
+  pictures are uploads, so nothing generates them. It can optionally carry the previous clip
+  in as a reference *video*, which is this join's version of a continuation.
 
 The bridge exists because H3 takes two keyframes, a first and a last, and the wire only ever
 used the first. Click a beat's join line to walk the four. Use it when a continuous shot has
@@ -206,8 +249,8 @@ Use it when what you have is a cast — turnarounds, an outfit, a set — rather
 What it costs is the handoff: a reference beat cannot land on a still, and its continuity is
 "here is where the take had got to" rather than a frame-exact join. It also cannot be
 generated into: ✦ generate is gone from the node and the server refuses an asset job for it
-with a 409, because generating a still there would spend quota *and* silently turn the scene
-into a cut. Render time grows with the number of pictures, too — reference tokens ride through
+with a 409, because generating a still there would silently turn the scene into a cut and drop
+its pictures from the render. Render time grows with the number of pictures, too — reference tokens ride through
 every sampling step rather than being encoded once like a keyframe.
 
 Both checkpoints live on the Volume (19.5 GiB each), and ComfyUI loads whichever the queued
@@ -228,9 +271,9 @@ is how a background quietly becomes a different place halfway through a clip.
 
 Every beat has its own persistent **upload** and **generate** controls, so all scene assets
 can be prepared before any video rendering starts. Dragging an image onto a frame works too,
-and the script node fills a whole reel's stills from one multi-file selection. Uploading costs
-no quota, which matters because image generation is capped at roughly five per five hours —
-and generation can be switched off entirely, per reel. Supplying or generating a still makes
+and the script node fills a whole reel's stills from one multi-file selection. Uploading needs
+no image server, which matters on a machine where mflux cannot run — and generation can be
+switched off entirely, per reel. Supplying or generating a still makes
 that beat a new shot, so its wire switches to a cut — unless it is already a bridge, where the
 still is the frame it lands on and the continuation is left alone. Anything far from 9:16 gets
 a crop warning before you pay to discover it.
@@ -248,11 +291,14 @@ and the render button re-prices itself. It renders **only what's dirty**, so fix
 a four-beat reel costs $0.28 rather than $1.13. Clips attach to their nodes as each beat
 finishes, so beat 1 is watchable while beat 4 is still sampling.
 
-Agy can rewrite, re-time, reorder, add and remove beats, and write the caption — all free.
-It cannot render. Spending money stays a human action.
+The model can rewrite, re-time, reorder, add and remove beats, ask the image server for the
+stills a board is missing, and write the caption — all free. A turn is a tool loop, so it can
+edit a beat, read the board back to see what that did, and then ask for the stills that change
+created, all inside one turn, with each step in the job log. It cannot render. Spending money
+stays a human action.
 
-The server runs locally because it shells out to `agy` and `modal`; the browser never talks
-to Modal, so the proxy tokens stay on your machine.
+The server runs locally because it drives Ollama, the image server and the `modal` CLI, all on
+this machine; the browser never talks to Modal, so the proxy tokens stay on yours.
 
 For frontend development, run `npm run dev` in `studio/` alongside `uv run studio.py` and
 use the Vite URL — it proxies the API through.
@@ -264,7 +310,7 @@ use the Vite URL — it proxies the API through.
 uv run storyboard.py --concept "a paper pig finds a hidden pond" --beats 4 --seconds 10
 uv run storyboard.py --script story.json        # or adopt your own, no planner turn
 
-# 2. opening asset — free, but image quota is the scarce resource
+# 2. opening stills — free; needs `make images` running, and reviews what it renders
 uv run storyboard.py --name <slug> --assets
 
 # 3. render — the only paid stage; deploys, renders, stitches, stops
@@ -326,18 +372,31 @@ Other measurements worth keeping:
   load. Chaining is serial by construction anyway. Parallelism is a latency tool, not a
   cost tool.
 
-### Quota, not credits
+### No quota, no key, no per-token charge
 
-`agy` authenticates as your Google account (`oauth-personal`); there's no API key and no
-GCP billing project, so no per-token charge can land on a bill. Limits are enforced as
-**quota that refreshes on a ~5 hour window**, with purchasable AI credits as an *opt-in*
-overage (governed by an "AI Credit Overages" setting; leave it on "Never").
+Nothing outside the GPU render is metered. The language model is `qwen3.6` under Ollama on
+this machine — 36B MoE, 23 GiB of weights, with `vision`, `tools` and `thinking` all reported
+by `ollama show`, which is what lets one model write the script, drive the board through tool
+calls and look at the stills. The stills come from mflux, also local. No API key exists to
+leak and no request leaves the laptop.
 
-**Image generation has its own, much tighter pool — roughly five images per window.**
-That was the real constraint on iteration speed, and the reason chaining matters: a
-chained reel needs exactly **one** image regardless of beat count. It applies only when agy
-is the stills backend; with `image/` running there is no image quota at all, and chaining
-becomes an editorial choice about seams rather than a way to ration pictures.
+This replaced the Antigravity CLI, and one number is why it mattered: `agy`'s image tool
+allowed roughly **five generations per five-hour window**, and its agent turns came out of the
+same plan quota. That single limit shaped most of the original design — it is why chaining is
+the default and why a reel was built to need one image rather than one per beat. Both are still
+good filmmaking; neither is forced any more. Chaining is now an editorial choice about seams.
+
+What the absence of a meter bought, concretely, is two passes that were never worth a quota
+slot: the script marks its own work against the brief's 22-point self-check, and every still is
+looked at next to the cast reference before the board accepts it.
+
+Knobs, all with `PAPERREEL_` prefixes: `QWEN_MODEL`, `OLLAMA_URL`, `QWEN_NUM_CTX` (32768 — the
+review pass holds the whole brief plus a draft plus its correction), `PLAN_THINK`,
+`PLAN_REVIEW`, `STILL_REVIEW`, `STILL_ATTEMPTS`, `QWEN_TIMEOUT`, `QWEN_KEEP_ALIVE`.
+
+Reasoning is off everywhere except the planning pair, and that is measured rather than assumed:
+an unambiguous board edit took **0.9 s** with thinking off and **14 s** with it on, for the same
+single tool call. Writing a script is the one place the wall clock is worth it.
 
 ## Layout
 
@@ -345,12 +404,14 @@ becomes an editorial choice about seams rather than a way to ration pictures.
 paperreel/config.py     geometry, rates, prompt scaffold, measured constants
 paperreel/media.py      chroma-key cutout, compositing, stitching  (local, free)
 paperreel/comfy.py      ComfyUI client + the 15-node H3 graph
+paperreel/qwen.py       Ollama: structured output, tool calls, vision
 paperreel/papercut.py   stills from image/, over HTTP on this machine
-paperreel/planner.py    agy: storyboard and asset generation
+paperreel/stills.py     rendering stills, then looking at them
+paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/script.py     adopting a script written outside the studio
 paperreel/pipeline.py   app lifecycle + chained batch rendering
 paperreel/board.py      the board document; state derived from disk
-paperreel/agent.py      agy conversation -> board operations
+paperreel/agent.py      the tool loop -> board operations
 paperreel/jobs.py       one worker, one container, one event stream
 paperreel/render.py     rendering with per-beat telemetry
 paperreel/api.py        HTTP + SSE for the studio
@@ -379,8 +440,18 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   bypasses that and only logs a warning.
 - **Cross-scene consistency is improved but not measured.** Independent scenes no longer
   rely on the `style_bible` text alone — every still is generated conditioned on the cast
-  reference image, and the bible is now in the video prompt too — but how far that holds
-  over a long reel of hard cuts has not been quantified on real renders.
+  reference image, the bible is in the video prompt too, and the model now looks at each
+  finished still and rejects one whose cast has drifted. That last check is verified to fire
+  correctly on an obvious mismatch and to pass a good still, but its rate of false accepts on
+  *subtle* drift over a long reel of hard cuts has not been quantified.
+- **The review passes are not deterministic.** The script self-check and the still review are
+  the same model reading its own output, so two runs of the same board can disagree about
+  whether something needs fixing. The still review is pinned to temperature 0.1 to keep that
+  narrow, and both are capped — one still retry, one script pass — so a swing costs wall clock
+  and never loops. Turn either off with `PAPERREEL_STILL_REVIEW=0` / `PAPERREEL_PLAN_REVIEW=0`.
+- **Planning is slow.** Draft plus self-check is about five minutes on a 36B local model,
+  against a few seconds for a hosted one. It costs nothing and it is a job the UI shows
+  progress for, but it is not interactive.
 - **Container may be over-provisioned** at 8 cores / 64 GiB — that's 23% of the bill
   and was never measured against actual usage.
 - **The studio's per-step progress is unverified against a live render.** ComfyUI's `/ws`

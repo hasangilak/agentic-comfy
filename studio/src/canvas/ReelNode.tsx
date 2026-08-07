@@ -57,7 +57,7 @@ export function ReelNode() {
             className="ml-auto"
             disabled={writing}
             onClick={() => void studio.guard(() => api.caption(board.slug))}
-            title="free — asks agy to write it from the board"
+            title="free — asks the local model to write it from the board"
           >
             {writing ? "writing…" : "↻ write it"}
           </Button>

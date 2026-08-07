@@ -1,7 +1,7 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useState } from "react";
 import { Canvas } from "./canvas/Canvas";
-import { AgyPanel } from "./panels/AgyPanel";
+import { StoryPanel } from "./panels/StoryPanel";
 import { ReelRail } from "./panels/ReelRail";
 import { TopBar } from "./panels/TopBar";
 import { StudioContext, useStudio, useStudioState } from "./useStudio";
@@ -42,7 +42,7 @@ export default function App() {
             )}
             <LogDrawer />
           </div>
-          {studio.board ? <AgyPanel /> : null}
+          {studio.board ? <StoryPanel /> : null}
         </div>
       </div>
     </StudioContext.Provider>

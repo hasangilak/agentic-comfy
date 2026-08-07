@@ -1,10 +1,14 @@
 """Adopting a script that was written outside the studio.
 
-The other way in asks agy for a script from a one-line concept. That is free and fast, but
-it is also agy's idea of the film. Someone who has already written the shot list elsewhere
+The other way in asks the local model for a script from a one-line concept. That is free, but
+it is also the model's idea of the film. Someone who has already written the shot list elsewhere
 -- by hand, or by walking an AI through `prompts/40s-paper-cutout-script.md` -- is holding
-exactly what agy would have produced, and should not have to talk it back into existence
-one nudge at a time. So this takes the JSON straight in, and no agy turn happens at all.
+exactly what the planner would have produced, from exactly the same brief, and should not have
+to talk it back into existence one nudge at a time. So this takes the JSON straight in.
+
+`normalise` is on both paths, though: `agent.create` runs the planner's output through it too,
+because a script is a script whoever wrote it, and there should be one place that decides how
+one becomes a board.
 
 Only the fields the board renders from survive. Per-beat `render` records, `canvas`
 positions and `spend_seconds` are dropped on the way through, because the new directory
@@ -197,7 +201,7 @@ def adopt(data: dict, *, slug: str | None = None,
     stills = [b["n"] for b in plan["beats"] if board_mod.uses_asset(b["source"])]
     total = sum(b["seconds"] for b in plan["beats"])
     # One turn, so the panel opens with the shape of what arrived rather than empty, and so
-    # agy's next turn replays a transcript that says where the board came from.
+    # the model's next turn replays a transcript that says where the board came from.
     plan["chat"] = [{
         "role": "studio",
         "text": (
@@ -213,7 +217,8 @@ def adopt(data: dict, *, slug: str | None = None,
         "ops": [{"op": "set_script", "summary": "adopted a script written outside the studio"}],
     }]
     # Named after the title, not the concept: a supplied script has a title the author chose,
-    # where agy's path only has the one-line concept to go on when the directory is made.
+    # where the planner's path only has the one-line concept to go on when the directory is
+    # made, before there is a title to name it after.
     return board_mod.Board.create(
         slug or free_slug(board_mod.slugify(plan["title"] or plan["concept"])), plan
     )

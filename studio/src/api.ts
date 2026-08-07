@@ -39,7 +39,7 @@ export const api = {
   createReel: (concept: string, beats: number, seconds: number) =>
     post<{ job: Job }>("/api/reels", { concept, beats, seconds }).then((r) => r.job),
 
-  /** Adopt a script written outside the studio. No agy turn, so the reel exists on return. */
+  /** Adopt a script written outside the studio. No model turn, so the reel exists on return. */
   importReel: (script: string, manualStills: boolean) =>
     post<{ slug: string; board: Board; notes: string[] }>("/api/reels/import", {
       script,
@@ -154,8 +154,10 @@ export const api = {
     call<{
       auth: boolean;
       backend: string;
-      /** Which generator a still would come from right now — the quota copy is agy's alone. */
-      stills: { backend: "papercut" | "agy"; papercut_url: string };
+      /** "none" means the image server is not running, so stills have to be uploads. */
+      stills: { backend: "papercut" | "none"; papercut_url: string };
+      /** The local model. Without it there is no script, no conversation and no caption. */
+      language: { url: string; model: string; ready: boolean };
     }>("/api/status"),
 };
 

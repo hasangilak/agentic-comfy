@@ -173,7 +173,7 @@ export function TopBar() {
 function Phases({ job }: { job: import("../types").Job }) {
   if (job.kind !== "render") {
     const labels: Record<string, string> = {
-      chat: "agy thinking",
+      chat: "qwen thinking",
       plan: "writing the script",
       asset: "generating a still",
       caption: "writing the caption",

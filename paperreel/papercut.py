@@ -1,22 +1,22 @@
 """Opening stills from Papercut Studio -- the local mflux renderer in `image/`.
 
-Why this exists: `agy`'s image tool allows roughly FIVE generations per five-hour window,
-and that single number shaped most of this pipeline. It is why chaining is the default, why
-a reel is designed to need one image rather than one per beat, and why the studio has a
-switch for turning generation off entirely. Papercut Studio runs `flux2-klein-4b` through
-mflux on this machine: no quota, no key, nothing leaves the laptop, and a still costs
-seconds instead of a slot.
+The transport, and only the transport. `stills.py` owns the judgement around it: which beats
+may get a still at all, and what happens to one that comes back looking like a different
+production. This module creates a scene, starts it, follows its event stream and puts the
+finished frames on disk as `beat<n>_asset.png`.
 
 The seam is HTTP on loopback, not shared code. Papercut owns prompt composition, the render
-lock and the progress scraping; this module owns the board and the joins. Neither imports
-the other, and the reel pipeline runs unchanged when the image server is not up -- `handle`
-falls back to agy.
+lock and the progress scraping; this side owns the board and the joins. Neither imports the
+other.
 
     if papercut.available():
         made = papercut.generate(board, [2, 3, 5], log=print)
 
-Both backends write the same file, `beat<n>_asset.png`, so nothing downstream can tell which
-one produced a still.
+It is the only generator of stills. The old fallback was the Antigravity CLI's image tool,
+whose ~five-images-per-five-hour window is the reason chaining is the default and a reel is
+designed to need one image rather than one per beat -- both of which are still good design,
+and neither of which is forced any more. With the image server down, a beat's still is an
+upload; that is what `manual_stills` on a board is for.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ import httpx
 from . import board as board_mod
 from . import config
 
-# Long enough to survive a machine busy with an mflux render, short enough that a studio
-# with no image server does not stall on every asset click before falling back to agy.
+# Long enough to survive a machine busy with an mflux render, short enough that a studio with
+# no image server answers "not running" promptly instead of stalling on every asset click.
 PROBE_TIMEOUT = 2.0
 # No read timeout on the event stream: a frame takes tens of seconds and the server's only
 # traffic in between is a 15 s keep-alive ping. Connect and write stay bounded.
@@ -48,8 +48,9 @@ class PapercutError(RuntimeError):
 def health(url: str | None = None) -> dict | None:
     """What the image server says about itself, or None if it is not there.
 
-    Deliberately swallows every transport error: "not running" is the ordinary case on a
-    machine that only ever uses agy, not a fault to report.
+    Deliberately swallows every transport error: "not running" is an ordinary state on a
+    machine that supplies its own stills, or one where mflux cannot run at all, not a fault to
+    report. `stills.py` turns it into a refusal with words when a still is actually wanted.
     """
     try:
         response = httpx.get(f"{url or config.PAPERCUT_URL}/api/health", timeout=PROBE_TIMEOUT)
@@ -75,8 +76,9 @@ def max_frames(reported: dict | None) -> int:
 def style_for(board: board_mod.Board) -> str:
     """The scene-level suffix Papercut appends to every beat.
 
-    The board's style bible plus the same medium clause the agy backend uses, so a reel
-    whose stills came from both backends still looks like one production.
+    The board's style bible plus `config.ASSET_STYLE_SUFFIX`, which is also what the vision
+    review judges a still against -- so the words that ask for the medium and the words that
+    check for it cannot drift apart.
     """
     bible = " ".join((board.data.get("style_bible") or "").split()).strip()
     return f"{bible} {config.ASSET_STYLE_SUFFIX}".strip()
@@ -114,9 +116,9 @@ def _runs(board: board_mod.Board, beats: list[int], cap: int) -> Iterator[tuple[
 def _scene_body(board: board_mod.Board, beats: list[int], reference: Path | None) -> dict:
     """One Papercut scene describing a run of stills.
 
-    Papercut composes `continuity clause (when conditioned) + frame beat + scene style`,
-    which is the same order the agy backend asks for in prose. The beat text is this beat's
-    own `asset_prompt`; everything shared lives in the style suffix.
+    Papercut composes `continuity clause (when conditioned) + frame beat + scene style`. The
+    beat text is this beat's own `asset_prompt`; everything shared across the reel lives in the
+    style suffix, which is what keeps one board's stills reading as one production.
 
     `duration` and the frame timings derived from it are Papercut's own unit of judgment and
     mean nothing here -- these frames are opening compositions for separate shots, not a
@@ -170,8 +172,8 @@ def _download(client: httpx.Client, url: str, out_path: Path) -> Path:
 
     The image server's output directory is relative to whatever directory it was started
     in, so guessing at `image/out/...` from here would break the moment someone runs it from
-    somewhere else. Re-encoding through PIL normalises the file the same way the agy backend
-    does, which is a no-op on mflux's real PNGs and cheap enough not to special-case.
+    somewhere else. Re-encoding through PIL normalises the file, which is a no-op on mflux's
+    real PNGs and cheap enough not to special-case an uploaded one.
     """
     from PIL import Image
 
@@ -253,8 +255,8 @@ def generate(board: board_mod.Board, beats: list[int], *,
     reported = health(url)
     if reported is None:
         raise PapercutError(
-            f"no image server at {url or config.PAPERCUT_URL}. Start it with "
-            "`make images`, or set PAPERREEL_ASSET_BACKEND=agy to use Antigravity instead."
+            f"no image server at {url or config.PAPERCUT_URL}. Start it with `make images` "
+            "(or `make studio`, which starts all three), or upload the stills by hand."
         )
     cap = max_frames(reported)
     made: list[int] = []
