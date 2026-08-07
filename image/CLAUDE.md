@@ -19,7 +19,9 @@ make build           # typecheck + vite build
 make doctor          # node, zip, mflux binaries, arch, weights
 make health          # GET /api/health on the running server
 make scenes          # list scenes on disk with frame counts
-make ports / kill    # inspect or free 5173 and 8791
+make stop            # stop both processes (in-flight mflux render survives)
+make stop-mflux      # kill an in-flight render
+make ports           # what is listening on 5173 and 8791
 make clean           # dist + tsbuildinfo    (distclean also drops node_modules)
 PORT=9000 make dev-server
 ```
@@ -74,6 +76,19 @@ Rendered frame URLs get a `?v=<timestamp>` suffix on completion — the file pat
 
 Documented in the README and worth preserving in any UX work: chain mode drifts around frame 3+ (background elements appear/disappear); re-rendering a middle frame in chain mode leaves later frames conditioned on the old version, so the tail must be re-rendered too; hands are `flux2-klein-4b`'s consistent weak point.
 
+## The reel pipeline next door
+
+This project sits inside the **paperreel** repo (`../`), which turns a storyboard into a video by rendering MiniMax-H3 on a GPU on Modal. paperreel calls this server to produce the opening still each of its shots starts from — `../paperreel/papercut.py` is the client, over plain HTTP on `127.0.0.1:8791`. It replaces a Google-quota image tool capped at roughly five images per five hours, which is the whole reason the seam exists.
+
+Nothing here imports anything from paperreel, and this server has no idea it is being driven. What it does have are two commitments to keep:
+
+- **`GET /api/health` is a contract.** `service`, `limits.minFrames`, `limits.maxFrames`. paperreel probes it to decide whether stills can be rendered locally at all and reads the frame cap off it rather than hardcoding 9. Keep the shape.
+- **The `9:16-reel` preset (768×1344) is paperreel's generation grid**, not a taste choice. A still handed to H3 at any other size is cover-cropped and rescaled on the way in, which loses the framing the user just approved. Don't retune those numbers to make renders faster.
+
+A scene created by paperreel looks unusual from this side and is meant to: `duration` is meaningless (opening frames of separate shots, not a sequence to play back), `consistency` is always `anchor` or `none`, and `referencePath` points outside `out/` into the reel's directory. All of that already works — `referenceFor()` only checks the file exists.
+
 ## Repo notes
 
 `out/` is gitignored and is the durable store — deleting it deletes scene history. `.claude/skills/impeccable/` is a design skill; `PRODUCT.md` and `.impeccable/` are its artifacts, not application code.
+
+This directory is its own git repository nested inside paperreel's, with no remote and no `.gitmodules` entry. Commits here do not reach the outer repo.

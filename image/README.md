@@ -53,6 +53,9 @@ Measured on this machine at 1152×640, 4 steps:
 - text-to-image frame — about 7 s
 - chained edit frame — about 13 s
 
+At 768×1344 (the **9:16 reel** preset, ~1.8× the pixels) the same two measured 10.7 s and
+18.5 s.
+
 So a 5-frame scene in Chain mode lands around a minute. The header shows a live estimate
 that switches to your machine's real measured average once frames start landing.
 
@@ -64,6 +67,18 @@ two concurrent renders would thrash.
 Frames are written to `out/scenes/<id>/frame-NN.png` alongside a `scene.json` that survives
 restarts. **Play** runs them back at their real hold durations so you can judge the timing
 before committing; **Download zip** packages the rendered frames.
+
+## Feeding the reel pipeline
+
+The **9:16 reel** aspect preset renders at 768×1344, which is the generation grid MiniMax-H3
+uses in the paperreel project one directory up. A still made at any other size is
+cover-cropped on the way into the video model, so this preset is the one to pick when the
+frame is going to become a shot rather than a look test.
+
+paperreel drives this server directly — start it with `make images` from the parent directory
+(or `make dev-server` here) and the reel studio's ✦ generate buttons render through mflux
+instead of a cloud image tool with a five-per-five-hours cap. It falls back on its own if this
+server is not listening.
 
 ## Known behaviour
 

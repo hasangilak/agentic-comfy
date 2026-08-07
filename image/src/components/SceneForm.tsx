@@ -78,21 +78,19 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
         />
       </label>
 
-      <div className="field-row">
-        <label className="field">
-          <span>
-            Scene length <b>{value.duration}s</b>
-          </span>
-          <input
-            type="range"
-            min={1}
-            max={30}
-            step={1}
-            value={value.duration}
-            onChange={(e) => set('duration', Number(e.target.value))}
-          />
-        </label>
-      </div>
+      <label className="field">
+        <span>
+          Scene length <b>{value.duration}s</b>
+        </span>
+        <input
+          type="range"
+          min={1}
+          max={30}
+          step={1}
+          value={value.duration}
+          onChange={(e) => set('duration', Number(e.target.value))}
+        />
+      </label>
 
       <div className="field">
         <span>
@@ -138,9 +136,9 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
         <span>Reference image {value.consistency === 'none' && <em>(ignored in Free mode)</em>}</span>
         <div className="reference">
           {value.referenceUrl ? (
-            <img src={value.referenceUrl} alt="reference" />
+            <img src={value.referenceUrl} alt="Uploaded reference image" />
           ) : (
-            <div className="reference-empty">none</div>
+            <div className="reference-empty">None</div>
           )}
           <div className="reference-actions">
             <input
@@ -164,7 +162,11 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
             )}
           </div>
         </div>
-        {uploadError && <small className="error">{uploadError}</small>}
+        {uploadError && (
+          <small className="error" role="alert">
+            {uploadError}
+          </small>
+        )}
       </div>
 
       <details className="advanced">
@@ -235,7 +237,11 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
         </small>
       </details>
 
-      <button className="primary" type="submit" disabled={busy || dirty === false}>
+      <button
+        className={dirty === false ? 'ghost' : 'primary'}
+        type="submit"
+        disabled={busy || dirty === false}
+      >
         {submitLabel}
       </button>
     </form>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   DEFAULT_NEGATIVE,
@@ -56,8 +56,10 @@ export default function App() {
   const [beats, setBeats] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [playing, setPlaying] = useState(false)
+  const [playFrom, setPlayFrom] = useState<number | null>(null)
   const [showLog, setShowLog] = useState(false)
+  const [listLoading, setListLoading] = useState(true)
+  const logRef = useRef<HTMLPreElement>(null)
 
   const { scene, logs, connected } = useSceneStream(activeId)
 
@@ -66,6 +68,8 @@ export default function App() {
       setScenes(await api.listScenes())
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setListLoading(false)
     }
   }, [])
 
@@ -89,8 +93,16 @@ export default function App() {
     setBeats(scene.frames.map((f) => f.beat))
   }, [scene?.id, scene?.frames.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A log that does not follow its own tail is a log you have to chase.
+  useEffect(() => {
+    const el = logRef.current
+    if (showLog && el) el.scrollTop = el.scrollHeight
+  }, [logs, showLog])
+
   const isNew = activeId === null
   const running = scene?.status === 'running'
+  // The stream has not delivered the selected scene yet — not the same thing as "no scene".
+  const loadingScene = !isNew && !scene
 
   const dirty = useMemo(() => {
     if (isNew || !scene) return true
@@ -154,16 +166,19 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>
-          Papercut Studio<span className="dot" data-connected={connected} />
-        </h1>
-        <p>Stop-motion keyframes on flux2-klein-4b, local.</p>
+        <h1>Papercut Studio</h1>
+        <p className="topbar-sub">Stop-motion keyframes on flux2-klein-4b, local.</p>
+        <p className="conn" role="status">
+          <span className="dot" data-connected={connected} />
+          {connected ? 'Render server connected' : 'Render server not connected'}
+        </p>
       </header>
 
       <div className="layout">
         <SceneList
           scenes={scenes}
           activeId={activeId}
+          loading={listLoading}
           onSelect={setActiveId}
           onNew={() => {
             setActiveId(null)
@@ -171,6 +186,15 @@ export default function App() {
             setBeats([])
           }}
           onDelete={async (id) => {
+            const target = scenes.find((s) => s.id === id)
+            const rendered = target?.frames.filter((f) => f.status === 'done').length ?? 0
+            const label = target?.title || 'this untitled scene'
+            const ok = window.confirm(
+              rendered > 0
+                ? `Delete “${label}” and its ${rendered} rendered frame${rendered === 1 ? '' : 's'}? The files are removed from out/ and cannot be recovered.`
+                : `Delete “${label}”? It has no rendered frames yet.`,
+            )
+            if (!ok) return
             await guard(() => api.remove(id))
             if (id === activeId) setActiveId(null)
             void refreshList()
@@ -188,7 +212,14 @@ export default function App() {
           />
 
           <section className="frames-panel">
-            {!scene && (
+            {loadingScene && (
+              <div className="empty" aria-busy="true">
+                <h2>Loading scene…</h2>
+                <p>Reading the frames off disk.</p>
+              </div>
+            )}
+
+            {isNew && (
               <div className="empty">
                 <h2>Describe a scene, pick 2–9 frames, hit create.</h2>
                 <p>
@@ -203,7 +234,7 @@ export default function App() {
                 <div className="toolbar">
                   <div className="toolbar-info">
                     <strong>{scene.title || 'Untitled scene'}</strong>
-                    <small>
+                    <small role="status" aria-live="polite">
                       {doneCount}/{scene.frames.length} rendered · {scene.width}×{scene.height} ·{' '}
                       {scene.consistency} · {scene.status}
                       {running && remaining > 0 && ` · ~${formatDuration(remaining)} left`}
@@ -219,7 +250,7 @@ export default function App() {
                     <button
                       type="button"
                       className="ghost"
-                      disabled={running}
+                      disabled={running || busy}
                       onClick={async () => {
                         const next = await guard(() => api.resetBeats(scene.id))
                         if (next) setBeats(next.frames.map((f) => f.beat))
@@ -227,23 +258,36 @@ export default function App() {
                     >
                       Reset beats
                     </button>
-                    <button type="button" disabled={doneCount < 2} onClick={() => setPlaying(true)}>
+                    <button
+                      type="button"
+                      disabled={doneCount < 2}
+                      title={doneCount < 2 ? 'Playback needs at least two rendered frames' : undefined}
+                      onClick={() => setPlayFrom(0)}
+                    >
                       Play
                     </button>
-                    <a
-                      className={`button ${doneCount ? '' : 'disabled'}`}
-                      href={api.downloadUrl(scene.id)}
-                    >
-                      Download zip
-                    </a>
+                    {doneCount ? (
+                      <a className="button" href={api.downloadUrl(scene.id)}>
+                        Download zip
+                      </a>
+                    ) : (
+                      <span className="button disabled" aria-disabled="true">
+                        Download zip
+                      </span>
+                    )}
                     {running ? (
-                      <button type="button" className="danger" onClick={() => void guard(() => api.cancel(scene.id))}>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => void guard(() => api.cancel(scene.id))}
+                      >
                         Stop
                       </button>
                     ) : (
                       <button
                         type="button"
                         className="primary"
+                        disabled={busy}
                         onClick={async () => {
                           if (beatsDirty) await saveBeats()
                           await guard(() => api.render(scene.id))
@@ -281,14 +325,20 @@ export default function App() {
                         if (beatsDirty) await saveBeats()
                         await guard(() => api.render(scene.id, [i]))
                       }}
-                      onOpen={() => setPlaying(true)}
+                      onOpen={() => setPlayFrom(frame.index)}
                     />
                   ))}
                 </div>
 
-                <details className="log" open={showLog} onToggle={(e) => setShowLog(e.currentTarget.open)}>
+                <details
+                  className="log"
+                  open={showLog}
+                  onToggle={(e) => setShowLog(e.currentTarget.open)}
+                >
                   <summary>mflux output ({logs.length})</summary>
-                  <pre>{logs.slice(-80).join('\n')}</pre>
+                  <pre ref={logRef} tabIndex={0}>
+                    {logs.length ? logs.join('\n') : 'No output yet — nothing has rendered this session.'}
+                  </pre>
                 </details>
               </>
             )}
@@ -297,12 +347,17 @@ export default function App() {
       </div>
 
       {error && (
-        <div className="toast error" onClick={() => setError(null)}>
-          {error}
+        <div className="toast" role="alert">
+          <p>{error}</p>
+          <button type="button" className="ghost tiny" onClick={() => setError(null)}>
+            Dismiss
+          </button>
         </div>
       )}
 
-      {playing && scene && <Player scene={scene} onClose={() => setPlaying(false)} />}
+      {playFrom !== null && scene && (
+        <Player scene={scene} startFrame={playFrom} onClose={() => setPlayFrom(null)} />
+      )}
     </div>
   )
 }

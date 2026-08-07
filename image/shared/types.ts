@@ -23,6 +23,14 @@ export const ASPECT_PRESETS: AspectPreset[] = [
   { id: '4:3', label: '4:3 landscape', width: 1152, height: 864 },
   { id: '1:1', label: '1:1 square', width: 1024, height: 1024 },
   { id: '9:16', label: '9:16 portrait', width: 640, height: 1152 },
+  // The MiniMax-H3 generation grid used by the reel pipeline next door. H3's quality
+  // profile is ~1 megapixel with both dimensions a multiple of 32, so a still handed to it
+  // at any other size is cover-cropped and rescaled on the way in. Rendering here instead
+  // means the frame reaches the video model exactly as it left this machine.
+  //
+  // It is ~1.8x the pixels of the 9:16 portrait preset above, so expect roughly that much
+  // more time per frame. Use the portrait preset to judge staging, this one to hand over.
+  { id: '9:16-reel', label: '9:16 reel · H3 grid', width: 768, height: 1344 },
 ]
 
 export const MIN_FRAMES = 2

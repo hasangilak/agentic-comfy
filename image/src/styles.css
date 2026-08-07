@@ -9,8 +9,23 @@
   --accent-2: #f0b429;
   --danger: #d9534f;
   --ok: #6aa84f;
+
+  /* Text that sits on a filled accent or danger surface. */
+  --on-accent: #1a1210;
+  --on-danger: #fff8f6;
+
+  /* Neutral surfaces that are not panels: progress tracks, overlays, photo mattes. */
+  --track: #3d3532;
+  --overlay: rgba(10, 8, 7, 0.86);
+  --matte: #0a0807;
+  --scrim: rgba(20, 17, 15, 0.74);
+
   --radius: 10px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+
   color-scheme: dark;
+  accent-color: var(--accent);
 }
 
 * {
@@ -39,6 +54,12 @@ button {
   color: inherit;
 }
 
+/* Anchors styled as buttons must not fall back to the UA link and visited colors. */
+.button,
+.button:visited {
+  color: inherit;
+}
+
 textarea {
   resize: vertical;
 }
@@ -50,7 +71,7 @@ select,
 textarea {
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   width: 100%;
 }
@@ -58,16 +79,30 @@ textarea {
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-button:focus-visible {
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 button,
 .button {
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   cursor: pointer;
   text-decoration: none;
@@ -78,7 +113,7 @@ button,
 }
 
 button:hover:not(:disabled),
-.button:hover {
+.button:hover:not(.disabled) {
   border-color: var(--accent);
 }
 
@@ -86,20 +121,23 @@ button:disabled,
 .button.disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.button.disabled {
   pointer-events: none;
 }
 
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1a1210;
+  color: var(--on-accent);
   font-weight: 650;
 }
 
 button.danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 
 button.ghost,
@@ -112,7 +150,7 @@ button.tiny {
 }
 
 .app {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -122,18 +160,26 @@ button.tiny {
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
 }
 
 .topbar h1 {
-  font-size: 17px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 18px;
+  letter-spacing: -0.01em;
 }
 
-.topbar p {
+.topbar-sub {
   margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.conn {
+  margin: 0 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -143,6 +189,7 @@ button.tiny {
   height: 8px;
   border-radius: 50%;
   background: var(--danger);
+  flex: none;
 }
 
 .dot[data-connected='true'] {
@@ -152,7 +199,6 @@ button.tiny {
 .layout {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  gap: 0;
   flex: 1;
   min-height: 0;
 }
@@ -179,7 +225,7 @@ button.tiny {
   display: flex;
   align-items: stretch;
   gap: 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .scene-list li.active {
@@ -210,6 +256,20 @@ button.tiny {
   font-size: 11px;
 }
 
+.scene-delete {
+  width: 32px;
+  padding: 0;
+  flex: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.scene-delete:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
@@ -232,7 +292,7 @@ button.tiny {
   gap: 12px;
   position: sticky;
   top: 16px;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 88px);
   overflow-y: auto;
 }
 
@@ -311,7 +371,7 @@ button.tiny {
 .segmented button.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1a1210;
+  color: var(--on-accent);
   font-weight: 650;
 }
 
@@ -325,15 +385,17 @@ button.tiny {
   width: 72px;
   height: 72px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
+  flex: none;
 }
 
 .reference-empty {
   width: 72px;
   height: 72px;
+  flex: none;
   border: 1px dashed var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   display: grid;
   place-items: center;
   color: var(--muted);
@@ -380,7 +442,8 @@ button.tiny {
 }
 
 .empty h2 {
-  font-size: 18px;
+  font-size: 19px;
+  letter-spacing: -0.01em;
   margin-bottom: 8px;
 }
 
@@ -420,6 +483,7 @@ button.tiny {
 
 .chain-note {
   margin: 0;
+  max-width: 78ch;
 }
 
 .frames-grid {
@@ -456,11 +520,13 @@ button.tiny {
 .frame-index {
   font-weight: 700;
   color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .frame-time {
   color: var(--muted);
   flex: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .badge {
@@ -468,7 +534,7 @@ button.tiny {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 2px 6px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   color: var(--muted);
 }
@@ -491,16 +557,51 @@ button.tiny {
 .frame-thumb {
   position: relative;
   background: var(--panel-2);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
-.frame-thumb img {
+.frame-open {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.frame-open:focus-visible {
+  outline-offset: -2px;
+}
+
+.frame-open img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  cursor: zoom-in;
+}
+
+.frame-open-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--scrim);
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.frame-open:hover .frame-open-badge,
+.frame-open:focus-visible .frame-open-badge {
+  opacity: 1;
 }
 
 .frame-placeholder {
@@ -519,17 +620,27 @@ button.tiny {
   right: 0;
   bottom: 0;
   height: 3px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--track);
 }
 
+/* Scaled, not resized: tqdm ticks several times a second across every running card. */
 .frame-progress div {
   height: 100%;
+  width: 100%;
   background: var(--accent-2);
-  transition: width 0.2s linear;
+  transform-origin: left center;
+  transition: transform 0.2s linear;
 }
 
+.frame-beat {
+  display: block;
+}
+
+/* Line-height in whole pixels so `rows` sizes the box to full lines —
+   a beat clipped mid-line reads as damage, not as overflow. */
 .frame-card textarea {
   font-size: 12.5px;
+  line-height: 19px;
 }
 
 .frame-error {
@@ -591,17 +702,27 @@ button.tiny {
   transform: translateX(-50%);
   background: var(--panel-2);
   border: 1px solid var(--danger);
-  border-radius: 8px;
-  padding: 10px 16px;
-  max-width: 70ch;
-  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 10px 10px 10px 16px;
+  max-width: min(70ch, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  box-shadow: 0 10px 30px -6px rgba(0, 0, 0, 0.55);
   z-index: 20;
+}
+
+.toast p {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .player-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--overlay);
   display: grid;
   place-items: center;
   z-index: 30;
@@ -616,12 +737,16 @@ button.tiny {
   width: 100%;
 }
 
+.player:focus {
+  outline: none;
+}
+
 .player img {
   width: 100%;
   max-height: 76vh;
   object-fit: contain;
   border-radius: var(--radius);
-  background: #000;
+  background: var(--matte);
 }
 
 .player-bar {
@@ -637,19 +762,34 @@ button.tiny {
 
 .player-dots {
   display: flex;
-  gap: 5px;
-  flex: 1;
+  gap: 2px;
+  flex: 0 1 auto;
+  margin-right: auto;
 }
 
 .player-dots button {
-  width: 24px;
-  height: 8px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border-radius: 99px;
-  background: var(--panel-2);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
 }
 
-.player-dots button.active {
+.player-dots button > span {
+  display: block;
+  width: 22px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.player-dots button:hover > span {
+  border-color: var(--accent);
+}
+
+.player-dots button.active > span {
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -658,6 +798,39 @@ button.tiny {
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Two independently scrolling columns: the form and the frame grid are both long,
+   and a single page scroll makes you lose one to reach the other. */
+@media (min-width: 1101px) {
+  .app {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .layout {
+    overflow: hidden;
+  }
+
+  .workspace {
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  .workspace > * {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* Nothing to scroll past — sit the empty state in the middle of its column. */
+  .frames-panel:has(> .empty:only-child) {
+    justify-content: center;
+  }
+
+  .scene-form {
+    position: static;
+    max-height: none;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -677,5 +850,47 @@ button.tiny {
   .scene-form {
     position: static;
     max-height: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 12px 14px;
+  }
+
+  .conn {
+    margin-left: 0;
+  }
+
+  .workspace {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .empty {
+    padding: 28px 20px;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .toolbar-actions > * {
+    flex: 1;
+  }
+
+  .frames-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

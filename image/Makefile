@@ -5,7 +5,7 @@ SHELL := /bin/bash
 PORT ?= 8791
 WEB_PORT ?= 5173
 
-.PHONY: help install dev dev-server dev-web build typecheck preview health scenes doctor ports kill clean distclean nuke-scenes
+.PHONY: help install dev dev-server dev-web build typecheck preview health scenes doctor ports stop stop-mflux clean distclean nuke-scenes
 
 help: ## Show this help
 	@awk 'BEGIN{FS=":.*##"} /^[a-zA-Z_-]+:.*##/{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -62,9 +62,36 @@ doctor: ## Check node, mflux binaries, and model weights
 ports: ## Show what is listening on the app ports
 	@lsof -nP -iTCP:$(PORT) -iTCP:$(WEB_PORT) -sTCP:LISTEN || echo "nothing listening on $(PORT) or $(WEB_PORT)"
 
-kill: ## Free the app ports (does not touch running mflux renders)
-	@pids=$$(lsof -ti:$(PORT) -ti:$(WEB_PORT) 2>/dev/null); \
-	if [ -z "$$pids" ]; then echo "nothing to kill"; else echo "$$pids" | xargs kill && echo "killed: $$pids"; fi
+# The patterns below are split across a quote so pgrep cannot match this recipe's own shell.
+stop: ## Stop the render server and web app (an in-flight mflux render keeps going)
+	@pat="$(CURDIR)/node_""modules/"; \
+	pids=$$(pgrep -f "$$pat" || true); \
+	if [ -z "$$pids" ]; then echo "nothing running"; else \
+		srv=0; web=0; \
+		for p in $$pids; do \
+			case "$$(ps -o command= -p $$p 2>/dev/null)" in \
+				*concurrently*) srv=1; web=1 ;; \
+				*tsx*) srv=1 ;; \
+				*vite*|*esbuild*) web=1 ;; \
+			esac; \
+		done; \
+		kill $$pids 2>/dev/null || true; \
+		if [ $$srv = 1 ]; then echo "stopped render server on 127.0.0.1:$(PORT)"; else echo "render server was not running"; fi; \
+		if [ $$web = 1 ]; then echo "stopped web app on localhost:$(WEB_PORT)"; else echo "web app was not running"; fi; \
+		echo "pids: $$(echo $$pids | tr '\n' ' ')"; \
+	fi; \
+	m=$$(pgrep -f "mflux-generate-""flux2" || true); \
+	if [ -n "$$m" ]; then \
+		echo "note: an mflux render is still running (pid $$(echo $$m | tr '\n' ' ')) and holds ~18 GB"; \
+		echo "      'make stop-mflux' ends it — the frame is lost, the scene on disk is not"; \
+	fi
+
+stop-mflux: ## Kill any in-flight mflux render (loses that frame, keeps the scene)
+	@m=$$(pgrep -f "mflux-generate-""flux2" || true); \
+	if [ -z "$$m" ]; then echo "no render in flight"; else \
+		kill $$m 2>/dev/null || true; \
+		echo "render stopped: $$(echo $$m | tr '\n' ' ')"; \
+	fi
 
 clean: ## Remove build output and TS build info
 	rm -rf dist node_modules/.tmp

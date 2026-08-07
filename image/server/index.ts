@@ -7,7 +7,14 @@ import cors from 'cors'
 import express from 'express'
 import multer from 'multer'
 
-import { ASPECT_PRESETS, DEFAULT_NEGATIVE, DEFAULT_STYLE, type SceneSettings } from '../shared/types.ts'
+import {
+  ASPECT_PRESETS,
+  DEFAULT_NEGATIVE,
+  DEFAULT_STYLE,
+  MAX_FRAMES,
+  MIN_FRAMES,
+  type SceneSettings,
+} from '../shared/types.ts'
 import {
   OUT_ROOT,
   UPLOADS_ROOT,
@@ -47,8 +54,18 @@ function fail(res: express.Response, err: unknown, status = 400) {
   res.status(status).json({ error: err instanceof Error ? err.message : String(err) })
 }
 
+// `service` and `limits` exist for programmatic callers, not for the web client, which
+// already imports the same constants from shared/types.ts. The reel pipeline next door
+// probes this endpoint to decide whether stills can be rendered here at all, and reads the
+// frame cap from it rather than hardcoding a number that would drift the day it changes.
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, aspects: ASPECT_PRESETS, defaults: { style: DEFAULT_STYLE, negativePrompt: DEFAULT_NEGATIVE } })
+  res.json({
+    ok: true,
+    service: 'papercut-studio',
+    aspects: ASPECT_PRESETS,
+    limits: { minFrames: MIN_FRAMES, maxFrames: MAX_FRAMES },
+    defaults: { style: DEFAULT_STYLE, negativePrompt: DEFAULT_NEGATIVE },
+  })
 })
 
 app.get('/api/scenes', (_req, res) => {
