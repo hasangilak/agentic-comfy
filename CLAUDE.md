@@ -203,20 +203,53 @@ constants, `config.build_prompt`, `render._frames` and the canvas edge styling m
 
 | source | first frame | last frame | checkpoint | needs a still |
 | --- | --- | --- | --- | --- |
-| `asset` (cut) | its own still | — | fl2va | yes, generated |
+| `reference` (**the default cut**) | none — conditioned towards its own still | — | **ref2va** | yes, generated |
 | `chain` (continuation) | previous clip's last frame | — | fl2va | no |
 | `bridge` | previous clip's last frame | its own still | fl2va | yes, generated |
-| `reference` | none — composes its own | — | **ref2va** | no — uploaded pictures instead |
+| `asset` (exact-keyframe cut) | its own still, exactly | — | fl2va | yes, generated |
 
 `chains()`, `uses_asset()`, `uses_refs()` in `board.py` are the predicates; use them rather
-than comparing strings.
+than comparing strings. `uses_asset()` answers "does the still go into a KEYFRAME slot" and is
+therefore false for `reference` — the question "must a still exist on disk" is
+`Board.needs_still(beat)`, which is beat-level because a reference beat carrying motion answers
+it differently. Same split as `chains()` vs `Board.follows_upstream()`.
 
-A `reference` beat is a different checkpoint (`config.UNET_REF`), takes up to
-`config.MAX_REF_IMAGES` (9) pictures referred to in the prompt as `<Picture 1>`…`<Picture 9>`
-**1-based in connection order** while graph sockets are 0-based, and can optionally carry the
-tail of the previous clip (`config.REF_VIDEO_SECONDS`) as `<Video 1>` instead of a keyframe
-handoff. It cannot be generated into: the server answers a still-generation request for one
-with a 409.
+**`reference` is the default cut, not an uploads-only special case.** It is a different
+checkpoint (`config.UNET_REF`) taking up to `config.MAX_REF_IMAGES` (9) pictures referred to in
+the prompt as `<Picture 1>`…`<Picture 9>` **1-based in connection order** while graph sockets are
+0-based. Two of the nine wire themselves, and `Board.pictures_for(n)` is the single place that
+order is decided:
+
+1. the beat's own generated still — `config.REF_ROLE_OPENING`, and `config.OPEN_REFERENCE_STILL`
+   tells the model to begin the clip on it;
+2. the reel's locked cast reference (`Board.reference_for`, so `None` on the beat that *is* the
+   reference) — `config.REF_ROLE_CAST`;
+3. then the director's uploads, `beat<n>_ref1.png` upward.
+
+It returns **(path, role) pairs**, deliberately: the prompt addresses each picture by position,
+so a path list and a note list that could slip by one is a live bug. Keep it that shape.
+`Board.ref_budget(n)` is the remaining upload count (7, not 9, on a beat that opens a shot) and
+`next_ref_index` enforces it — an upload that `pictures_for` would truncate must be refused, not
+stored. `to_json` publishes `auto_refs` / `ref_offset` / `ref_slots` / `opens_on` so the canvas
+shows the numbers the model is actually told.
+
+A reference beat can instead carry the tail of the previous clip (`config.REF_VIDEO_SECONDS`) as
+`<Video 1>`. **Exactly one of three things may say where a reference shot opens** — `CARRY_VIDEO`,
+`OPEN_REFERENCE_STILL`, or `COMPOSE_OPENING` — and `build_prompt` enforces that precedence. So a
+carrying beat wires no still at all, needs none (`needs_still` is false), and the server answers a
+still-generation request for one with a 409. Every other reference beat generates its still like
+any other cut.
+
+`asset` is now the deliberate choice rather than the default: a keyframe latent is re-injected at
+every step and never denoised, so it is the join for a beat whose opening frame must land exactly.
+Nothing silently moves a beat onto or off it — `source_for` honours an explicit `asset` even in
+first position, which is what keeps every board written before this rendering on the checkpoint it
+was rendered on.
+
+Cost note: reference tokens ride through every sampling step where a keyframe is one VAE encode,
+so `SECONDS_PER_FRAME` / `RENDER_INTERCEPT` — fitted on the keyframe path — read slightly low for
+a reference cut, and a reel mixing cuts with continuations pays one checkpoint swap per shot
+boundary.
 
 The join is also *told to the model in words* — `OPEN_CUT` vs `OPEN_CONTINUATION` vs
 `OPEN_REFERENCE`/`CARRY_VIDEO`, plus `ARRIVE_ON_LAST` for a bridge. Getting the wording wrong
@@ -299,3 +332,9 @@ Added with the local model, and unmeasured: the still review's false-accept rate
 cast drift (it is verified to reject an obvious mismatch and to pass a good still, which is not
 the same thing), and how a board behaves when Ollama is stopped mid-turn rather than absent from
 the start. Planning is also slow — draft plus self-check is about five minutes.
+
+**Moving the default cut to ref2va is reasoned, not measured.** No A/B render exists for how
+much exactness the opening frame loses, how much the extra reference tokens cost per beat, or
+whether the per-shot-boundary checkpoint swap is material. Do not quote a number for any of the
+three. `asset` is the same cut on the keyframe path, so the comparison is one join click apart if
+you are asked for it — and it is a paid render, so only on request.

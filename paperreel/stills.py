@@ -87,9 +87,12 @@ def wanted(board: board_mod.Board, requested: list[int] | None) -> list[int]:
     Enforced here rather than in the HTTP layer alone, because there are three ways in now --
     the canvas button, a conversation asking for stills, and the CLI -- and the reasons a
     generation must not happen are properties of the board, not of the request. A board whose
-    stills are the user's own work must not be able to spend a render on a stale tab's
-    request; a reference beat must not be handed a still, which would silently drop its
-    pictures and turn it into a cut.
+    stills are the user's own work must not be able to spend a render on a stale tab's request;
+    a beat that opens on the previous clip has nowhere to put a still.
+
+    A reference beat used to be refused outright, because a still would have replaced the
+    pictures it was conditioned on. It is the default cut now: the still goes in as <Picture 1>
+    and the join does not move, so there is nothing left to protect it from.
     """
     if board.data.get("manual_stills"):
         raise StillsError(
@@ -100,12 +103,16 @@ def wanted(board: board_mod.Board, requested: list[int] | None) -> list[int]:
     unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]
     if unknown:
         raise StillsError(f"no such beats: {unknown}", status=404)
-    referenced = [n for n in beats
-                  if board_mod.uses_refs(board.source_for(board.beat(n)))]
-    if referenced:
+    # The one reference shape that still cannot take a still: a beat carrying the previous
+    # clip's tail already has its opening, and `config.build_prompt` may only ever give the model
+    # one answer to where the shot begins. Generating for one would render a frame that never
+    # reaches the graph, which is worse than refusing -- it looks like it worked.
+    carrying = [n for n in beats if board.carries_motion(board.beat(n))]
+    if carrying:
         raise StillsError(
-            f"beats {referenced} are conditioned on reference pictures, not on an opening "
-            "still. Change the join on the node first if you want a still instead.",
+            f"beats {carrying} open on the tail of the clip before them, so a still of their "
+            "own would never be used. Turn off carrying on the node first if you want this "
+            "scene to open on a still instead.",
         )
     if not beats:
         raise StillsError("no beat needs a still", status=422)
@@ -118,12 +125,22 @@ def claim(board: board_mod.Board, beats: list[int]) -> None:
     An explicit per-beat request means "prepare this scene with its own image", even if it
     currently continues from the previous clip. Writing that down immediately keeps the canvas
     and the render queue agreeing about where the scene boundary is while generation is still
-    queued. A bridge is left alone -- it already has its own image, as the frame it lands on,
-    and promoting it to a cut would throw away the continuation the user chose.
+    queued.
+
+    Only a plain continuation is moved, and it becomes a `reference` cut rather than an `asset`
+    one -- that is what the default is now, so a beat arriving at its own shot arrives at the
+    join a new shot would have been written as. The other three joins already have somewhere to
+    put a still and are left exactly as they are:
+
+      * a bridge lands on it, and promoting it would throw away the continuation the user chose;
+      * a reference beat puts it in <Picture 1>, so there is nothing to change;
+      * an `asset` beat wants its opening frame EXACTLY, which is the whole reason to pick that
+        join over the default -- quietly moving it to ref2va would answer a request to redraw a
+        still by changing which weights the scene renders on.
     """
     for n in beats:
-        if board.source_for(board.beat(n)) != board_mod.SOURCE_BRIDGE:
-            board.beat(n)["source"] = board_mod.SOURCE_ASSET
+        if board.source_for(board.beat(n)) == board_mod.SOURCE_CHAIN:
+            board.beat(n)["source"] = board_mod.SOURCE_REFERENCE
     board.save()
 
 

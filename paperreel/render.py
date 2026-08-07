@@ -27,7 +27,7 @@ from .jobs import Job, Runner
 # "first frame from bridge" is naming an implementation detail at the one moment the user is
 # watching money being spent.
 JOIN_LOG = {
-    board_mod.SOURCE_ASSET: "opening on its own still",
+    board_mod.SOURCE_ASSET: "opening on its own still, exactly",
     board_mod.SOURCE_CHAIN: "continuing from the clip before",
     board_mod.SOURCE_BRIDGE: "continuing from the clip before, landing on its own still",
     board_mod.SOURCE_REFERENCE: "composed from its reference pictures",
@@ -66,11 +66,16 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
         # A bridge needs BOTH, so these are two independent checks rather than a branch.
         if board_mod.uses_asset(source) and not board.asset_path(n).exists():
             raise FileNotFoundError(f"beat {n} needs its own still ({board.asset_path(n).name})")
-        if (board_mod.uses_refs(source) and not board.ref_paths(n)
+        # Empty `pictures_for` on a beat that is not carrying means there is genuinely nothing
+        # to condition on -- no still of its own, and no uploads. ref2va with nothing connected
+        # is text-to-video on the wrong weights, so it is worth the check before the container
+        # is deployed rather than after it has been paid for.
+        if (board_mod.uses_refs(source) and not board.pictures_for(n)
                 and not board.carries_motion(board.beat(n))):
             raise FileNotFoundError(
-                f"beat {n} is conditioned on references but has none; upload at least one "
-                f"picture (up to {config.MAX_REF_IMAGES}) or have it carry the previous clip"
+                f"beat {n} is conditioned on references but has none; generate its opening "
+                f"still, upload a picture (up to {config.MAX_REF_IMAGES}), or have it carry "
+                "the previous clip"
             )
         if board.follows_upstream(board.beat(n)):
             upstream = board.upstream(n)
@@ -132,10 +137,18 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                         step=0, step_max=steps, beat_started_at=time.time(),
                     )
 
-                    frame, end_frame, refs, carry, frame_ids = _frames(board, n, sources[n])
+                    frame, end_frame, pictures, carry, frame_ids = _frames(board, n, sources[n])
+                    # Whether <Picture 1> is this beat's own still, which is what turns the
+                    # scaffold from "compose the opening yourself" into "begin on this frame".
+                    # Read off the list the batch actually queued rather than from the board, so
+                    # a still dropped on a later node mid-render cannot change what this beat was
+                    # told about the pictures it was given.
+                    opens_on = bool(pictures) and pictures[0][0] == board.asset_path(n)
                     join = JOIN_LOG[sources[n]]
-                    if refs or carry:
-                        detail = [f"{len(refs)} of {config.MAX_REF_IMAGES} pictures"]
+                    if pictures or carry:
+                        detail = [f"{len(pictures)} of {config.MAX_REF_IMAGES} pictures"]
+                        if opens_on:
+                            detail.append("opening on its own still")
                         if carry:
                             detail.append(
                                 f"carrying the last {config.REF_VIDEO_SECONDS:.0f}s of beat "
@@ -157,7 +170,8 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                         if end_frame else None),
                             # Uploaded in <Picture i> order and passed as one list, because
                             # position is meaning: the prompt names them by it.
-                            ref_images=[comfy.upload_image(http, path) for path in refs],
+                            ref_images=[comfy.upload_image(http, path)
+                                        for path, _ in pictures],
                             # One clip, the previous beat's tail. The node takes up to
                             # config.MAX_REF_VIDEOS; nothing on the canvas asks for more yet.
                             ref_videos=[comfy.upload_video(http, carry)] if carry else [],
@@ -175,11 +189,14 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 lands=end_frame is not None,
                                 # Switches the scaffold to the <Picture i> instructions and,
                                 # in build_graph, the checkpoint to ref2va.
-                                refs=len(refs),
-                                # What each picture is for, in the same order. Read here
-                                # rather than up front for the same reason the images are:
-                                # the batch renders what it queued.
-                                ref_notes=board.ref_prompts(n) if refs else None,
+                                refs=len(pictures),
+                                # What each picture is for, in the same order, straight out of
+                                # the pairs -- so the automatic slots carry their own roles and
+                                # a note can never end up describing the picture next to it.
+                                ref_notes=[note for _, note in pictures] or None,
+                                # Names <Picture 1> as this shot's opening composition rather
+                                # than as one more design reference.
+                                opens_on=opens_on,
                                 # Swaps "compose the opening frame yourself" for "open on the
                                 # moment <Video 1> ends and carry it on".
                                 ref_videos=1 if carry else 0,
@@ -252,26 +269,33 @@ def _frames(board: board_mod.Board, n: int, source: str):
       * "chain"     -- the previous clip's true last frame as the first frame, nothing after it
       * "bridge"    -- both: the previous clip's last frame to start from AND the beat's own
                        still as the frame the clip has to arrive at
-      * "reference" -- no keyframe at all: up to nine pictures of the cast and the set, which
-                       the ref2va checkpoint conditions on for the whole clip, and optionally
-                       the tail of the previous clip as a reference VIDEO
+      * "reference" -- no keyframe at all: up to nine pictures which the ref2va checkpoint
+                       conditions on for the whole clip. On the default cut those are the
+                       beat's own still and the reel's cast reference, plus any uploads; a beat
+                       carrying motion takes the tail of the previous clip as a reference VIDEO
+                       instead of wiring a still at all
 
     `source` is passed in rather than read from the board, because uploading a still can flip
     a beat's join -- and a batch must render what was queued, not change shape halfway
     through because somebody dropped a file on a later node.
 
-    Returns (first, last, refs, carry, frame_ids). `last` is None unless this is a bridge,
-    `first` is None only on a reference beat, `refs` is empty on every other join, and `carry`
-    is the cut tail of the previous clip -- present only on a reference beat set to carry
-    motion. The hashes are taken here, at the moment of use, so the recorded fingerprint names
-    the images really rendered rather than whatever is on disk when the beat finishes.
+    Returns (first, last, pictures, carry, frame_ids). `last` is None unless this is a bridge,
+    `first` is None only on a reference beat, `pictures` is empty on every other join, and
+    `carry` is the cut tail of the previous clip -- present only on a reference beat set to
+    carry motion. The hashes are taken here, at the moment of use, so the recorded fingerprint
+    names the images really rendered rather than whatever is on disk when the beat finishes.
+
+    `pictures` is (path, role) pairs, the same shape `Board.pictures_for` returns and for the
+    same reason: the prompt addresses each picture by position, so the file and the words
+    describing it have to travel together rather than as two lists that can slip apart.
     """
     asset = board.asset_path(n)
     if source == board_mod.SOURCE_REFERENCE:
         # Handed over at their own size: the node scales each one itself, down only and
-        # aspect-preserving, so cover-cropping them onto the 9:16 grid first would throw
-        # away parts of the design for nothing.
-        refs = board.ref_paths(n)
+        # aspect-preserving, so cover-cropping them onto the 9:16 grid first would throw away
+        # parts of the design for nothing. The beat's own still rides along under the same rule,
+        # which is why nothing is written to beat<n>_frame.png on this path -- it is already on
+        # the generation grid, and it is a reference here rather than a keyframe.
         carry, upstream_hash = None, ""
         if board.carries_motion(board.beat(n)):
             # Only the tail. The whole clip would be paid for through every sampling step,
@@ -285,12 +309,27 @@ def _frames(board: board_mod.Board, n: int, source: str):
             # A beat that used to carry and no longer does must not leave the old tail on
             # disk, where the canvas would still show it as this beat's input.
             board.carry_path(n).unlink(missing_ok=True)
-        return (None, None, refs, carry,
+        # Read after the carry decision, not before: `pictures_for` asks `carries_motion` whether
+        # this beat's own still is wired at all, so taking the list first would be taking it
+        # against a different answer to that question than the render is about to use.
+        pictures = board.pictures_for(n)
+        # The up-front pass already refused a beat with nothing to condition on, so reaching
+        # this with an empty list means the board moved underneath the batch -- someone changed
+        # the join, or deleted the still, after the container was warm. Worth raising rather
+        # than passing through: build_graph reads "no references and no keyframe" as plain
+        # text-to-video on the wrong checkpoint, and would render something plausible and wrong
+        # instead of failing.
+        if not pictures and carry is None:
+            raise FileNotFoundError(
+                f"beat {n} had its reference pictures taken away mid-render; nothing is left to "
+                "condition it on"
+            )
+        return (None, None, pictures, carry,
                 board_mod.FrameIds(
-                    refs=board_mod.fingerprint(
-                        *(board_mod.file_hash(p) for p in refs),
-                        *board.ref_prompts(n),
-                    ),
+                    refs=board_mod.fingerprint(*(
+                        part for path, note in pictures
+                        for part in (board_mod.file_hash(path), note)
+                    )),
                     upstream=upstream_hash))
 
     if source == board_mod.SOURCE_ASSET:

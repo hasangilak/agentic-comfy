@@ -35,10 +35,13 @@ from . import config, qwen
 # so the two are in sync by construction rather than by discipline.
 TEMPLATE_PATH = config.ROOT / "prompts" / "40s-paper-cutout-script.md"
 
-# The joins a script may ask for. "reference" is missing on purpose, and the template says why
-# at length: it conditions on photographs of the cast that only the user can upload, so a
-# script that emits it produces a beat which cannot render at all.
-WRITABLE_SOURCES = [board_mod.SOURCE_ASSET, board_mod.SOURCE_CHAIN, board_mod.SOURCE_BRIDGE]
+# The joins a script may ask for -- now all four, where "reference" used to be excluded because
+# it conditioned only on photographs the user had to upload. It is the default cut instead: its
+# still is generated from the same `asset_prompt` every other cut uses, so a script that emits it
+# produces a beat that renders. The template is where the choice between it and "asset" is
+# explained at length; both are cuts, and they differ in whether the opening frame is exact.
+WRITABLE_SOURCES = [board_mod.SOURCE_REFERENCE, board_mod.SOURCE_CHAIN,
+                    board_mod.SOURCE_BRIDGE, board_mod.SOURCE_ASSET]
 
 PLAN_SCHEMA = {
     "type": "object",
@@ -93,9 +96,11 @@ PLAN_SCHEMA = {
                         "type": "string",
                         "enum": WRITABLE_SOURCES,
                         "description": (
-                            "asset = this beat begins a new shot, a cut. chain = it continues "
-                            "the previous beat unbroken. bridge = it continues the previous "
-                            "beat AND must arrive at its own still. Beat 1 is always asset."
+                            "reference = this beat begins a new shot, a cut. chain = it "
+                            "continues the previous beat unbroken. bridge = it continues the "
+                            "previous beat AND must arrive at its own still. asset = a cut "
+                            "whose opening frame must be exact, which is rare -- see section 2. "
+                            "Beat 1 is always reference."
                         ),
                     },
                 },

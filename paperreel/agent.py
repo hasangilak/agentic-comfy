@@ -30,7 +30,7 @@ OPS = [
     "set_beat",      # scene / action / asset_prompt / seconds on beat n
     "add_beat",      # insert a beat at position n
     "remove_beat",   # delete beat n
-    "set_source",    # n + source: "asset" | "chain" | "bridge" -- see SYSTEM below
+    "set_source",    # n + source: "reference" | "chain" | "bridge" | "asset" -- see SYSTEM below
     "set_caption",   # the Instagram caption on the reel node
     "set_reel",      # board-wide seconds / steps
 ]
@@ -115,9 +115,13 @@ TOOLS = [
             "n": {"type": "integer", "description": "which beat, 1-based"},
             "source": {
                 "type": "string", "enum": list(board_mod.SOURCES),
-                "description": "asset = a hard cut onto its own still; chain = the same take "
-                               "continuing; bridge = continues AND lands on its own still; "
-                               "reference = conditioned on uploaded pictures, no keyframe",
+                "description": "reference = a hard cut, opening on its own still and shown the "
+                               "reel's cast reference alongside it; this is the normal cut. "
+                               "chain = the same take continuing from the previous clip's last "
+                               "frame. bridge = continues AND lands on its own still. asset = a "
+                               "hard cut whose opening frame is exact instead, with no cast "
+                               "reference carried through the clip -- only for a beat whose "
+                               "first frame has to land precisely.",
             },
         },
         ["n", "source"],
@@ -141,8 +145,9 @@ TOOLS = [
         "generate_stills",
         "Ask the local image server to render the opening stills for these beats, then look "
         "at what came back. Free and unmetered, but roughly 10-18 seconds per still, so ask "
-        "for the beats that need one rather than for all of them. Only works on beats whose "
-        "frames come from their own still ('asset' or 'bridge').",
+        "for the beats that need one rather than for all of them. Works on every join except a "
+        "'chain' beat, which opens on the previous clip and has nowhere to put one, and a "
+        "'reference' beat set to carry the previous clip, which opens on that instead.",
         {
             "beats": {
                 "type": "array", "items": {"type": "integer"},
@@ -171,32 +176,29 @@ Every beat is either 5 or 10 seconds. There is no other length -- anything else 
 will be snapped to the nearer of the two, so choose one of them deliberately. Use 5 for a
 quick gesture and 10 for a beat that needs room to breathe.
 
-The video model takes up to two still frames per beat -- one for where the clip starts and
-one for where it ends -- so a beat's frames come from one of four places. This is the single
-most important choice on the board, because it decides what the beat is:
-- "asset": its own generated still as the FIRST frame. A hard cut to somewhere else -- new
-  setting, new framing, new composition. The still is generated from the reel's locked
-  character reference, so the cast stays identical across the cut; only the world around them
-  changes. A still is rendered on this machine and costs no money, but it does cost about
-  10-18 seconds, and it needs the local image server to be running.
+A beat's frames come from one of four places. This is the single most important choice on the
+board, because it decides what the beat is:
+- "reference": a hard cut, and the normal one. Its own generated still is the composition the
+  clip opens on, and the reel's locked cast reference goes in alongside it, so the characters
+  keep being held to their design for the whole clip rather than only at the first frame. Up to
+  {config.MAX_REF_IMAGES} pictures in total, so the user can add more of the cast, the set or a
+  prop on the node. A still is rendered on this machine and costs no money, but it does cost
+  about 10-18 seconds, and it needs the local image server to be running.
 - "chain": the previous beat's final frame as the FIRST frame, and no end frame. Not a new
   shot at all -- the same take continuing, same set, same camera, same lighting, with the
   movement carrying straight through. Needs no still at all.
-- "bridge": both. It opens on the previous beat's final frame AND is given its own still as
-  the frame it must ARRIVE at. The take carries on unbroken, and it also lands on a
-  composition that was designed rather than one the model drifted into. Needs a still, same
-  as a cut. Choose it when a continuous shot has to reach a specific state -- the lamp lit,
-  the character back in position -- or when a long chain of continuations is drifting away
-  from the style bible and needs pinning back to a still.
+- "bridge": opens on the previous beat's final frame AND is given its own still as the frame it
+  must ARRIVE at. The take carries on unbroken, and it also lands on a composition that was
+  designed rather than one the model drifted into. Needs a still, same as a cut. Choose it when
+  a continuous shot has to reach a specific state -- the lamp lit, the character back in
+  position -- or when a long chain of continuations is drifting away from the style bible and
+  needs pinning back to a still.
+- "asset": the same cut as "reference", except the still is handed over as an exact keyframe and
+  nothing else is. The opening frame lands precisely; the cast is not re-asserted after it. Only
+  choose it when the first frame itself has to be exact, and leave it alone where the user has
+  already set it.
 
-- "reference": no still frame at all. The model is instead shown up to
-  {config.MAX_REF_IMAGES} pictures the user uploaded of the cast and the set, and composes
-  the opening frame itself from the scene line. It runs on a different set of weights, so it
-  cannot continue from anything and cannot land on anything -- but it is the only join that
-  can be given several pictures. Never set it on a beat yourself unless the user asked for
-  it: without uploaded pictures the beat cannot render at all, and you cannot upload them.
-
-So choose "asset" when the story genuinely moves somewhere else, "chain" when the movement
+So choose "reference" when the story genuinely moves somewhere else, "chain" when the movement
 should carry on unbroken and where it ends does not matter, and "bridge" when it should carry
 on unbroken TO somewhere specific. A chained or bridged beat's `action` must read as the
 continuation of the beat before it -- it starts from the pose that beat ended in and takes the
@@ -221,11 +223,16 @@ where it left things, call read_board; do not reason about it."""
 def board_digest(board: board_mod.Board) -> str:
     """A compact view of the board for the prompt -- cheaper and clearer than raw JSON.
 
-    The two "waiting on" lines at the end are spelled out rather than left to be worked out
-    from the joins, because asked which beats need a still the model reasoned it out from the
-    join names and got it wrong in both directions -- naming a chained beat, which needs
-    nothing, and a reference beat, which needs pictures instead. Both lists are already derived
-    in `board.py`; quoting them costs a few tokens and removes the inference entirely.
+    The "waiting on" line at the end is spelled out rather than left to be worked out from the
+    joins, because asked which beats need a still the model reasoned it out from the join names
+    and got it wrong in both directions -- naming a chained beat, which needs nothing, and a
+    reference beat, which at the time needed pictures instead. The list is already derived in
+    `board.py`; quoting it costs a few tokens and removes the inference entirely.
+
+    There used to be a second list, for reference beats waiting on uploads. It went when the
+    reference join became the default cut: a still is generated for one exactly as for any other
+    beat now, so both lists were the same question and answering it twice invited the model to
+    treat them as different work.
     """
     lines = [f'TITLE: {board.data.get("title", "")}',
              f'STYLE BIBLE: {board.data.get("style_bible", "")}']
@@ -234,10 +241,12 @@ def board_digest(board: board_mod.Board) -> str:
     states = board.states()
     for beat in board.ordered_beats():
         source = board.source_for(beat)
-        # A reference beat's pictures are the whole of its conditioning, and only the user can
-        # add them, so the count is the part of its state worth spending tokens on.
+        # A reference beat's pictures are the whole of its conditioning, so the count is the part
+        # of its state worth spending tokens on. Counted off `pictures_for` rather than the
+        # uploads, because the beat's own still and the cast reference are in there too and a
+        # count that left them out would read as "this scene has nothing".
         if board_mod.uses_refs(source):
-            source += f" ({len(board.ref_paths(beat['n']))} pictures)"
+            source += f" ({len(board.pictures_for(beat['n']))} pictures)"
         lines.append(
             f'BEAT {beat["n"]} [{states[beat["n"]]}, {board.seconds_for(beat):.0f}s, '
             f'frames from {source}]\n'
@@ -248,20 +257,12 @@ def board_digest(board: board_mod.Board) -> str:
         lines.append(f'CAPTION: {board.data["caption"]}')
 
     stills = [b["n"] for b in board.ordered_beats()
-              if board_mod.uses_asset(board.source_for(b))
-              and not board.asset_path(b["n"]).exists()]
-    pictures = [b["n"] for b in board.ordered_beats()
-                if board_mod.uses_refs(board.source_for(b)) and not board.ref_paths(b["n"])]
+              if board.needs_still(b) and not board.asset_path(b["n"]).exists()]
     lines.append(
         "BEATS WAITING ON A GENERATED STILL: "
         + (", ".join(map(str, stills)) if stills else "none")
         + " (this is the complete list -- every other beat either has its still already or "
         "does not take one)"
-    )
-    lines.append(
-        "BEATS WAITING ON UPLOADED REFERENCE PICTURES: "
-        + (", ".join(map(str, pictures)) if pictures else "none")
-        + " (you cannot supply these; only the user can)"
     )
     return "\n".join(lines)
 
@@ -485,15 +486,16 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
             "scene": op.get("scene", ""),
             "action": op.get("action", ""),
             "asset_prompt": op.get("asset_prompt", ""),
-            # A new first scene cannot continue from anything. Every other insertion joins
-            # the existing linear handoff unless the caller explicitly asks for another join.
+            # A new first scene cannot continue from anything, so it falls back to the default
+            # cut. Every other insertion joins the existing linear handoff unless the caller
+            # explicitly asks for another join.
             "source": (
-                # A reference beat takes nothing from upstream, so it is as valid in first
+                # Neither cut join takes anything from upstream, so both are as valid in first
                 # position as anywhere else -- the "new first scene" rule is about the two
                 # continuations, which have nothing to continue from there.
-                board_mod.SOURCE_REFERENCE
-                if requested_source == board_mod.SOURCE_REFERENCE
-                else board_mod.SOURCE_ASSET if position == 1
+                requested_source
+                if requested_source in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)
+                else board_mod.SOURCE_REFERENCE if position == 1
                 else requested_source if requested_source in board_mod.SOURCES
                 else board_mod.SOURCE_CHAIN
             ),
@@ -553,9 +555,9 @@ def create(concept: str, beats: int, seconds: float, *,
     The plan goes through `script.normalise` -- the same function an imported script takes --
     rather than being written into a board document here. Both paths now produce a script
     against the same brief, so both should become a board the same way: beat numbers compacted
-    to 1..N, lengths snapped to the two the hardware offers, beat 1 forced onto its own still
-    whatever the model said, and a beat with no action refused rather than saved as a node
-    that can never render.
+    to 1..N, lengths snapped to the two the hardware offers, beat 1 forced onto a join that
+    stands on its own whatever the model said, and a beat with no action refused rather than
+    saved as a node that can never render.
 
     The joins are the model's to choose, which they were not before. They used to be
     overwritten with "beat 1 is a cut, everything after it chains", because a cut cost one
@@ -572,8 +574,11 @@ def create(concept: str, beats: int, seconds: float, *,
     document["steps"] = config.DEFAULT_STEPS
     document["seed"] = 1101
 
-    cuts = [b["n"] for b in document["beats"] if b["source"] == board_mod.SOURCE_ASSET]
-    stills = [b["n"] for b in document["beats"] if board_mod.uses_asset(b["source"])]
+    # Both cut joins, and every beat but a continuation needs a still of its own -- see the
+    # matching lists in `script.adopt`, which this board is one `normalise` away from.
+    cuts = [b["n"] for b in document["beats"]
+            if b["source"] in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)]
+    stills = [b["n"] for b in document["beats"] if b["source"] != board_mod.SOURCE_CHAIN]
     # Said once, here, rather than discovered later as a node with a button and no prompt.
     for note in script.notes(document):
         log(f"[plan] {note}")

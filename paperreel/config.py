@@ -140,10 +140,26 @@ PUBLIC_ENDPOINT = os.environ.get("PAPERREEL_PUBLIC") == "1"
 #   fl2va  -- text / first frame / last frame. Every join built on keyframes.
 #   ref2va -- reference conditioning: up to 9 images, and no keyframe inputs at all.
 #
-# They are 19.5 GiB each, so keeping both on the Volume costs disk, not VRAM: ComfyUI loads
-# whichever the graph asks for and evicts the other. A batch that mixes joins therefore pays
-# one model swap per switch, which is why the studio orders nothing specially -- a reel that
-# is all keyframes never touches ref2va at all.
+# ref2va is now the DEFAULT for a beat that opens a new shot, which is what `reference` on the
+# canvas means. A cut used to hand its still to fl2va's first-frame slot and get one anchor;
+# on ref2va the same still goes in as <Picture 1> and the reel's locked cast reference rides
+# along as <Picture 2>, with room for seven more. Consistency is the whole reason: one
+# keyframe fixes the opening composition exactly and says nothing about anything else, where
+# several references keep pulling the cast back towards its design for the whole clip.
+#
+# What it costs is frame-exactness and time. A keyframe latent is re-injected at every step
+# and never denoised, so the opening frame is the still; a reference is conditioning, so the
+# opening is close rather than identical. And reference tokens ride through every sampling
+# step, where a keyframe is one VAE encode -- so a two-picture cut is a slower clip than the
+# keyframe cut it replaced, and SECONDS_PER_FRAME below is fitted on the keyframe path.
+# `asset` is still there for the beat that needs the frame exactly.
+#
+# The keyframe continuations do NOT move: chain and bridge hand over the previous clip's true
+# last frame, which ref2va has no socket for at all. So a normal reel now alternates
+# checkpoints, and they are 19.5 GiB each -- kept on the Volume, which costs disk, not VRAM.
+# ComfyUI loads whichever the graph asks for and evicts the other, so a batch pays one model
+# swap per switch. Rendering in beat order keeps that to one swap per shot boundary, which is
+# what the batch already does for chaining's sake.
 UNET = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
 UNET_REF = "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
 CLIP = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
@@ -161,6 +177,25 @@ AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
 # is <Picture N+1> in the prompt.
 MAX_REF_IMAGES = 9
 MAX_REF_VIDEOS = 3
+# Two of those nine slots fill themselves on a beat that opens a shot, which is why an upload
+# budget exists rather than a flat nine: <Picture 1> is the beat's own generated still -- the
+# composition this shot opens on -- and <Picture 2> is the reel's locked cast reference. The
+# remaining seven are the director's. `Board.pictures_for` is where the order is decided; the
+# roles below are the words each auto-wired slot is described to the model with.
+#
+# The two are the reason this join is the default at all: the still alone is one shot's
+# composition and drifts towards its own reading of the style bible over ten seconds, and the
+# cast reference alone fixes the characters but not where the shot opens. Together they are
+# what a keyframe cut had (an exact opening) plus what it never had (the cast, re-asserted
+# through every sampling step).
+REF_ROLE_OPENING = (
+    "the composition this shot opens on: its set, its framing, its subject scale and its "
+    "lighting are the ones this whole clip holds"
+)
+REF_ROLE_CAST = (
+    "this reel's locked cast reference -- it fixes what the characters and the materials look "
+    "like everywhere in the film, and it is NOT this shot's setting or framing"
+)
 # "match" scales each reference down to the generation's pixel area; "max" uses the reference
 # pipeline's 2048px short edge for better identity fidelity. Reference tokens ride through
 # every sampling step, so "max" can be several times slower -- and slower here is money.
@@ -323,6 +358,24 @@ OPEN_REFERENCE = (
 # because a carried reference video answers the same question differently -- it says open on
 # the moment that clip ends -- and the two instructions must never both be present.
 COMPOSE_OPENING = "Compose the opening frame yourself from the scene line below. "
+# The third answer to "where does this shot begin", and the one a cut now gives: <Picture 1>
+# is this beat's own still, so the opening composition was designed rather than left to the
+# model. It has to say so in these words because the paragraph above deliberately says the
+# opposite about references in general -- that the pose in one is only how a thing looks and
+# not where the shot starts. That is right for the cast reference and wrong for this picture,
+# so the exception is named rather than left to be inferred from the roles list.
+#
+# "Begin from it" and not "begin from it exactly", which is what OPEN_CUT says of a keyframe:
+# a keyframe latent IS the first frame, a reference only conditions towards it, and promising
+# exactness the checkpoint cannot deliver is how the model ends up holding still at the start
+# waiting to match something.
+OPEN_REFERENCE_STILL = (
+    "{tag} is the exception to that: it is not a design reference but this shot's own opening "
+    "composition, drawn for this beat. Begin the clip on it -- its framing, its subject "
+    "placement and scale, its set dressing and its light are where this take starts -- and "
+    "hold that framing, that scale and that lighting for the whole clip. Everything the "
+    "action below describes happens from there, forward. "
+)
 # What a carried reference video is, and it has to be said in the same breath as "compose the
 # opening frame yourself" -- otherwise the two instructions fight and the model either ignores
 # the clip or treats it as footage to replay. This is the reference join's answer to
@@ -431,7 +484,8 @@ def reference_roles(notes: list[str]) -> str:
 
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
                  continues: bool = False, lands: bool = False, refs: int = 0,
-                 ref_notes: list[str] | None = None, ref_videos: int = 0) -> str:
+                 ref_notes: list[str] | None = None, ref_videos: int = 0,
+                 opens_on: bool = False) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -450,6 +504,12 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     first or last frame inputs at all -- so `continues` and `lands` cannot apply and are
     ignored rather than silently
     describing frames the model was never given.
+
+    `opens_on` says <Picture 1> is this beat's own still rather than a design reference, which
+    is what a cut on this checkpoint is: the opening composition was drawn for this shot, so
+    the clip begins on it instead of on something the model invents from the scene line. It is
+    a flag rather than being inferred from `refs`, because the same picture count means the
+    opposite thing on a beat whose references are all uploads of the cast.
     """
     if refs > 0 or ref_videos > 0:
         parts = [MEDIUM]
@@ -461,10 +521,16 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
             roles = reference_roles(list(ref_notes or []))
             if roles:
                 parts.append(REFERENCE_ROLES.format(roles=roles))
-        # Exactly one of these two: a carried clip says where the shot opens, so telling the
-        # model to compose an opening as well is telling it to do two different things.
+        # Exactly one of these three, and they are mutually exclusive because they are three
+        # different answers to the one question the model has to have settled before it starts:
+        # where does this shot open? A carried clip says "where the last one ended", an opening
+        # still says "on this picture", and neither leaves anything for "compose it yourself".
+        # Two of them present at once is two instructions fighting, which reads in the render
+        # as a clip that starts, settles, and starts again.
         if ref_videos > 0:
             parts.append(CARRY_VIDEO.format(tag="<Video 1>"))
+        elif opens_on and refs > 0:
+            parts.append(OPEN_REFERENCE_STILL.format(tag="<Picture 1>"))
         elif refs > 0:
             parts.append(COMPOSE_OPENING)
     else:

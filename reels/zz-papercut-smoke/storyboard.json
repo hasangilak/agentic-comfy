@@ -11,10 +11,31 @@
       "action": "the fox sits down",
       "asset_prompt": "The same orange paper fox seated at the foot of the hill beside a small paper stream.",
       "n": 2,
+      "ref_video": "upstream",
       "scene": "the same hill, closer",
-      "source": "asset"
+      "source": "reference"
     }
   ],
+  "canvas": {
+    "nodes": {
+      "beat-1": {
+        "x": 0,
+        "y": 260
+      },
+      "beat-2": {
+        "x": 330,
+        "y": 260
+      },
+      "reel": {
+        "x": 660,
+        "y": 260
+      },
+      "script": {
+        "x": -8,
+        "y": -147
+      }
+    }
+  },
   "concept": "a paper fox on a hill",
   "seconds": 5,
   "seed": 1101,

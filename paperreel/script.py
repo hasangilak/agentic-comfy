@@ -80,12 +80,15 @@ def normalise(data: dict) -> dict:
             "seconds": config.snap_seconds(
                 raw.get("seconds") or data.get("seconds") or config.BEAT_LENGTHS[-1]
             ),
-            # The first beat has nothing before it to continue from, whatever the script
-            # says -- except on the reference join, which continues from nothing anywhere.
-            # Later beats default to chaining, which is the free join.
+            # The first beat has nothing before it to continue from, whatever the script says,
+            # so it falls back to the default cut: `reference`, which is its own still plus the
+            # cast on ref2va. The two joins that stand on their own are honoured wherever they
+            # appear, including there -- an explicit `asset` is a script asking for the exact
+            # keyframe and must not be overwritten by the default. Later beats default to
+            # chaining, which is the free join.
             "source": (
-                board_mod.SOURCE_REFERENCE if source == board_mod.SOURCE_REFERENCE
-                else board_mod.SOURCE_ASSET if index == 1
+                source if source in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)
+                else board_mod.SOURCE_REFERENCE if index == 1
                 else source if source in board_mod.SOURCES
                 else board_mod.SOURCE_CHAIN
             ),
@@ -125,8 +128,11 @@ def notes(plan: dict) -> list[str]:
             "production."
         )
 
+    # Both cut joins, because both open a shot on a still generated from this prompt -- the
+    # difference between them is which socket it lands in, not whether it is needed.
     blind = [b["n"] for b in plan["beats"]
-             if b["source"] == board_mod.SOURCE_ASSET and not b["asset_prompt"]]
+             if b["source"] in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)
+             and not b["asset_prompt"]]
     if blind:
         found.append(
             f"beat {', '.join(map(str, blind))} -- opens a new shot with no asset_prompt: "
@@ -153,16 +159,16 @@ def notes(plan: dict) -> list[str]:
             "own shot from."
         )
 
-    # Nothing about a reference beat can be supplied by a script: the pictures are uploads,
-    # and until they exist the beat has no conditioning at all. Said once here rather than
-    # discovered as a "needs an image" node with no obvious button.
-    referenced = [b["n"] for b in plan["beats"]
-                  if b["source"] == board_mod.SOURCE_REFERENCE]
-    if referenced:
+    # The keyframe cut is now the deliberate choice rather than the default, so a script that
+    # asked for one is worth a line: it is the join that trades the extra consistency anchors
+    # for an exact opening frame, and the reason is not visible on the node afterwards.
+    exact = [b["n"] for b in plan["beats"] if b["source"] == board_mod.SOURCE_ASSET]
+    if exact:
         found.append(
-            f"beat {', '.join(map(str, referenced))} -- conditioned on reference pictures "
-            f"rather than an opening frame. Upload up to {config.MAX_REF_IMAGES} images of "
-            "the cast and the set on each of those nodes; nothing generates them for you."
+            f"beat {', '.join(map(str, exact))} -- asked for the exact-keyframe cut ('asset') "
+            "rather than the default. Those scenes open on their still precisely, but they are "
+            "not shown the cast reference for the rest of the clip. Switch the join on the node "
+            "if that was not deliberate."
         )
     return found
 
@@ -195,10 +201,15 @@ def adopt(data: dict, *, slug: str | None = None,
     """
     plan = normalise(data)
     plan["manual_stills"] = manual_stills
-    cuts = [b["n"] for b in plan["beats"] if b["source"] == board_mod.SOURCE_ASSET]
-    # Every beat that needs an image of its own, which is not the same list: a bridge needs
-    # one too, as the frame it lands on rather than the one it opens on.
-    stills = [b["n"] for b in plan["beats"] if board_mod.uses_asset(b["source"])]
+    # Both cut joins: `reference` is the default one and `asset` the exact-keyframe variant, and
+    # either way the beat begins a new shot, which is what a shot count means.
+    cuts = [b["n"] for b in plan["beats"]
+            if b["source"] in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)]
+    # Every beat that needs an image of its own, which is not the same list: a bridge needs one
+    # too, as the frame it lands on rather than the one it opens on. Read off the joins rather
+    # than through `Board.needs_still`, and it comes to the same thing here -- nothing is on disk
+    # yet on a board this function is about to create, so every join but `chain` is short a still.
+    stills = [b["n"] for b in plan["beats"] if b["source"] != board_mod.SOURCE_CHAIN]
     total = sum(b["seconds"] for b in plan["beats"])
     # One turn, so the panel opens with the shape of what arrived rather than empty, and so
     # the model's next turn replays a transcript that says where the board came from.

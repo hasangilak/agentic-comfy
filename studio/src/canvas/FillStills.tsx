@@ -50,13 +50,12 @@ export function FillStills() {
     // board, and the canvas is more legible filling in one node at a time than all at once.
     for (const [index, target] of targets.entries()) {
       try {
-        // A bridge keeps its join -- its still is the frame it lands on, and a bulk fill must
-        // not quietly turn a continuation the user chose into a cut. Every other beat treats a
-        // supplied still as its opening frame.
-        const join =
-          board.beats.find((beat) => beat.n === target.beat)?.source === "bridge"
-            ? "bridge"
-            : "asset";
+        // A bulk fill must not quietly change a join the user chose, so it only ever supplies
+        // the still into whatever slot the beat already has: a bridge lands on it, an `asset`
+        // beat wants it as an exact keyframe, and everything else -- including a plain
+        // continuation being promoted -- takes it as the default cut's opening composition.
+        const current = board.beats.find((beat) => beat.n === target.beat)?.source;
+        const join = current === "bridge" || current === "asset" ? current : "reference";
         await api.uploadAsset(board.slug, target.beat, target.file, join);
         landed.push(`beat ${target.beat} ← ${target.file.name}`);
       } catch (problem) {
@@ -131,16 +130,11 @@ export function FillStills() {
             : " · the image server is not running, so these have to be uploads"}
       </p>
 
-      {/* Said here because this panel is where a missing image is usually noticed, but kept
-          separate: reference pictures are not stills, and nothing on this panel can place
-          them -- they go on their own node, where their order is visible. */}
-      {board.refs_needed.length ? (
-        <p className="text-[10px] leading-snug text-[#f59e0b]">
-          beat {board.refs_needed.join(", ")} wait
-          {board.refs_needed.length === 1 ? "s" : ""} on reference pictures — add those on the
-          scene itself, up to {board.max_refs} each
-        </p>
-      ) : null}
+      {/* There used to be a second warning here, for reference beats waiting on uploads. It went
+          with the join becoming the default cut: those beats want a generated still like every
+          other, so they are in `assets_needed` above and the button already covers them. Extra
+          reference pictures are still an upload, but they are an addition rather than something
+          a scene is short of, and they belong on the node where their order is visible. */}
 
       <input
         ref={picker}
@@ -205,11 +199,12 @@ function assign(files: File[], board: Board): { targets: Target[]; unused: File[
   const named = sorted.map((file) => {
     const numbers = (file.name.match(/\d+/g) ?? [])
       .map(Number)
-      // A reference beat is not a target for a bulk fill: it has no keyframe slot to fill,
-      // and uploading a still to it would swap its pictures for a cut. Its images go on the
-      // node itself, where the order they land in is visible.
+      // A reference beat IS a target now: the still it takes is its opening composition, so
+      // filling one leaves the join exactly where it was. The one that is not is a beat opening
+      // on the previous clip's tail, where a still would never reach the graph. Extra reference
+      // pictures still go on the node itself, where the order they land in is visible.
       .filter((value) =>
-        board.beats.some((beat) => beat.n === value && beat.source !== "reference"),
+        board.beats.some((beat) => beat.n === value && !(beat.source === "reference" && beat.carry)),
       );
     // Ambiguous on purpose: "01-02.png" or a date stamp that happens to contain a beat
     // number is not a placement, so it falls through to the order rule below.

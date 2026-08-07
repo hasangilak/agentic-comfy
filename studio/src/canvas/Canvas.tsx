@@ -62,13 +62,19 @@ function buildNodes(board: Board, existing: Node[]): Node[] {
 /**
  * The wire IS the frame handoff, so it is drawn from what each beat actually does: solid
  * green where a beat continues from the previous clip, dashed amber where it opens on its
- * own still and therefore costs an image from the quota. A bridge does both, so it keeps the
- * green of an unbroken take and is labelled with what the image is spent on.
+ * own still. A bridge does both, so it keeps the green of an unbroken take and is labelled
+ * with what its still is spent on.
  */
 function buildEdges(board: Board): Edge[] {
   const list: Edge[] = [];
   board.beats.forEach((beat, index) => {
-    const chained = beat.source !== "asset" && index > 0;
+    // Named joins, not "anything but a cut". This used to read `source !== "asset"`, which was
+    // survivable while `asset` was the only cut and is a lie now that `reference` is the default
+    // one -- every cut on the board would have been drawn as an unbroken take. A reference beat
+    // carrying the previous clip's tail genuinely does follow it, so it keeps the green.
+    const chained =
+      index > 0 &&
+      (beat.source === "chain" || beat.source === "bridge" || (beat.source === "reference" && beat.carry));
     list.push({
       id: `wire-${beat.n}`,
       source: index === 0 ? "script" : `beat-${board.beats[index - 1].n}`,

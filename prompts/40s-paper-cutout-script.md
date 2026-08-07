@@ -96,12 +96,14 @@ against $0.024 at 124 frames, because render time grows faster than the frame co
 ## 2. Shots, cuts and continuations — the most important mechanic
 
 A **shot** is a run of consecutive beats that share one camera setup and one physical
-diorama. The video model accepts two stills per beat — one for where the clip starts and one
-for where it ends — so each beat's `source` field is one of three values:
+diorama. Each beat's `source` field says where its frames come from, and there are three
+values you will use:
 
-- **`"asset"` — this beat begins a NEW shot. It is a CUT.** Its own still is generated
-  from its `asset_prompt` and used as its FIRST frame. New setup, new framing, possibly a
-  new location. Beat 1 is always `"asset"`.
+- **`"reference"` — this beat begins a NEW shot. It is a CUT, and it is the normal one.** Its
+  own still is generated from its `asset_prompt` and becomes the composition the clip opens
+  on, and the film's locked character reference is shown to the model alongside it for the
+  whole clip. New setup, new framing, possibly a new location. Beat 1 is always
+  `"reference"`.
 - **`"chain"` — this beat CONTINUES the previous beat.** It starts from the *final frame
   of the beat before it*, and nothing says where it ends. No cut, no camera change, no set
   change, nothing teleports. It is the same unbroken take, extended.
@@ -110,12 +112,25 @@ for where it ends — so each beat's `source` field is one of three values:
   still is used as the LAST frame, which the clip must arrive at. Still one unbroken take —
   but one whose ending was designed instead of drifted into.
 
-There is a fourth value, `"reference"`, which the studio supports and **you must never
-write**. It runs different model weights that take no keyframe at all — instead the director
-uploads up to nine photographs of the cast and the set, and the model composes the shot from
-those. Nothing you can write supplies those pictures, so a script that emits it produces a
-beat that cannot render. If the concept really wants it, say so in one line to the director
-and write the beat as `"asset"`; they can switch it on the canvas and upload.
+### The fourth value, `"asset"`, and why you almost never want it
+
+`"asset"` is the same cut as `"reference"` with one difference: the still is handed to the
+model as an exact keyframe rather than as a reference. The clip's first frame *is* that
+image, pixel for pixel — and nothing else is supplied, so the character reference is not
+carried through the rest of the clip.
+
+That trade is almost always the wrong way round for this film. A cut is 5–10 seconds long,
+and what goes wrong in those seconds is the paper puppet drifting away from its design — an
+ear sharpening, a marking moving, the palette warming. `"reference"` spends its second
+picture on holding that still, and gives up an exact first frame it did not need. Write
+`"asset"` only when the opening frame itself has to land precisely: a match cut, a reveal
+that depends on one shape sitting in one exact place, a title-card-like composition. If you
+are not sure, write `"reference"`.
+
+The reference join can also carry extra pictures — up to nine in total, so seven beyond the
+two it fills itself. Those are uploads the director adds on the canvas, and nothing you write
+supplies them, so do not plan a beat around them. Mention it in one line if the concept
+really wants it.
 
 ### When to use `"bridge"`
 
@@ -143,12 +158,12 @@ These apply to `"chain"` and `"bridge"` alike — a bridge is a continuation, no
    shot, same words.
 3. **A single shot may run at most 20 seconds total.** Each chained hand-off degrades the
    image slightly, and past ~20s the paper starts to visibly smear and lose its cut edges.
-   So: `asset` + up to three 5s chains, or `asset(10s)` + one 10s chain. Never longer.
+   So: `reference` + up to three 5s chains, or `reference(10s)` + one 10s chain. Never longer.
 4. **Never leave more than two `"chain"` beats in a row unanchored.** A chained beat knows
    only the frame handed to it, so nothing in a pure chain ever pulls the look back — every
    beat inherits the previous one's drift and adds its own. The third beat of any run must
    therefore be a `"bridge"` (a designed frame it has to arrive at) or a cut. Pattern:
-   `asset, chain, chain, bridge, chain, chain, bridge`. This is the same 20-second ceiling
+   `reference, chain, chain, bridge, chain, chain, bridge`. This is the same 20-second ceiling
    in rule 3 expressed as a rhythm, and it is what keeps a long take from ending as a smear.
 5. Never chain across a location change, a lighting change, or a time jump. Those are
    cuts, always.
@@ -177,17 +192,17 @@ carry a complete still description.** This is a hard requirement and the most co
 these scripts fail.
 
 The reason is how the studio works. Each beat is a node the director can walk between
-`chain`, `bridge` and `asset` while editing. If a chained beat drifts — the puppet smears, an
-edge softens, the pose wanders — the fix is to promote it to its own still: to a `"bridge"`,
-which keeps the take unbroken and pulls it back onto a clean frame by its end, or to an
-`"asset"` cut re-rendered from a clean opening image. Both need the prompt already written. A
-beat with an empty `asset_prompt` is a dead end: it can only ever inherit whatever the
-previous beat degraded into.
+`chain`, `bridge` and `reference` while editing. If a chained beat drifts — the puppet smears,
+an edge softens, the pose wanders — the fix is to promote it to its own still: to a
+`"bridge"`, which keeps the take unbroken and pulls it back onto a clean frame by its end, or
+to a `"reference"` cut re-rendered from a clean opening image. Both need the prompt already
+written. A beat with an empty `asset_prompt` is a dead end: it can only ever inherit whatever
+the previous beat degraded into.
 
 So write the prompt for every beat, and set `source` independently:
 
-- On an `"asset"` beat, the `asset_prompt` describes the **opening frame of a new shot** —
-  new framing, new composition.
+- On a `"reference"` beat (or an `"asset"` one), the `asset_prompt` describes the **opening
+  frame of a new shot** — new framing, new composition.
 - On a `"chain"` beat, the `asset_prompt` describes **the frame that beat begins on, which
   is the exact end-state of the previous beat**: same camera, same set, same lighting, same
   scale, with the subject in the pose the previous action finished in. It is a faithful
@@ -206,8 +221,11 @@ Both kinds must still leave room for their own action to happen (section 6).
 ### The character reference
 
 The first beat's still becomes the film's **locked character reference**, unless the
-director pins their own image. Every later `asset` still is generated conditioned on it,
-which is what keeps the cast identical across a cut instead of redesigned per scene.
+director pins their own image. Every later still is generated conditioned on it, which is what
+keeps the cast identical across a cut instead of redesigned per scene — and on a `"reference"`
+beat it is handed to the video model as well, so it holds the cast for the whole clip and not
+only for its first frame. That second use is the reason `"reference"` is the default cut, and
+it is what makes beat 1's prompt matter more than any other in the script.
 
 This puts a real constraint on beat 1: **its `asset_prompt` must show every recurring
 character in full, unobstructed, clearly lit, at a readable size, in a neutral legible
@@ -423,7 +441,7 @@ prose, no markdown fences, no commentary before or after.
       "action": "what moves, and what stays still",
       "asset_prompt": "full layered still description — and beat 1 must show every recurring character plainly, since it becomes the film's character reference",
       "seconds": 10.0,
-      "source": "asset"
+      "source": "reference"
     },
     {
       "n": 2,
@@ -449,8 +467,9 @@ Field rules:
 - `n` — 1-based, consecutive, no gaps.
 - `seconds` — exactly `5.0` or `10.0`. Must sum to `40.0` across all beats, in the split
   the director chose.
-- `source` — exactly `"asset"`, `"chain"` or `"bridge"`. Beat 1 must be `"asset"`. Never
-  `"reference"`: it needs uploaded photographs you cannot supply (section 2).
+- `source` — exactly `"reference"`, `"chain"` or `"bridge"`. Beat 1 must be `"reference"`.
+  `"asset"` is legal but is the rare exact-keyframe cut; use it only for the reason section 2
+  gives, and never as a substitute for `"reference"`.
 - `asset_prompt` — **required and non-empty on every beat, including chained ones.** It
   describes the beat's first frame, except on a `"bridge"`, where it describes its last.
 - Top-level `seconds` stays `5.0` (it is only the editor's default); per-beat `seconds` is
@@ -465,7 +484,8 @@ Verify every line. Fix anything that fails, then output.
 1. Did you ask the section 0 questions and get answers before writing anything?
 2. Do the beat `seconds` sum to exactly 40.0, in the split the director asked for?
 3. Is every beat exactly 5.0 or 10.0?
-4. Is beat 1 `"asset"`?
+4. Is beat 1 `"reference"`? And is every other cut `"reference"` too, apart from any beat you
+   can name a section 2 reason for making `"asset"`?
 5. **Is every single `asset_prompt` non-empty, including on chained beats?**
 6. Does beat 1's `asset_prompt` show every recurring character in full, unobstructed and
    clearly lit, so it can serve as the character reference?

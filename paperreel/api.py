@@ -407,34 +407,42 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
 
 @app.post("/api/reels/{slug}/beats/{n}/asset")
 async def upload_asset(slug: str, n: int, file: UploadFile = File(...),
-                       source: str = Form(board_mod.SOURCE_ASSET)) -> dict:
+                       source: str = Form(board_mod.SOURCE_REFERENCE)) -> dict:
     """Use your own image as a beat's still.
 
     Also the answer when the local image server is not running, or cannot run at all: nothing
     else generates stills, so an upload is the only other way a beat gets its opening frame.
 
-    `source` says which of H3's two keyframe slots the picture is for, because a supplied
-    image answers two different questions:
+    `source` says what the picture is FOR, because a supplied image answers three different
+    questions:
 
-      * "asset" (the default) -- it is where this beat STARTS, so the beat becomes a cut
+      * "reference" (the default) -- it is the composition this beat OPENS on, handed to ref2va
+        as <Picture 1> alongside the reel's cast reference. This is the ordinary cut.
+      * "asset" -- the same thing, but as an fl2va keyframe, so the opening frame is exact
+        rather than conditioned towards. Pick it when the frame itself has to land.
       * "bridge" -- it is where this beat ENDS, and the beat still opens on the previous
         clip's final frame. Use this when the shot has to carry straight on from the beat
         before AND arrive at a composition you drew.
 
-    Either way the still is stored in the same place; only the join changes, and with it
-    which slot the render hands it to.
+    All three store the still in the same place; only the join changes, and with it whether the
+    render hands it over as a keyframe or as a reference.
     """
     board = load(slug)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
-    if source not in (board_mod.SOURCE_ASSET, board_mod.SOURCE_BRIDGE):
+    if source not in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET,
+                      board_mod.SOURCE_BRIDGE):
         raise HTTPException(
-            422, "an uploaded still is either this beat's opening frame ('asset') or the "
-                 "frame it lands on ('bridge')",
+            422, "an uploaded still is this beat's opening composition ('reference'), its exact "
+                 "opening keyframe ('asset'), or the frame it lands on ('bridge')",
         )
     if source == board_mod.SOURCE_BRIDGE and board.upstream(n) is None:
         raise HTTPException(422, "the first beat has nothing to continue from, so its still "
                                  "can only be its opening frame")
+    if source == board_mod.SOURCE_REFERENCE and board.carries_motion(board.beat(n)):
+        raise HTTPException(422, "this scene opens on the tail of the clip before it, so a "
+                                 "still of its own would never be used. Turn off carrying "
+                                 "first, or upload this as a reference picture instead.")
     await store_upload(file, board.asset_path(n))
 
     # Supplying a still is a real story change -- either this beat now opens on it instead of
@@ -450,11 +458,12 @@ async def upload_asset(slug: str, n: int, file: UploadFile = File(...),
 async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) -> dict:
     """Add reference pictures to a beat, and put it on the reference join.
 
-    This is the other way to condition a shot: instead of one keyframe the model is shown up
-    to config.MAX_REF_IMAGES pictures of the cast and the set, and composes the opening frame
-    itself. The prompt names them <Picture 1>..<Picture N> in the order they were added, so
-    the order is meaningful and appending is deliberate -- new pictures land after the ones
-    already there rather than shuffling the numbering under the prompt.
+    Pictures of the cast, the set, a prop -- the things that must look the same in this shot as
+    everywhere else in the film. They ride alongside whatever the beat already has: on the
+    ordinary cut that is its own still as <Picture 1> and the reel's cast reference as
+    <Picture 2>, so these land from <Picture 3> on. The prompt names them by position in the
+    order they were added, which is why appending is deliberate -- a new picture goes after the
+    ones already there rather than shuffling the numbering under the notes describing them.
 
     Uploads cost nothing to place, exactly like an uploaded still. What they cost is render
     time: reference tokens ride through every sampling step, so nine pictures is a slower
@@ -466,24 +475,32 @@ async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) ->
     if not files:
         raise HTTPException(422, "no images sent")
 
+    # The join moves FIRST, before a single file is stored, because the budget depends on it:
+    # two of the model's nine slots fill themselves on a reference beat, and `next_ref_index`
+    # reads the join to know that. Set afterwards, a chained beat would be offered all nine,
+    # and the last two uploads would land on disk only to be truncated out of the render the
+    # moment the switch caught up. It also means a partial upload that hits the cap below still
+    # leaves the beat on the join its stored pictures belong to.
+    board.beat(n)["source"] = board_mod.SOURCE_REFERENCE
+
     stored = 0
     for file in files:
         index = board.next_ref_index(n)
         if index is None:
+            board.save()
             # Partial success is the honest answer: the images that fitted are on disk, and
             # saying so beats either silently dropping the rest or rejecting the whole batch.
+            automatic = config.MAX_REF_IMAGES - board.ref_budget(n)
             raise HTTPException(
                 409,
-                f"beat {n} already has {config.MAX_REF_IMAGES} reference pictures, which is "
-                f"the model's limit. {stored} of this upload were stored; remove one to add "
-                "another.",
+                f"beat {n} is full: {config.MAX_REF_IMAGES} pictures is the model's limit"
+                + (f", and {automatic} of them are this scene's own still and the reel's cast "
+                   "reference" if automatic else "")
+                + f". {stored} of this upload were stored; remove one to add another.",
             )
         await store_upload(file, board.ref_path(n, index))
         stored += 1
 
-    # Supplying references IS the join, the same way supplying a still makes a beat a cut:
-    # the beat is now conditioned on pictures and has no keyframe at all.
-    board.beat(n)["source"] = board_mod.SOURCE_REFERENCE
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board), "stored": stored}

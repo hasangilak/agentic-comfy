@@ -24,11 +24,19 @@ class Shot:
     which of the two keyframe slots it lands in depends on the join: the first frame for a
     cut, the last frame for a bridge. Unused by a plain continuation, which has no still.
 
-    `refs` is the other conditioning mode: up to config.MAX_REF_IMAGES pictures of the cast
-    and the set, in <Picture i> order, which the ref2va checkpoint uses INSTEAD of a keyframe.
-    Only read when the join is "reference", and empty on every other one. `ref_notes` says
-    what each of those pictures is for, by position -- without it the model decides for
-    itself, and it decides "this is the scene".
+    `pictures` is the other conditioning mode: up to config.MAX_REF_IMAGES images, in
+    <Picture i> order, which the ref2va checkpoint uses INSTEAD of a keyframe. Only read when
+    the join is "reference", and empty on every other one.
+
+    Each entry is a (path, role) pair rather than the two lists this used to carry, because the
+    prompt addresses every picture by position: a path list and a note list that can slip by one
+    would describe the cast reference with the words written for the beat's own still. Pairs come
+    straight off `Board.pictures_for`, which is what decides the order.
+
+    `opens_on` says the first of those pictures is this beat's own still, so the clip begins on a
+    composition drawn for it rather than one the model invents from the scene line. That is what
+    a cut is on this checkpoint, and it is false on a beat carrying the previous clip -- there,
+    the tail answers where the shot opens and the two instructions must never both be given.
     """
 
     n: int
@@ -36,8 +44,8 @@ class Shot:
     scene: str = ""
     source: str = board_mod.SOURCE_CHAIN
     asset: Path | None = None
-    refs: list[Path] = field(default_factory=list)
-    ref_notes: list[str] = field(default_factory=list)
+    pictures: list[tuple[Path, str]] = field(default_factory=list)
+    opens_on: bool = False
     # Reference beats only: send the tail of the previous clip as a reference video, which is
     # how this join gets continuity without a keyframe.
     carry: bool = False
@@ -144,12 +152,12 @@ def render_beats(
         raise FileNotFoundError(f"beats {absent} need their own still; generate the assets "
                                 "or drop your own PNGs in place")
     unreferenced = [shot.n for shot in shots
-                    if board_mod.uses_refs(shot.source)
-                    and not [p for p in shot.refs if p.exists()]]
+                    if board_mod.uses_refs(shot.source) and not shot.carry
+                    and not [pair for pair in shot.pictures if pair[0].exists()]]
     if unreferenced:
         raise FileNotFoundError(
             f"beats {unreferenced} are conditioned on reference pictures but have none; "
-            f"supply between 1 and {config.MAX_REF_IMAGES} images each"
+            f"generate their opening stills, or supply up to {config.MAX_REF_IMAGES} images each"
         )
 
     length = config.frame_count(seconds)
@@ -167,7 +175,7 @@ def render_beats(
                 n = shot.n
                 frame = workdir / f"beat{n}_frame.png"
                 end_frame = None
-                refs: list[Path] = []
+                pictures: list[tuple[Path, str]] = []
                 carry: Path | None = None
                 # Whether this beat opens mid-motion decides how the prompt has to describe
                 # its first frame, so it is read off the same branch that chooses the frame.
@@ -175,14 +183,15 @@ def render_beats(
                 if board_mod.uses_refs(shot.source):
                     # No keyframe on this path at all -- the pictures are the conditioning,
                     # and they go to the model at their own size.
-                    refs = [p for p in shot.refs if p.exists()]
+                    pictures = [pair for pair in shot.pictures if pair[0].exists()]
                     frame = None
                     continues = False
                     if shot.carry and result.beats:
                         carry = media.tail_clip(result.beats[-1].video,
                                                 workdir / f"beat{n}_carry.mp4",
                                                 config.REF_VIDEO_SECONDS, mute=mute)
-                    log(f"[render] beat {n}: {len(refs)} reference pictures"
+                    log(f"[render] beat {n}: {len(pictures)} reference pictures"
+                        + (", opening on its own still" if shot.opens_on else "")
                         + (f" + the last {config.REF_VIDEO_SECONDS:.0f}s of beat "
                            f"{shots[index - 1].n}" if carry else ""))
                 elif continues:
@@ -205,13 +214,18 @@ def render_beats(
                         first_frame=uploaded,
                         last_frame=(comfy.upload_image(http, end_frame)
                                     if end_frame else None),
-                        ref_images=[comfy.upload_image(http, path) for path in refs],
+                        ref_images=[comfy.upload_image(http, path) for path, _ in pictures],
                         ref_videos=[comfy.upload_video(http, carry)] if carry else [],
                         prompt=config.build_prompt(shot.action, scene=shot.scene, mute=mute,
                                                    identity=identity, continues=continues,
                                                    lands=end_frame is not None,
-                                                   refs=len(refs),
-                                                   ref_notes=shot.ref_notes,
+                                                   refs=len(pictures),
+                                                   ref_notes=[note for _, note in pictures],
+                                                   # A dropped picture cannot leave this true:
+                                                   # the still is always first, so if it went
+                                                   # missing the whole list shifted under it.
+                                                   opens_on=(shot.opens_on and bool(pictures)
+                                                             and pictures[0][0] == shot.asset),
                                                    ref_videos=1 if carry else 0),
                         length=length, steps=steps, seed=seed + n,
                     ),
@@ -250,32 +264,52 @@ def render_reel(
     name one -- an imported script, or a board built in the studio -- that wins, so a script
     that mixes cuts, continuations and bridges renders as written. `--scenes` (chain=False) is
     the deliberate override: every beat opens on its own still, whatever the document says.
+
+    A beat that opens a shot without saying which join it wants gets `reference`, the same
+    default the studio applies: its own still as <Picture 1> and the reel's cast reference as
+    <Picture 2>, on ref2va. An explicit `"source": "asset"` still renders as the exact keyframe
+    cut, which is what every board written before this default moved carries.
     """
     beats = board["beats"]
-    shots = []
+    resolved: list[str] = []
     for index, beat in enumerate(beats):
         named = beat.get("source")
-        if named == board_mod.SOURCE_REFERENCE:
-            # Survives both overrides: a reference beat takes nothing from the beat before
-            # it, so neither "this is the first beat" nor --scenes has anything to fix.
-            source = board_mod.SOURCE_REFERENCE
+        if named in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET):
+            # Survives both overrides. A reference beat takes nothing from the beat before it, so
+            # neither "this is the first beat" nor --scenes has anything to fix; and an explicit
+            # `asset` is a request for the exact keyframe, which those overrides must not undo.
+            resolved.append(named)
         elif index == 0 or not chain:
-            source = board_mod.SOURCE_ASSET
+            resolved.append(board_mod.SOURCE_REFERENCE)
         else:
-            source = named if named in board_mod.SOURCES else board_mod.SOURCE_CHAIN
-        shots.append(Shot(
+            resolved.append(named if named in board_mod.SOURCES else board_mod.SOURCE_CHAIN)
+
+    # A read-only Board over this render's joins, so the picture order and the role attached to
+    # each one are decided in `board.py` and not a second time here. There used to be a
+    # hand-rolled ref glob in the loop below; the moment two of the nine slots started filling
+    # themselves, that became a second copy of derived state free to disagree with the canvas.
+    #
+    # Over a COPY of the document, with the resolved joins written in. The copy is the point
+    # twice over: `view.source_for` has to see what this render decided or --scenes would compose
+    # pictures for a beat it is rendering as a keyframe cut, and the caller's dict is the one
+    # `storyboard.py` writes back to disk -- so resolving a join into it would persist derived
+    # state, which is the one thing the board document never holds.
+    view = board_mod.Board(
+        slug=workdir.name,
+        path=workdir / "storyboard.json",
+        data={**board, "beats": [{**beat, "source": source}
+                                 for beat, source in zip(beats, resolved)]},
+    )
+    shots = [
+        Shot(
             n=beat["n"], action=beat["action"], scene=beat.get("scene", ""), source=source,
             asset=workdir / f"beat{beat['n']}_asset.png",
-            refs=[
-                path for path in (
-                    workdir / f"beat{beat['n']}_ref{i}.png"
-                    for i in range(1, config.MAX_REF_IMAGES + 1)
-                ) if path.exists()
-            ],
-            # Straight off the document, since a CLI render has no Board object to ask.
-            ref_notes=[str(note) for note in (beat.get("ref_prompts") or [])],
+            pictures=view.pictures_for(beat["n"]),
+            opens_on=view.opens_on_still(view.beat(beat["n"])),
             carry=(beat.get("ref_video") == board_mod.CARRY_UPSTREAM and index > 0),
-        ))
+        )
+        for index, (beat, source) in enumerate(zip(beats, resolved))
+    ]
 
     result = render_beats(
         shots, workdir,

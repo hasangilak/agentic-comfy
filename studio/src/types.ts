@@ -1,20 +1,18 @@
 // Mirrors what paperreel/board.py and paperreel/jobs.py serialise.
 
 /**
- * Where a beat's frames come from -- the meaning of the wire on the canvas. The model takes
- * a first and a last keyframe, so there are three keyframe joins, not two:
+ * Where a beat's frames come from -- the meaning of the wire on the canvas.
  *
- *   asset  -- its own still as the first frame: a cut
- *   chain  -- the previous clip's last frame as the first frame: a continuation
- *   bridge -- both, so the clip continues AND lands on a still of its own
- *
- * The fourth is a different checkpoint rather than a different wiring:
- *
- *   reference -- up to `max_refs` pictures of the cast and the set, and NO keyframe. The
- *                model composes the opening frame itself, so this join cannot continue
- *                from anything -- that is the price of the extra images.
+ *   reference -- the default cut, on a different checkpoint: its own still as <Picture 1>
+ *                and the reel's cast reference as <Picture 2>, with room for `max_refs` in
+ *                total. No keyframe, so it cannot continue from anything -- but the cast is
+ *                re-asserted through every sampling step instead of only at frame zero.
+ *   chain     -- the previous clip's last frame as the first frame: a continuation
+ *   bridge    -- both, so the clip continues AND lands on a still of its own
+ *   asset     -- its own still as an exact first keyframe, and nothing else. The cut for a
+ *                beat whose opening frame has to land precisely.
  */
-export type Source = "asset" | "chain" | "bridge" | "reference";
+export type Source = "reference" | "chain" | "bridge" | "asset";
 
 export type BeatState =
   | "planned" // no action written yet
@@ -43,13 +41,29 @@ export interface Beat {
   frame: string | null;
   /** And, on a bridge, the frame it was told to arrive at. Null on every other join. */
   end_frame: string | null;
-  /** A reference beat's pictures, in prompt order: refs[0] is <Picture 1>. Empty elsewhere. */
+  /**
+   * The reference pictures the DIRECTOR added — the ones that can be removed and described.
+   * Not the whole conditioning set: `auto_refs` come first in the prompt's numbering, so
+   * refs[0] is <Picture ref_offset + 1>.
+   */
   refs: string[];
   /**
    * What each picture is FOR, same order and same length as `refs`; "" where nothing has
    * been said. It goes into the render, so editing one marks the beat stale.
    */
   ref_prompts: string[];
+  /**
+   * The slots that filled themselves: this beat's own still as the composition it opens on,
+   * and the reel's cast reference. Read-only — they follow the still and the reference rather
+   * than being editable here. Empty on every join but a reference cut.
+   */
+  auto_refs: { url: string | null; note: string }[];
+  /** How far those push the director's pictures down the numbering. `auto_refs.length`. */
+  ref_offset: number;
+  /** Uploads this beat can still take: `max_refs` less the automatic ones. */
+  ref_slots: number;
+  /** Whether this beat's still is wired as the composition it opens on. */
+  opens_on: boolean;
   /**
    * Reference scenes only: the tail of the previous clip goes in as a reference VIDEO. It is
    * how this join gets continuity at all — ref2va has no keyframe slot to hand a frame to —
@@ -106,10 +120,9 @@ export interface Board {
   pending_cost: Estimate;
   draft_cost: Estimate;
   spent: number;
+  /** Every beat short of the still it renders from, whichever join it is on. */
   assets_needed: number[];
-  /** Reference beats with no pictures yet. Uploads, never generated -- no quota involved. */
-  refs_needed: number[];
-  /** The model's cap on reference pictures per beat: nine. */
+  /** The model's hard cap on pictures per beat: nine. Per-beat `ref_slots` is what a node shows. */
   max_refs: number;
 }
 

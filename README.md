@@ -157,8 +157,9 @@ Anything with `title` and a `beats` array of `action` lines will import; everyth
 default.
 
 The import is checked but not fussy. Beats are renumbered from their array order, beat 1 is
-forced to open on its own still, lengths snap to 5 s or 10 s, and render settings (steps, seed)
-stay the board's rather than the script's. What is *thin* — no style bible, a cut with no
+forced onto a join that stands on its own — the default cut, unless the script asked for the
+exact-keyframe one — lengths snap to 5 s or 10 s, and render settings (steps, seed) stay the
+board's rather than the script's. What is *thin* — no style bible, a cut with no
 `asset_prompt` — is reported as a note and imported anyway, since all of it is free to fix on
 the canvas. An import never overwrites an existing reel; a second copy lands as `-2`.
 
@@ -187,15 +188,18 @@ disabled, so a scene cannot branch, connect twice, point backward, or form a loo
 
 - **solid green** — this beat continues from the previous clip's last frame. Not a new shot
   at all: the same take carrying on, same set, same camera. Needs no still.
-- **dashed amber** — this beat opens on its own still. A clean cut to somewhere else, one
-  local render of ~11–19 s.
+- **dashed amber, labelled `◈`** — a **reference** cut, and the default one: this beat opens
+  on its own still, handed to `ref2va` as `<Picture 1>`, with the reel's cast reference
+  alongside it as `<Picture 2>` for the whole clip. A clean cut to somewhere else, one local
+  render of ~11–19 s. Room for seven more pictures of the cast, the set or a prop, and it can
+  instead carry the previous clip in as a reference *video*.
 - **solid green, labelled `→ still`** — a **bridge**: it continues from the previous clip
   *and* is given its own still as the frame it has to arrive at. One unbroken take that ends
   on a composition you chose. Needs a still, same as a cut.
-- **no wire in, labelled `◈`** — a **reference** beat: no keyframe at all. It is shown up to
-  **nine** uploaded pictures of the cast and the set and composes its own opening frame. Its
-  pictures are uploads, so nothing generates them. It can optionally carry the previous clip
-  in as a reference *video*, which is this join's version of a continuation.
+- **dashed amber, labelled `✂`** — an **asset** cut: the same cut, except the still goes to
+  `fl2va` as an exact keyframe and nothing else goes with it. The opening frame lands pixel
+  for pixel; the cast is not re-asserted after it. The join for a beat whose first frame has
+  to be exact, and the one every board written before the default moved still uses.
 
 The bridge exists because H3 takes two keyframes, a first and a last, and the wire only ever
 used the first. Click a beat's join line to walk the four. Use it when a continuous shot has
@@ -217,15 +221,26 @@ the continuation wording plus an instruction that the second still is where this
 ends and must be reached only on the last frame — without that, the model treats it as another
 shot to cut to, arrives early and then sits there.
 
-### The reference join — nine pictures instead of a keyframe
+### The reference join — nine pictures instead of a keyframe, and the default cut
 
-The three joins above are all keyframes, and a keyframe is one image. The fourth join is a
-different checkpoint rather than a different wiring: `ref2va` takes **up to 9 reference
-images** (plus 3 videos and 3 audio clips, which this pipeline does not wire) and **no first
-or last frame at all**. Drop pictures on a scene's reference tray and they upload in order;
-the node numbers them, and the prompt tells the model about them as `<Picture 1>`…
-`<Picture 9>` in exactly that order. Remove one and the rest renumber, because the numbers are
-what the prompt refers to.
+A keyframe is one image. This join is a different checkpoint rather than a different wiring:
+`ref2va` takes **up to 9 reference images** (plus 3 videos and 3 audio clips, which this
+pipeline does not wire) and **no first or last frame at all**. The prompt tells the model about
+them as `<Picture 1>`…`<Picture 9>` in exactly that order, so position is meaning.
+
+**Two of those nine fill themselves,** which is what makes this the default cut rather than an
+uploads-only special case. `<Picture 1>` is the beat's own still — generated from its
+`asset_prompt` exactly as a keyframe cut's is, and named to the model as the composition this
+shot opens on. `<Picture 2>` is the reel's locked cast reference. Consistency is the whole
+argument: a keyframe fixes frame zero exactly and says nothing about the nine seconds after it,
+where several references keep pulling the puppets back towards their design through every
+sampling step. What it gives up is exactness — the opening is close rather than identical — and
+render time, since reference tokens ride the whole sampling run where a keyframe is one VAE
+encode. `asset` is still there for the beat that needs the frame itself.
+
+Drop more pictures on a scene's reference tray and they upload in order, starting at
+`<Picture 3>`; the node shows the numbers the prompt uses. Remove one and the rest renumber,
+because the numbers are what the prompt refers to.
 
 Each picture gets its own one-line **prompt** on the node, numbered to match: what the model
 should take *from* that picture. It matters more than it sounds. Shown a picture with no
@@ -248,17 +263,22 @@ again — re-rendering upstream marks it `follows a change`, and it re-enters th
 cascade. `config.REF_VIDEO_SECONDS` is the tail length; `config.REF_VIDEO_WITH_AUDIO` (off)
 also pairs the clip's soundtrack into the matching audio slot.
 
-Use it when what you have is a cast — turnarounds, an outfit, a set — rather than a frame.
-What it costs is the handoff: a reference beat cannot land on a still, and its continuity is
-"here is where the take had got to" rather than a frame-exact join. It also cannot be
-generated into: ✦ generate is gone from the node and the server refuses an asset job for it
-with a 409, because generating a still there would silently turn the scene into a cut and drop
-its pictures from the render. Render time grows with the number of pictures, too — reference tokens ride through
-every sampling step rather than being encoded once like a keyframe.
+What it costs is the handoff. A reference beat cannot land on a still, and it cannot take a
+frame-exact continuation — its version of one is "here is where the take had got to". Render
+time grows with the number of pictures, too, since reference tokens ride through every sampling
+step rather than being encoded once like a keyframe, so the render-time predictions in
+`config.py` — fitted on the keyframe path — read slightly low for a cut on this join.
 
-Both checkpoints live on the Volume (19.5 GiB each), and ComfyUI loads whichever the queued
-beat names, so a reel that never uses references never pays for the second one beyond disk.
-`reel.py --ref cast.png --ref set.png` is the same path from the CLI.
+The one shape that still cannot be generated into is a beat **carrying** the previous clip: it
+already has an opening, and the prompt may only ever give the model one answer to where the shot
+begins, so ✦ generate is gone from the node and the server refuses an asset job for it with a
+409. Every other reference beat generates its still like any other cut.
+
+Both checkpoints live on the Volume (19.5 GiB each), and ComfyUI loads whichever the queued beat
+names, so a reel that mixes cuts with continuations now pays one model swap per shot boundary —
+rendering in beat order, which the batch already does for chaining's sake, keeps it to that.
+`reel.py --ref cast.png --ref set.png` is the same checkpoint from the CLI, with no still wired:
+there, every `--ref` is a design reference and the model composes the opening itself.
 
 The other half is that both kinds hold the same cast. The **cast reference** on the script
 node is one image that every generated still is conditioned on, so a cut changes the setting
@@ -327,10 +347,11 @@ work is skipped.
 Add `--draft` for a cheap 5 s-per-beat approval pass before committing.
 
 `--assets` on a board that names a source per beat — an imported script, or one built in the
-studio — generates exactly the stills its cuts and bridges need. `--render` honours those joins
-too, but it applies one `--seconds` to the whole reel, so a script mixing 5 s and 10 s beats
-renders as written only in the studio. The CLI says so when it adopts one. `--scenes` is the
-deliberate override: every beat opens on its own still, whatever the board says.
+studio — generates exactly the stills it needs, which is every beat but a plain continuation.
+`--render` honours those joins too, but it applies one `--seconds` to the whole reel, so a script
+mixing 5 s and 10 s beats renders as written only in the studio. The CLI says so when it adopts
+one. `--scenes` is the deliberate override: every beat opens on its own still, whatever the board
+says — as the default cut, unless the board asked for the exact-keyframe one.
 
 For a single clip, `reel.py` composes a frame from a separate background and character:
 
@@ -447,6 +468,14 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   finished still and rejects one whose cast has drifted. That last check is verified to fire
   correctly on an obvious mismatch and to pass a good still, but its rate of false accepts on
   *subtle* drift over a long reel of hard cuts has not been quantified.
+- **The default cut moved to `ref2va` and nothing has been measured on it.** The argument is
+  sound — a keyframe fixes frame zero and says nothing about the nine seconds after it, where
+  the cast reference riding through every sampling step keeps asserting the design — but no
+  A/B render exists. Three specific unknowns: how much *less* exact the opening frame is when
+  the still is conditioning rather than a keyframe latent; how much slower a two-picture cut
+  is, since `SECONDS_PER_FRAME` is fitted on the keyframe path and will read low; and whether
+  the checkpoint swap at every shot boundary costs enough container time to matter. `asset` is
+  the same cut on the old path, so an A/B is one join click and two renders.
 - **The review passes are not deterministic.** The script self-check and the still review are
   the same model reading its own output, so two runs of the same board can disagree about
   whether something needs fixing. The still review is pinned to temperature 0.1 to keep that

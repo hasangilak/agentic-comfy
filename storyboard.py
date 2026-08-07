@@ -134,10 +134,12 @@ def main() -> None:
         # rather than one or all. Otherwise: chaining needs only the opening frame, which is
         # what keeps a reel inside the tight image quota, and scene mode needs one per beat.
         if any(beat.get("source") for beat in board["beats"]):
-            # Bridges are in here too: their still is the frame they land on rather than the
-            # one they open on, but it is just as much a file that has to exist first.
+            # Every join but a plain continuation, which is the only one with nowhere to put a
+            # still. A bridge lands on it rather than opening on it, and a reference beat takes
+            # it as <Picture 1> rather than as a keyframe, but each is just as much a file that
+            # has to exist first.
             wanted = [b for b in board["beats"]
-                      if board_mod.uses_asset(b.get("source") or board_mod.SOURCE_CHAIN)]
+                      if (b.get("source") or board_mod.SOURCE_CHAIN) != board_mod.SOURCE_CHAIN]
         else:
             wanted = board["beats"][:1] if args.chain else board["beats"]
         def missing() -> list[dict]:

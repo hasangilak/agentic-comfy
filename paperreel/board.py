@@ -19,19 +19,26 @@ from . import config
 
 # Where a beat's frames come from. This is what the wire between two nodes means.
 #
-# H3 conditions on up to two keyframes -- a first and a last -- so a beat has three
-# keyframe joins, not two. The third is what lets a beat both continue AND be given a
-# picture: the continuation goes in the first slot and the picture in the last, and the
-# clip is the move between them.
+# H3 conditions on up to two keyframes -- a first and a last -- so there are three keyframe
+# joins. The third is what lets a beat both continue AND be given a picture: the continuation
+# goes in the first slot and the picture in the last, and the clip is the move between them.
 #
-# The fourth join is a different checkpoint rather than a different wiring. `ref2va` takes up
-# to config.MAX_REF_IMAGES pictures of the cast and the set and NO keyframe at all, so a
-# reference beat cannot continue from anything -- it composes its own opening frame. That is
-# the trade: nine pictures of what things look like, in exchange for the frame-exact handoff.
-SOURCE_ASSET = "asset"    # its own still as the FIRST frame -- a new shot, one image quota
+# The fourth join is a different checkpoint rather than a different wiring, and it is now the
+# DEFAULT for a beat that opens a shot. `ref2va` takes up to config.MAX_REF_IMAGES pictures and
+# NO keyframe at all, so a reference beat composes its own opening frame -- but it does not
+# compose it out of nothing any more. Its own still goes in as <Picture 1> and the reel's
+# locked cast reference as <Picture 2>, so a cut carries two anchors where the keyframe cut
+# carried one, and both of them keep asserting themselves through every sampling step instead
+# of only fixing frame zero. That is the trade the default is making: the opening is close
+# rather than pixel-exact, and the cast holds better for the ten seconds after it.
+#
+# `asset` did not go away -- it is the beat that needs its opening frame EXACTLY, since a
+# keyframe latent is re-injected every step and never denoised. The two continuations cannot
+# move: they hand over the previous clip's true last frame, and ref2va has no socket for one.
+SOURCE_ASSET = "asset"    # its own still as the FIRST frame, exactly -- the keyframe cut
 SOURCE_CHAIN = "chain"    # the previous beat's last frame -- continuous motion, free
 SOURCE_BRIDGE = "bridge"  # continues from the previous clip AND lands on its own still
-SOURCE_REFERENCE = "reference"  # up to 9 reference pictures, no keyframe -- the ref2va path
+SOURCE_REFERENCE = "reference"  # the default cut: its still + the cast, on ref2va
 SOURCES = (SOURCE_ASSET, SOURCE_CHAIN, SOURCE_BRIDGE, SOURCE_REFERENCE)
 
 
@@ -45,13 +52,16 @@ def chains(source: str) -> bool:
 
 
 def uses_asset(source: str) -> bool:
-    """Does this beat need a still of its own on disk?
+    """Does this beat's own still go into one of H3's two KEYFRAME slots?
 
-    A cut opens on it; a bridge arrives at it. Either way the file has to be there before
-    the beat can be rendered, and either way it costs one image from the quota.
+    A cut opens on it; a bridge arrives at it. Either way it is handed to fl2va as a latent
+    that is re-injected at every step, so the frame is exact.
 
-    False for a reference beat, which has no keyframe: its pictures are references, and they
-    are counted and checked separately by `uses_refs`.
+    False for a reference beat, which also has a still of its own now but hands it over as
+    <Picture 1> instead -- conditioning rather than a keyframe. So this is not the question
+    "does a still have to exist on disk"; that one is `Board.wants_still`, which is a beat-level
+    question because a reference beat carrying motion answers it differently. Same split as
+    `chains` and `Board.follows_upstream`, and for the same reason.
     """
     return source in (SOURCE_ASSET, SOURCE_BRIDGE)
 
@@ -230,10 +240,18 @@ class Board:
                 if p.is_file()]
 
     def next_ref_index(self, n: int) -> int | None:
-        """The lowest free picture slot, or None when the beat is already at the cap."""
+        """The lowest free picture slot, or None when the beat is already at the cap.
+
+        Capped on the UPLOAD budget rather than flat at config.MAX_REF_IMAGES, because two of
+        the model's nine slots fill themselves on a beat that opens a shot -- its own still and
+        the cast reference. Without this, the ninth upload would be accepted, written to disk,
+        and then silently dropped by `pictures_for` when it truncated the list to what the node
+        actually takes: a picture on the canvas that is not in the render.
+        """
+        budget = self.ref_budget(n)
         for index in range(1, config.MAX_REF_IMAGES + 1):
             if not self.ref_path(n, index).is_file():
-                return index
+                return index if index <= budget else None
         return None
 
     def ref_prompts(self, n: int) -> list[str]:
@@ -442,8 +460,12 @@ class Board:
         # so it can never be chained. It matters especially after deleting the old scene 1.
         # A reference beat is left alone -- it takes nothing from upstream either way, so
         # promoting it to a cut would throw away its pictures for no reason.
+        #
+        # Demoted to the default cut, which now takes the still it already has as <Picture 1>
+        # rather than as a keyframe. A beat that was chaining has no still of its own, so this
+        # usually lands on `needs_still` either way -- the join is what changes, not the work.
         if ordered and chains(self.source_for(ordered[0])):
-            ordered[0]["source"] = SOURCE_ASSET
+            ordered[0]["source"] = SOURCE_REFERENCE
 
     # ## Derived state
     #
@@ -461,18 +483,25 @@ class Board:
         )
 
     def source_for(self, beat: dict) -> str:
-        """Default the opening beat to its own asset; later beats inherit unless told.
+        """Default a beat that opens a shot to the reference join; later beats inherit unless told.
 
         A beat with nothing before it cannot continue from anything, whatever the document
-        says -- both continuations need an upstream clip to take their first frame from. It
-        CAN be a reference beat, though: references are not inherited from anywhere, so that
-        join is as available on beat 1 as on any other.
+        says -- both continuations need an upstream clip to take their first frame from. So the
+        two joins that stand on their own are what beat 1 can be, and the default of those is
+        now `reference`: its still plus the cast, on ref2va, rather than one exact keyframe.
+
+        An explicit `asset` is honoured everywhere, including in first position, and that is
+        what makes this safe to change. Every board built before this has `"source": "asset"`
+        written into beat 1 by `script.normalise`, so it keeps rendering as the keyframe cut it
+        was rendered as -- nothing already on disk quietly changes checkpoint. The new default
+        reaches a board through whoever writes the document: the planner, an import, an added
+        beat.
         """
         explicit = beat.get("source")
-        if explicit == SOURCE_REFERENCE:
-            return SOURCE_REFERENCE
+        if explicit in (SOURCE_REFERENCE, SOURCE_ASSET):
+            return explicit
         if self.upstream(beat["n"]) is None:
-            return SOURCE_ASSET
+            return SOURCE_REFERENCE
         return explicit if explicit in SOURCES else SOURCE_CHAIN
 
     def carries_motion(self, beat: dict) -> bool:
@@ -497,6 +526,92 @@ class Board:
         join answers this question either way depending on its flag.
         """
         return chains(self.source_for(beat)) or self.carries_motion(beat)
+
+    def opens_on_still(self, beat: dict) -> bool:
+        """Does this reference beat open on a still drawn for it, rather than composing one?
+
+        This is what makes `reference` the default cut rather than an uploads-only special case:
+        the beat's own still goes in as <Picture 1> and the clip begins on that composition.
+        Three things have to hold -- the beat is on this join, it is not opening on the previous
+        clip's tail instead, and the still is actually on disk.
+
+        The carry check is not a detail. A carried clip and an opening still are two different
+        answers to where the shot begins, and `config.build_prompt` may only ever give one of
+        them, so a beat set to carry does not wire its still at all.
+        """
+        return (
+            uses_refs(self.source_for(beat))
+            and not self.carries_motion(beat)
+            and self.asset_path(beat["n"]).is_file()
+        )
+
+    def needs_still(self, beat: dict) -> bool:
+        """Is this beat BLOCKED for want of `beat<n>_asset.png`?
+
+        Not the same question as `uses_asset`, which asks whether a still goes into a keyframe
+        slot. A cut and a bridge are blocked without one either way. A reference beat is only
+        blocked when it has nothing else to be conditioned on: uploaded pictures do the job on
+        their own, and a beat carrying the previous clip's tail opens on that instead.
+
+        So this is what drives NEEDS_ASSET and `assets_needed`, and the uploads clause is what
+        keeps a board built before the default moved to ref2va working untouched -- its
+        reference beats have pictures and are not waiting for anything.
+        """
+        source = self.source_for(beat)
+        if uses_asset(source):
+            return True
+        if not uses_refs(source):
+            return False
+        return not self.carries_motion(beat) and not self.ref_paths(beat["n"])
+
+    def auto_pictures(self, n: int) -> list[tuple[Path, str]]:
+        """The reference pictures that wire themselves, in <Picture i> order, with their roles.
+
+        Two, on a beat that opens a shot: its own still as the composition to begin on, and the
+        reel's locked cast reference so the characters keep being re-asserted through every
+        sampling step rather than only at frame zero. Together they are the point of moving the
+        default cut onto ref2va at all.
+
+        The cast reference is deliberately NOT wired onto the other reference shapes -- an
+        uploads-only beat, or one carrying the previous clip. Those already say what they are
+        conditioned on, and quietly adding a picture to them would change what every board built
+        before this rendered as, mark it stale, and charge for the extra reference tokens.
+
+        `reference_for` returns None on the beat whose own still IS the reference, so beat 1 gets
+        one picture rather than the same file twice.
+        """
+        if not self.opens_on_still(self.beat(n)):
+            return []
+        found = [(self.asset_path(n), config.REF_ROLE_OPENING)]
+        cast = self.reference_for(n)
+        if cast is not None:
+            found.append((cast, config.REF_ROLE_CAST))
+        return found
+
+    def pictures_for(self, n: int) -> list[tuple[Path, str]]:
+        """Everything this beat is conditioned on, in <Picture i> order, paired with its role.
+
+        Pairs rather than two parallel lists, and that is the whole reason this method exists:
+        position IS meaning here -- the prompt names each picture by its index -- so a path list
+        and a note list that could drift by one is a bug waiting for the first auto-wired slot.
+        Index i of this list is what the prompt calls <Picture i+1>, note included.
+
+        Truncated at the model's cap rather than raising: `next_ref_index` already refuses an
+        upload that would not fit, so reaching the limit here means a hand-edited board, and
+        rendering the first nine pictures beats refusing to render at all.
+        """
+        if not uses_refs(self.source_for(self.beat(n))):
+            return []
+        uploaded = list(zip(self.ref_paths(n), self.ref_prompts(n)))
+        return (self.auto_pictures(n) + uploaded)[:config.MAX_REF_IMAGES]
+
+    def ref_budget(self, n: int) -> int:
+        """How many pictures the director may upload to this beat, after the automatic ones.
+
+        Seven rather than nine on a beat that opens a shot. Read off `auto_pictures` so the two
+        can never disagree about how many slots are already spoken for.
+        """
+        return max(0, config.MAX_REF_IMAGES - len(self.auto_pictures(n)))
 
     def identity(self) -> str:
         """The style bible: what the characters and the set look like, never how they move.
@@ -571,10 +686,20 @@ class Board:
             # the prompt names them by position. The notes are in here for the same reason
             # the action is: they are words the model is given, so rewriting one really does
             # change what the beat would render as.
-            refs = fingerprint(
-                *(file_hash(p) for p in self.ref_paths(beat["n"])),
-                *self.ref_prompts(beat["n"]),
-            )
+            #
+            # Taken off `pictures_for`, so the automatic slots are hashed too. Two consequences
+            # worth knowing: the beat's own still is in here rather than in `asset` above, and
+            # re-rendering beat 1's still moves the cast reference, which marks every beat
+            # conditioned on it as edited. That is the same call `identity()` makes a few lines
+            # down for the style bible -- board-wide inputs read as an edit, because changing
+            # one is something you did rather than something a beat inherits.
+            #
+            # Hashed as (file, note) pairs in order, so swapping two pictures changes the
+            # fingerprint even when both notes stay put.
+            refs = fingerprint(*(
+                part for path, note in self.pictures_for(beat["n"])
+                for part in (file_hash(path), note)
+            ))
         return FrameIds(asset=asset, upstream=upstream, refs=refs)
 
     def states(self, *, rendering: set[int] | None = None) -> dict[int, str]:
@@ -617,14 +742,12 @@ class Board:
             return STALE if own_changed else INVALIDATED
         if has_video:
             return STALE  # rendered by an older tool that left no fingerprint
-        source = self.source_for(beat)
-        if uses_asset(source) and not self.asset_path(n).exists():
-            return NEEDS_ASSET
-        # A reference beat has no keyframe to be missing, but it cannot render on nothing
-        # either -- ref2va with no references connected is text-to-video wearing the wrong
-        # checkpoint. Carrying the previous clip counts as a reference, so a beat doing that
-        # is complete without a single picture.
-        if uses_refs(source) and not self.ref_paths(n) and not self.carries_motion(beat):
+        # One question for all four joins now: is this beat short of the still it renders from?
+        # A cut and a bridge want it in a keyframe slot, and the default reference cut wants it
+        # as <Picture 1>. `needs_still` is what knows that uploaded pictures and a carried clip
+        # are each a complete answer on their own -- ref2va with nothing connected at all is
+        # text-to-video wearing the wrong checkpoint, which is the case this catches.
+        if self.needs_still(beat) and not self.asset_path(n).exists():
             return NEEDS_ASSET
         if beat.get("action"):
             return READY
@@ -760,12 +883,30 @@ class Board:
                 "frame": self.media_url(self.frame_path(n)),
                 # And, for a bridge, the frame it was told to arrive at.
                 "end_frame": self.media_url(self.end_frame_path(n)),
-                # A reference beat's pictures, in <Picture i> order -- index 0 of this list
-                # is what the prompt calls <Picture 1>.
+                # The reference pictures the DIRECTOR added, in the order they were added.
+                # Deliberately not the whole conditioning set: these are the ones that can be
+                # removed and described, and `ref_path` numbers them from 1, so keeping the
+                # list to them is what lets the canvas address one without arithmetic.
                 "refs": [self.media_url(p) for p in self.ref_paths(n)],
                 # What each of those pictures is for, same order, same length. Empty string
                 # where nothing has been said about one yet.
                 "ref_prompts": self.ref_prompts(n),
+                # The slots that filled themselves: the beat's own still as the composition to
+                # open on, and the reel's cast reference. Read-only on the canvas -- they follow
+                # the still and the reference rather than being editable in their own right.
+                "auto_refs": [
+                    {"url": self.media_url(path), "note": note}
+                    for path, note in self.auto_pictures(n)
+                ],
+                # How far the director's pictures are pushed down the numbering by those. The
+                # prompt calls upload i <Picture ref_offset + i>, and the node has to show the
+                # same number the model is told or the notes describe the wrong picture.
+                "ref_offset": len(self.auto_pictures(n)),
+                # What is left of the model's nine after the automatic ones.
+                "ref_slots": self.ref_budget(n),
+                # Whether this beat's still is wired as the composition it opens on. False on a
+                # reference beat carrying the previous clip, which opens on that instead.
+                "opens_on": self.opens_on_still(beat),
                 # A reference beat can also be shown the tail of the previous clip, which is
                 # how this join gets continuity without a keyframe.
                 "carry": self.carries_motion(beat),
@@ -809,18 +950,17 @@ class Board:
             "pending_cost": self.cost_of(pending),
             "draft_cost": self.cost_of_at(pending, config.DRAFT_SECONDS),
             "spent": self.spent(),
+            # Every beat short of the still it renders from, whichever join it is on. Reference
+            # beats are in here now rather than in a list of their own: generating a still for
+            # one puts it in <Picture 1> and leaves the join alone, so it no longer risks
+            # turning a beat conditioned on pictures into a cut -- which is the only reason the
+            # two lists were ever kept apart.
             "assets_needed": [
                 b["n"] for b in self.ordered_beats()
-                if uses_asset(self.source_for(b)) and not self.asset_path(b["n"]).exists()
+                if self.needs_still(b) and not self.asset_path(b["n"]).exists()
             ],
-            # Kept apart from assets_needed on purpose: those are generated against the image
-            # quota, these are uploads. A reference beat waiting for pictures must never be
-            # swept into a "generate the missing stills" run, which would make it a cut.
-            "refs_needed": [
-                b["n"] for b in self.ordered_beats()
-                if uses_refs(self.source_for(b)) and not self.ref_paths(b["n"])
-            ],
-            # The node grows one upload slot per picture and stops here.
+            # The node grows one upload slot per picture and stops here. Per-beat `ref_slots` is
+            # the number that actually matters on a node; this is the model's hard cap.
             "max_refs": config.MAX_REF_IMAGES,
         }
 

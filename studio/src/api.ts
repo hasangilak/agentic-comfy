@@ -73,11 +73,12 @@ export const api = {
     post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats }).then((r) => r.job),
 
   /**
-   * `source` says which keyframe slot the picture is for: "asset" makes it this beat's
-   * opening frame (a cut), "bridge" keeps the continuation and makes it the frame the clip
-   * has to arrive at.
+   * `source` says what the picture is for: "reference" makes it the composition this beat opens
+   * on, alongside the reel's cast reference (the ordinary cut); "asset" makes it an exact opening
+   * keyframe instead; "bridge" keeps the continuation and makes it the frame the clip has to
+   * arrive at.
    */
-  uploadAsset: (slug: string, n: number, file: File, source: Source = "asset") => {
+  uploadAsset: (slug: string, n: number, file: File, source: Source = "reference") => {
     const form = new FormData();
     form.append("file", file);
     form.append("source", source);
