@@ -8,16 +8,27 @@ Papercut Studio: a local-only web UI for generating paper-cutout stop-motion key
 
 ## Commands
 
+The `Makefile` is the front door — `make help` lists every target. It wraps the npm scripts and adds project ops.
+
 ```sh
-npm run dev          # both processes via concurrently
-npm run dev:server   # tsx watch server/index.ts  -> 127.0.0.1:8791
-npm run dev:web      # vite                       -> localhost:5173
-npm run build        # tsc -b (typecheck both projects) + vite build
-npm run preview
-PORT=9000 npm run dev:server   # override server port
+make dev             # both processes via concurrently
+make dev-server      # tsx watch server/index.ts  -> 127.0.0.1:8791
+make dev-web         # vite                       -> localhost:5173
+make typecheck       # tsc -b, both TS projects
+make build           # typecheck + vite build
+make doctor          # node, zip, mflux binaries, arch, weights
+make health          # GET /api/health on the running server
+make scenes          # list scenes on disk with frame counts
+make ports / kill    # inspect or free 5173 and 8791
+make clean           # dist + tsbuildinfo    (distclean also drops node_modules)
+PORT=9000 make dev-server
 ```
 
-`npm run build` is the only typecheck — there is no lint config and no test framework installed. `tsc -b` covers both TS projects, so it type-checks the server too even though the server is never compiled (tsx runs the TypeScript directly).
+`make nuke-scenes` deletes `out/scenes` and `out/uploads`. It refuses without `CONFIRM=yes`, and `out/` is gitignored — there is no recovery.
+
+The underlying npm scripts (`dev`, `dev:server`, `dev:web`, `build`, `preview`) still work directly. The dev/build targets depend on `install`, which is timestamp-driven off `package.json`/`package-lock.json`, so `npm install` reruns only when those change.
+
+Typechecking is the only automated check — there is no lint config and no test framework installed. `tsc -b` covers both TS projects, so it type-checks the server too even though the server is never compiled (tsx runs the TypeScript directly).
 
 Requires an Apple Silicon Mac with `mflux` on PATH and `flux2-klein-4b` weights cached; Node 20+. The `zip` binary is shelled out to for scene download.
 
