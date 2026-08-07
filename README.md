@@ -3,14 +3,16 @@
 Turn a one-line concept into a vertical 1080×1920 Instagram Reel in handcrafted
 paper-cutout stop-motion, using MiniMax-H3 on a single GPU on Modal.
 
-Scripts and still assets come from the Antigravity CLI (`agy`), which bills against
-your Google plan quota rather than a metered API. Only rendering costs money, so the
-stages are deliberately separable: iterate for free, pay once. A script you wrote
+Scripts come from the Antigravity CLI (`agy`), which bills against your Google plan quota
+rather than a metered API. Opening stills come from **Papercut Studio** in `image/` —
+`flux2-klein-4b` through mflux on this machine, free and unmetered — falling back to agy's
+five-images-per-five-hours pool when that server is not running. Only rendering costs money,
+so the stages are deliberately separable: iterate for free, pay once. A script you wrote
 yourself is imported as it stands, with no planning turn at all.
 
 ```
 concept ──agy──▶ ┐
-                 ├──▶ storyboard.json ──agy──▶ opening asset
+                 ├──▶ storyboard.json ──mflux──▶ opening asset   (image/, local, free)
  your own script ┘                                  │
                                           compose 9:16 frame (local, free)
                                                     │
@@ -60,13 +62,35 @@ A node canvas: talk to agy, get a script and a chain of shots, render when you'r
 
 ```bash
 make install                                           # npm + the uv environment
-make run                                               # :8787 API, :5173 UI — use the Vite URL
+make studio                                            # :8791 stills, :8787 API, :5173 UI
 ```
 
-`make run` starts both servers and takes them down together, so Ctrl-C never leaves one
-holding a port. `make serve` builds the frontend instead and serves everything from
-:8787; `make backend` and `make frontend` run one at a time; `make stop` kills either.
+Use the Vite URL — it proxies the API through. `make studio` starts all three servers and
+takes them down together, so Ctrl-C never leaves one holding a port. `make run` is the same
+without the image server, which is what you want on a session that is only editing a script.
+`make serve` builds the frontend instead and serves everything from :8787; `make backend`,
+`make frontend` and `make images` run one at a time; `make stop` kills any of them.
 `make help` lists the rest. Nothing in the Makefile can start a paid render.
+
+### Where stills come from
+
+Two backends produce the same file and nothing downstream can tell which one did:
+
+| | quota | per still | resolution |
+| --- | --- | --- | --- |
+| **Papercut Studio** (`image/`, mflux `flux2-klein-4b`) | none | ~11 s, ~19 s anchored | renders at 768×1344, no crop |
+| **agy** (Antigravity's image tool) | ~5 per 5 hours | seconds | 9:16, cover-cropped to the grid |
+
+The studio prefers Papercut whenever `image/` is listening on :8791 and falls back to agy
+otherwise, which is also what happens on a machine without Apple Silicon, where mflux cannot
+run. Force one with `PAPERREEL_ASSET_BACKEND=papercut` or `=agy`. The job log names the one it
+used. Papercut renders straight onto H3's generation grid, so the frame reaches the video model
+exactly as it was approved rather than centre-cropped on the way in.
+
+Papercut is shown the reel's cast reference in **anchor** mode, which is the same job the
+reference does on the agy path: every still is conditioned on one image, so a cut changes the
+setting rather than the characters. A board with no still at all renders its first beat alone,
+unconditioned — that image becomes the reference the rest are anchored to.
 
 By hand, if you prefer:
 
@@ -310,8 +334,10 @@ GCP billing project, so no per-token charge can land on a bill. Limits are enfor
 overage (governed by an "AI Credit Overages" setting; leave it on "Never").
 
 **Image generation has its own, much tighter pool — roughly five images per window.**
-That is the real constraint on iteration speed, and the reason chaining matters: a
-chained reel needs exactly **one** image regardless of beat count.
+That was the real constraint on iteration speed, and the reason chaining matters: a
+chained reel needs exactly **one** image regardless of beat count. It applies only when agy
+is the stills backend; with `image/` running there is no image quota at all, and chaining
+becomes an editorial choice about seams rather than a way to ration pictures.
 
 ## Layout
 
@@ -319,6 +345,7 @@ chained reel needs exactly **one** image regardless of beat count.
 paperreel/config.py     geometry, rates, prompt scaffold, measured constants
 paperreel/media.py      chroma-key cutout, compositing, stitching  (local, free)
 paperreel/comfy.py      ComfyUI client + the 15-node H3 graph
+paperreel/papercut.py   stills from image/, over HTTP on this machine
 paperreel/planner.py    agy: storyboard and asset generation
 paperreel/script.py     adopting a script written outside the studio
 paperreel/pipeline.py   app lifecycle + chained batch rendering
@@ -331,6 +358,7 @@ comfyui_minimax_h3.py   the Modal GPU app
 studio.py               the studio server
 studio/                 React + TypeScript + React Flow canvas
 prompts/                the authoring prompt for writing a script elsewhere
+image/                  Papercut Studio: the local mflux stills renderer (own README)
 Makefile                install, run, and the one-time Modal steps
 storyboard.py           CLI: full reel
 reel.py                 CLI: single clip

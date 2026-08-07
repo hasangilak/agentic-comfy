@@ -48,6 +48,19 @@
       "action": "The Moth puppet remains completely motionless on the frame of the lamp, while its left antenna tilts slightly downward in a single discrete step.",
       "asset_prompt": "FOREGROUND: The upper frame edge shows the cut-out corner of the matte black chipboard lamp roof, casting a heavy downward shadow.\nMIDGROUND: A tight macro shot filling the frame with the hexagonal lantern housing, constructed from matte black chipboard framing surrounding translucent parchment vellum panes. On the left side of the frame, clinging to the outer black frame, is the Moth puppet (4cm tall, cut from pale parchment ivory cardstock with fine hand-inked dark brown cross-hatch lines, raw umber kraft brown torso, glossy black pin-head bead eyes, black chipboard antennae, silver pin rivets at shoulders). The moth's front leg touches a small sliding trapdoor piece of black paper at the base of the lantern housing. The small burnt sienna paper ember disc hangs suspended below the moth's feet on a thread.\nBACKGROUND: Out-of-focus plane of storm slate-blue cardstock depicting distant street background.\nUPPER THIRD / SKY: Occluded by the top cap of the black chipboard lamp post.\nATMOSPHERE: Faint texture of the cold-press cardstock tooth caught in the raking key light.\nLIGHT: Sharp warm sienna key light from the upper left, highlighting the cut edges of the black chipboard and the paper grain of the moth's ivory wings.\nCOMPOSITION: Tall vertical 9:16 portrait close-up. The lantern housing occupies the right two-thirds of the frame, with the Moth puppet aligned vertically along the left third line.",
       "n": 3,
+      "ref_video": "upstream",
+      "render": {
+        "at": "2026-08-06T21:07:13+00:00",
+        "cost": 0.2701,
+        "draft": false,
+        "fingerprint": "768ecb1cba38b8c4",
+        "frames": 124,
+        "own": "425fdf547b4c2291",
+        "render_seconds": 248.0,
+        "seconds": 5.17,
+        "seed": 1104,
+        "steps": 8
+      },
       "scene": "Macro close-up of the paper streetlamp glass housing and the moth.",
       "seconds": 5.0,
       "source": "reference"
@@ -56,6 +69,19 @@
       "action": "Using its forelegs, the Moth puppet slides a small square black paper panel upward to open the lamp base, then swings the amber paper ember inside the translucent vellum glass housing.",
       "asset_prompt": "",
       "n": 4,
+      "ref_video": "upstream",
+      "render": {
+        "at": "2026-08-06T21:10:53+00:00",
+        "cost": 0.2386,
+        "draft": false,
+        "fingerprint": "b68404026c4219f3",
+        "frames": 124,
+        "own": "bb473cd5d0146f89",
+        "render_seconds": 219.1,
+        "seconds": 5.17,
+        "seed": 1105,
+        "steps": 8
+      },
       "scene": "Macro close-up of the paper streetlamp glass housing and the moth.",
       "seconds": 5.0,
       "source": "reference"
@@ -64,6 +90,19 @@
       "action": "A warm ember amber paper cutout disc inside the glass housing drops into place, instantly revealing stacked yellow and orange paper flame layers inside the lantern, while the surrounding blue street background drops down one shade darker as the Moth puppet flaps away upward.",
       "asset_prompt": "FOREGROUND: Overlapping storm slate-blue cardstock cobbles stretching across the bottom quarter, with a small kraft brown paper trash bundle lying near the bottom left edge.\nMIDGROUND: The full 25cm victorian streetlamp cut from matte black chipboard stands centered slightly to the right third. Inside its clear vellum lantern housing, a rich warm ember amber paper star shape is visible. Clinging to the side is the Moth puppet (4cm tall, cut from pale parchment ivory cardstock with fine hand-inked dark brown cross-hatch lines, raw umber kraft brown torso, glossy black pin-head bead eyes, black chipboard antennae, silver pin rivets at shoulders), wings fully spread in preparation for flight.\nBACKGROUND: Deep midnight navy paper silhouettes of city buildings with tiny lit parchment vellum windows.\nUPPER THIRD / SKY: Dark storm slate-blue cardstock sky filling the top third of the vertical frame.\nATMOSPHERE: Layered depth planes visible via casting shadows.\nLIGHT: Dual lighting effect: Strong warm sienna key light from upper left, augmented by the focal warm ember light cast from inside the newly lit lantern housing onto the black post.\nCOMPOSITION: Tall vertical 9:16 portrait. Wide establishing scale with the lamp post dominating the vertical height, offset slightly right, leaving the upper left third open for the moth's exit flight path.",
       "n": 5,
+      "ref_video": "upstream",
+      "render": {
+        "at": "2026-08-06T21:14:12+00:00",
+        "cost": 0.2152,
+        "draft": false,
+        "fingerprint": "235e03a86102fea7",
+        "frames": 124,
+        "own": "67f8a2fc90cc7f58",
+        "render_seconds": 197.6,
+        "seconds": 5.17,
+        "seed": 1106,
+        "steps": 8
+      },
       "scene": "Wide view of the streetlamp illuminated against the darkened street.",
       "seconds": 5.0,
       "source": "reference"
@@ -116,18 +155,19 @@
   ],
   "concept": "A solitary paper-cut moth attempts to light a cold paper streetlamp using a glowing ember tied to its thread, succeeding just as dusk falls completely.",
   "last_render": {
-    "at": "2026-08-06T21:00:06+00:00",
+    "at": "2026-08-06T21:14:13+00:00",
     "beats": [
-      1,
-      2
+      3,
+      4,
+      5
     ],
-    "container_seconds": 331.2,
-    "cost": 0.3607
+    "container_seconds": 703.7,
+    "cost": 0.7662
   },
   "manual_stills": true,
   "seconds": 5.0,
   "seed": 1101,
-  "spend_seconds": 3107.2,
+  "spend_seconds": 3810.9,
   "steps": 8,
   "style_bible": "Handcrafted layered paper-cutout stop motion photographed on a physical tabletop diorama rig. Made from heavy cold-press cardstock with visible organic paper tooth, rough kraft paper, translucent parchment vellum, and matte black chipboard. Every layer is physically separated in depth by 2-5mm spacers, casting soft natural contact shadows on the planes behind. Edges are hand-cut with a sharp craft knife, remaining crisp but slightly irregular and showing a pale, raw paper core along cut edges. Motion is visibly animated on twos with slight mechanical stepping. Palette is strictly limited to 6 named colors: storm slate-blue, deep midnight navy, pale parchment ivory, raw umber kraft brown, burnt sienna, and warm ember amber. Lighting is locked to a single key directional setup: warm sienna key light raking sharply from the upper left at a 45-degree angle, with a faint cool navy ambient fill from the lower right, highlighting the tactile paper texture and raw cut edges. Recurring Character: The Moth puppet is 4cm tall, cut from pale parchment ivory cardstock with fine, hand-inked cross-hatched dark brown ink lines outlining its wings. Its body is a small cylinder of raw umber kraft brown with two glossy black pin-head beads for eyes, and two tiny feathery antennae cut from black chipboard. Its wings are hinged to the torso with tiny visible silver pin rivets. Recurring Object: The Lamp is a 25cm tall victorian streetlamp cut from matte black chipboard, featuring a hexagonal glass housing made of clear vellum paper, resting on a cobblestone street constructed from overlapping storm slate-blue cardstock shapes. Framing is strict 9:16 vertical portrait format. No digital gradients, 3D renders, airbrushing, or smooth computer interpolation.",
   "title": "The Weaver's Lantern"

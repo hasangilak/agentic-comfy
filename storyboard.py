@@ -24,7 +24,7 @@ import re
 from pathlib import Path
 
 from paperreel import board as board_mod
-from paperreel import config, pipeline, planner, script as script_mod
+from paperreel import config, papercut, pipeline, planner, script as script_mod
 
 
 def slugify(text: str) -> str:
@@ -131,15 +131,33 @@ def main() -> None:
                       if board_mod.uses_asset(b.get("source") or board_mod.SOURCE_CHAIN)]
         else:
             wanted = board["beats"][:1] if args.chain else board["beats"]
+        def missing() -> list[dict]:
+            return [b for b in wanted if not (workdir / f"beat{b['n']}_asset.png").exists()]
+
+        for beat in wanted:
+            if (workdir / f"beat{beat['n']}_asset.png").exists():
+                print(f"[asset] beat {beat['n']}: already present, skipping")
+
+        # Prefer the local mflux renderer next door when it is up: no quota, and it renders
+        # straight onto the H3 grid so nothing is cropped on the way to the video model.
+        # Falls back to agy, whose ~five-per-five-hours image window is the tightest limit
+        # anywhere in this pipeline. Same file either way, so the choice is invisible later.
+        if missing() and config.ASSET_BACKEND != "agy" and papercut.available():
+            print(f"[asset] {config.PAPERCUT_URL} -- local mflux, no quota")
+            live = board_mod.Board(slug=name, path=board_path, data=board)
+            try:
+                papercut.generate(live, [b["n"] for b in missing()], log=print)
+            except papercut.PapercutError as gone:
+                # The server can go away between the probe and the render. Whatever landed
+                # stays, and the loop below picks up the rest through agy.
+                print(f"[asset] {gone}")
+
         # In scene mode every beat is a hard cut, so each still has to be generated from the
         # first one rather than from the style bible alone -- otherwise the cast is redesigned
         # once per scene and no two shots share a character.
         first = workdir / f"beat{board['beats'][0]['n']}_asset.png"
-        for beat in wanted:
+        for beat in missing():
             out = workdir / f"beat{beat['n']}_asset.png"
-            if out.exists():
-                print(f"[asset] beat {beat['n']}: already present, skipping")
-                continue
             reference = first if first.exists() and first != out else None
             print(f"[asset] beat {beat['n']}: generating"
                   + (f", characters locked to {reference.name}" if reference else ""))

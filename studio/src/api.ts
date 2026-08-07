@@ -150,7 +150,13 @@ export const api = {
 
   stopApp: () => post<unknown>("/api/app/stop"),
 
-  status: () => call<{ auth: boolean; backend: string }>("/api/status"),
+  status: () =>
+    call<{
+      auth: boolean;
+      backend: string;
+      /** Which generator a still would come from right now — the quota copy is agy's alone. */
+      stills: { backend: "papercut" | "agy"; papercut_url: string };
+    }>("/api/status"),
 };
 
 /** Seconds -> "4:12", for the container clock. */

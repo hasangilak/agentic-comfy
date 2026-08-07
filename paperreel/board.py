@@ -361,6 +361,22 @@ class Board:
                 return first
         return None
 
+    def reference_for(self, n: int) -> Path | None:
+        """What beat `n`'s still should be generated FROM, right now.
+
+        `reference_path` with one exception, and the exception is what makes the cast
+        changeable: regenerating the very still that IS the reference has to be free to
+        redesign, or the first image a board ever produced would lock it forever.
+
+        Read fresh on every call rather than computed once for a batch. Generating beat 1's
+        still is what creates the reference for beats 2..N, so a value cached before the
+        batch started would leave every later still unanchored.
+        """
+        reference = self.reference_path()
+        if reference is not None and reference == self.asset_path(n):
+            return None
+        return reference
+
     @property
     def reel_path(self) -> Path:
         """Where a studio render writes the deliverable."""

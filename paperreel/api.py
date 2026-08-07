@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import agent, board as board_mod, comfy, config, planner, render, script
+from . import agent, board as board_mod, comfy, config, papercut, planner, render, script
 from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
@@ -144,8 +144,35 @@ def handle_chat(job: Job, run: Runner) -> dict:
     return result
 
 
+def stills_backend() -> str:
+    """Which generator a still job would use right now: "papercut" or "agy".
+
+    Probed per job rather than cached, because the image server is a separate process the
+    user starts and stops independently -- a value read once at import would send a board to
+    the quota-limited backend for the rest of the session just because mflux was down when
+    the studio booted.
+    """
+    if config.ASSET_BACKEND in ("papercut", "agy"):
+        return config.ASSET_BACKEND
+    return "papercut" if papercut.available() else "agy"
+
+
 def handle_asset(job: Job, run: Runner) -> dict:
     board = load(job.slug)
+    if stills_backend() == "papercut":
+        return {"beats": papercut.generate(
+            board, job.detail["beats"],
+            log=lambda line: run.log(job, line),
+            # Papercut reports a 0..1 fraction per frame; the studio's progress strip is
+            # already built around ComfyUI's step counters, so scale onto those fields
+            # rather than teaching the UI a second shape.
+            progress=lambda n, fraction: run.update(
+                job, phase=f"still for beat {n}", beat=n,
+                step=round(fraction * config.PAPERCUT_STEPS), step_max=config.PAPERCUT_STEPS),
+            on_still=lambda _n: run.publish_board(board.slug),
+            cancelled=lambda: job.cancelling,
+        )}
+
     made: list[int] = []
     for n in job.detail["beats"]:
         if job.cancelling:
@@ -153,11 +180,7 @@ def handle_asset(job: Job, run: Runner) -> dict:
         beat = board.beat(n)
         run.update(job, phase=f"asset for beat {n}", beat=n)
 
-        reference = board.reference_path()
-        # Regenerating the very still that IS the reference has to be free to redesign, or
-        # the cast could never be changed again once the first image existed.
-        if reference is not None and reference == board.asset_path(n):
-            reference = None
+        reference = board.reference_for(n)
         run.log(job, f"[asset] beat {n}: generating"
                      + (f", characters locked to {reference.name}" if reference
                         else " (nothing to match yet -- this defines the look)"))
@@ -664,6 +687,10 @@ def status() -> dict:
         "auth": bool(comfy.modal_auth_headers()) or config.PUBLIC_ENDPOINT,
         "backend": config.BACKEND_URL,
         "rate_per_second": config.RATE_PER_SEC,
+        # Which generator a still would come from right now. The UI's warnings about the
+        # five-per-five-hours image quota are only true of agy; saying them over a local
+        # mflux render would train the user to ration something that is free.
+        "stills": {"backend": stills_backend(), "papercut_url": config.PAPERCUT_URL},
     }
 
 

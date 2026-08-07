@@ -147,11 +147,10 @@ def generate_asset(beat: dict, style_bible: str, out_path: Path, workdir: Path,
     from PIL import Image
 
     since = time.time() - 1
-    look = (
-        f"{style_bible} {beat['asset_prompt']} Vertical 9:16 portrait composition, "
-        "handcrafted layered paper-cutout art, visible paper grain, soft contact shadows, "
-        "no text, no watermarks, no signature."
-    )
+    # The medium clause is shared with the papercut backend rather than written twice: two
+    # generators wording the look differently produce two different-looking reels depending
+    # on which one happened to be up when a still was made.
+    look = f"{style_bible} {beat['asset_prompt']} {config.ASSET_STYLE_SUFFIX}"
     instructions = [
         "Use your generate_image tool to create exactly ONE image. Do not write code, do "
         "not call an external API, do not ask questions.",

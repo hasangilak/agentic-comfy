@@ -128,7 +128,11 @@ export function AgyPanel() {
             <Button
               tone="quiet"
               onClick={() => void studio.guard(() => api.assets(board.slug))}
-              title="roughly five images per five-hour window — the scarcest thing here"
+              title={
+                studio.stillsBackend === "papercut"
+                  ? "rendered by mflux on this machine — free and unlimited, ~10–18 s each"
+                  : "roughly five images per five-hour window — the scarcest thing here"
+              }
             >
               generate {board.assets_needed.length} still
               {board.assets_needed.length === 1 ? "" : "s"}

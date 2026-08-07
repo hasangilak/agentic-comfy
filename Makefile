@@ -12,11 +12,14 @@
 
 SHELL := /bin/bash
 STUDIO := studio
+IMAGE := image
 BACKEND_PORT ?= 8787
+IMAGE_PORT ?= 8791
 STAMP := .make/uv.stamp
 
 .DEFAULT_GOAL := help
-.PHONY: help install build run backend frontend serve stop login models deploy stop-app clean
+.PHONY: help install build run backend frontend serve stop images studio login models deploy \
+        stop-app clean
 
 help:
 	@echo "make install   npm dependencies + resolve the uv environment"
@@ -24,6 +27,8 @@ help:
 	@echo "make serve     build the frontend, then serve it and the API from :$(BACKEND_PORT)"
 	@echo "make backend   just the studio server"
 	@echo "make frontend  just the Vite dev server"
+	@echo "make images    Papercut Studio's render server on :$(IMAGE_PORT) -- where stills come from"
+	@echo "make studio    make images + make run, together"
 	@echo "make stop      kill anything this Makefile started"
 	@echo
 	@echo "one-time, touches Modal:"
@@ -69,8 +74,39 @@ frontend: $(STUDIO)/node_modules
 serve: build $(STAMP)
 	uv run studio.py --port $(BACKEND_PORT)
 
+$(IMAGE)/node_modules: $(IMAGE)/package.json $(IMAGE)/package-lock.json
+	npm --prefix $(IMAGE) install
+	@touch $@
+
+# Where opening stills come from. mflux on this machine, so it spends no money and no image
+# quota -- the studio prefers it over agy whenever this is listening, and says which one it
+# used in the job log. Separate target because it holds ~18 GB of weights while rendering and
+# is not wanted on a session that is only editing a script.
+images: $(IMAGE)/node_modules
+	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server
+
+# All three processes. Same `kill 0` trap as `run`: Ctrl-C must not leave the image server
+# holding :$(IMAGE_PORT) with an mflux render attached to it.
+#
+# npm directly rather than a recursive `$(MAKE) -C $(IMAGE)`: a recipe line containing
+# $(MAKE) is executed even under `make -n`, and this whole trap is one continued line -- so
+# a dry run would start all three servers for real. It also keeps every child in this
+# process group, which is what `kill 0` relies on.
+studio: install $(IMAGE)/node_modules
+	@echo "stills   http://127.0.0.1:$(IMAGE_PORT)"
+	@echo "backend  http://127.0.0.1:$(BACKEND_PORT)"
+	@echo "frontend http://127.0.0.1:5173   <- use this one, it proxies the API through"
+	@trap 'kill 0' EXIT INT TERM; \
+	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server & \
+	uv run studio.py --port $(BACKEND_PORT) & \
+	npm --prefix $(STUDIO) run dev; \
+	wait
+
+# An in-flight mflux render survives this on purpose -- it holds ~18 GB and killing it loses
+# the frame. `make -C image stop-mflux` is the one that ends it.
 stop:
 	-@pkill -f "studio.py" 2>/dev/null; pkill -f "$(STUDIO)/node_modules/.bin/vite" 2>/dev/null; \
+	pkill -f "$(IMAGE)/node_modules/.bin/tsx" 2>/dev/null; \
 	echo "stopped"
 
 login:

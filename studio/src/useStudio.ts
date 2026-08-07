@@ -41,6 +41,10 @@ export function useStudioState() {
   const [selection, setSelection] = useState<number[]>([]);
   const [renderSelection, setRenderSelection] = useState<number[]>([]);
   const [authOk, setAuthOk] = useState(true);
+  // Where opening stills come from. "agy" is the quota-limited Antigravity backend; the
+  // local mflux renderer next door has no quota at all, so every warning about rationing
+  // images has to be conditional on this rather than baked into the copy.
+  const [stillsBackend, setStillsBackend] = useState<"papercut" | "agy">("agy");
 
   // The container clock arrives every 2s over SSE. Interpolate locally so it counts up
   // smoothly -- a timer that jumps two seconds at a time reads as broken.
@@ -170,15 +174,32 @@ export function useStudioState() {
     return () => source.close();
   }, [openReel, refreshBoard, refreshReels]);
 
+  const refreshStatus = useCallback(async () => {
+    try {
+      const status = await api.status();
+      setAuthOk(status.auth);
+      setStillsBackend(status.stills?.backend ?? "agy");
+    } catch {
+      setAuthOk(true);
+    }
+  }, []);
+
+  // Re-probed whenever a job settles, not only at boot: the image server is a separate
+  // process the user starts and stops, so a studio left open across a `make images` would
+  // otherwise keep warning about a quota that stopped applying an hour ago.
   useEffect(() => {
     void refreshReels();
-    void api.status().then((s) => setAuthOk(s.auth)).catch(() => setAuthOk(true));
-  }, [refreshReels]);
+    void refreshStatus();
+  }, [refreshReels, refreshStatus]);
 
   const activeJob = useMemo(
     () => Object.values(jobs).find((job) => job.state === "running") ?? null,
     [jobs],
   );
+
+  useEffect(() => {
+    if (!activeJob) void refreshStatus();
+  }, [activeJob, refreshStatus]);
 
   /** The container clock, interpolated between heartbeats. */
   const liveSeconds =
@@ -213,6 +234,7 @@ export function useStudioState() {
     selection,
     renderSelection,
     authOk,
+    stillsBackend,
     setSelection,
     setRenderSelection,
     setError,

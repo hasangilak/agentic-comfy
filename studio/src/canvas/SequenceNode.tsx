@@ -17,22 +17,26 @@ const JOIN_CYCLE: Record<Source, Source> = {
   reference: "chain",
 };
 
+// What each join costs is stated as "one still", not "one image from the quota": a still is
+// free and unmetered when the local mflux renderer is up and rationed at roughly five per
+// five hours when it is not, and the join is the same join either way. The panel on the
+// script node is where the live backend is named.
 const JOIN_HELP: Record<Source, string> = {
   chain:
-    "the same take carrying on — same set, same camera, no image quota. Click to keep the " +
-    "continuation but make it land on a still of your own",
+    "the same take carrying on — same set, same camera, needs no still at all. Click to keep " +
+    "the continuation but make it land on a still of your own",
   bridge:
     "the same take carrying on, but it must arrive at this beat's own still on its last " +
-    "frame: continuity plus a composition you chose. Costs one image. Click to make it a " +
+    "frame: continuity plus a composition you chose. Needs one still. Click to make it a " +
     "clean cut instead",
   asset:
-    "a clean cut to a new setting, costs one image from the quota. Click to condition this " +
+    "a clean cut to a new setting, needs one still of its own. Click to condition this " +
     "scene on reference pictures instead of an opening still",
   reference:
     "no opening frame at all: the model is shown your reference pictures of the cast and the " +
-    "set and composes the shot itself. Uploads only, so no image quota — but every picture " +
-    "is carried through every sampling step, so more of them means a slower render. Click " +
-    "to carry the previous take on unbroken instead",
+    "set and composes the shot itself. Uploads only, so nothing is generated — but every " +
+    "picture is carried through every sampling step, so more of them means a slower render. " +
+    "Click to carry the previous take on unbroken instead",
 };
 
 /**

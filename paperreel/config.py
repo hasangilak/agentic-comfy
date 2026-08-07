@@ -190,6 +190,38 @@ PLANNER_MODEL = os.environ.get("PAPERREEL_PLANNER_MODEL", "gemini-3.6-flash-high
 IMAGE_MODEL = os.environ.get("PAPERREEL_IMAGE_MODEL", "gemini-3.6-flash-low")
 AGY_HOME = Path.home() / ".gemini" / "antigravity-cli"
 
+# ## Where opening stills come from
+#
+# Two backends produce the same file, `beat<n>_asset.png`, and nothing downstream can tell
+# which one did:
+#
+#   papercut -- the local mflux renderer in image/, over HTTP on this machine. Free, no
+#               quota, ~10-18 s per still, and it renders straight onto the H3 grid so no
+#               crop happens on the way to the video model.
+#   agy      -- Antigravity's image tool. No API key, but roughly FIVE images per five-hour
+#               window, which is the tightest constraint anywhere in this pipeline.
+#
+# "auto" prefers papercut and falls back to agy when the image server is not running -- which
+# is also what happens on a machine without Apple Silicon, where mflux cannot run at all.
+# Force one with PAPERREEL_ASSET_BACKEND=papercut / =agy.
+ASSET_BACKEND = os.environ.get("PAPERREEL_ASSET_BACKEND", "auto")
+PAPERCUT_URL = os.environ.get("PAPERREEL_PAPERCUT_URL", "http://127.0.0.1:8791")
+# The aspect preset in image/shared/types.ts that matches GEN_WIDTH x GEN_HEIGHT exactly.
+# Anything else gets cover-cropped by media.fit_frame at render time, which is how a still
+# loses its framing between being approved and being rendered.
+PAPERCUT_ASPECT = "9:16-reel"
+# flux2-klein-4b is a distilled few-step model; 4 is what the studio next door defaults to
+# and what its measured timings are quoted at.
+PAPERCUT_STEPS = int(os.environ.get("PAPERREEL_PAPERCUT_STEPS", "4"))
+
+# What every still is asked for on top of the board's style bible and the beat's own
+# asset_prompt. Shared by both backends deliberately: two generators that word the medium
+# differently produce two different-looking reels depending on which one happened to be up.
+ASSET_STYLE_SUFFIX = (
+    "Vertical 9:16 portrait composition, handcrafted layered paper-cutout art, visible "
+    "paper grain, soft contact shadows, no text, no watermarks, no signature."
+)
+
 # ## Prompt scaffold
 #
 # H3 holds a paper-cutout look far better when the instruction pins down what must
