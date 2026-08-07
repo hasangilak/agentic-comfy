@@ -6,7 +6,7 @@
 #
 #   make install     dependencies (npm + the uv environment)
 #   make qwen        pull the local language model (one-time, ~23 GiB)
-#   make run         backend on :8787 and the Vite dev server on :5173
+#   make run         all three servers: stills on :8791, backend on :8787, Vite on :5173
 #   make serve       build the frontend and serve everything from :8787
 #
 # One-time, and the only targets that touch Modal: `make login`, `make models`, `make deploy`.
@@ -22,19 +22,20 @@ STAMP := .make/uv.stamp
 QWEN_MODEL ?= qwen3.6
 
 .DEFAULT_GOAL := help
-.PHONY: help install build run backend frontend serve stop images studio qwen login models \
-        deploy stop-app clean
+.PHONY: help install build run backend frontend serve stop stop-mflux images studio qwen \
+        login models deploy stop-app clean
 
 help:
 	@echo "make install   npm dependencies + resolve the uv environment"
-	@echo "make run       backend :$(BACKEND_PORT) + Vite dev server :5173  (hot reload; use the Vite URL)"
+	@echo "make run       stills :$(IMAGE_PORT) + backend :$(BACKEND_PORT) + Vite dev server :5173  (use the Vite URL)"
 	@echo "make serve     build the frontend, then serve it and the API from :$(BACKEND_PORT)"
 	@echo "make backend   just the studio server"
 	@echo "make frontend  just the Vite dev server"
 	@echo "make images    Papercut Studio's render server on :$(IMAGE_PORT) -- where stills come from"
-	@echo "make studio    make images + make run, together"
+	@echo "make studio    an alias for make run"
 	@echo "make qwen      pull $(QWEN_MODEL) into Ollama -- the script writer and still reviewer"
-	@echo "make stop      kill anything this Makefile started"
+	@echo "make stop      kill every server either project has running (an mflux render survives)"
+	@echo "make stop-mflux  end an in-flight mflux render -- that frame is lost"
 	@echo
 	@echo "one-time, touches Modal:"
 	@echo "make login     uvx modal setup"
@@ -58,13 +59,28 @@ $(STAMP): studio.py
 build: $(STUDIO)/node_modules
 	npm --prefix $(STUDIO) run build
 
-# Both servers, backend in the background. `kill 0` on the way out takes the whole process
-# group with it -- without it, Ctrl-C leaves uv's python child holding port $(BACKEND_PORT)
-# and the next `make run` fails with an address already in use.
-run: install
+# All three servers, the two background ones first. `kill 0` on the way out takes the whole
+# process group with it -- without it, Ctrl-C leaves uv's python child holding port
+# $(BACKEND_PORT) and the next `make run` fails with an address already in use, and the image
+# server holding :$(IMAGE_PORT) with an mflux render attached to it.
+#
+# npm directly rather than a recursive `$(MAKE) -C $(IMAGE)`: a recipe line containing
+# $(MAKE) is executed even under `make -n`, and this whole trap is one continued line -- so
+# a dry run would start all three servers for real. It also keeps every child in this
+# process group, which is what `kill 0` relies on.
+run: install $(IMAGE)/node_modules
+	@echo "stills   http://127.0.0.1:$(IMAGE_PORT)"
 	@echo "backend  http://127.0.0.1:$(BACKEND_PORT)"
 	@echo "frontend http://127.0.0.1:5173   <- use this one, it proxies the API through"
+	@# Said before the servers start rather than discovered as a failed job three clicks in:
+	@# with no model there is no script, no conversation and no caption.
+	@if ollama list 2>/dev/null | grep -q '^$(QWEN_MODEL)'; then \
+		echo "model    $(QWEN_MODEL) via ollama"; \
+	else \
+		echo "model    $(QWEN_MODEL) NOT AVAILABLE -- run 'make qwen', and start Ollama"; \
+	fi
 	@trap 'kill 0' EXIT INT TERM; \
+	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server & \
 	uv run studio.py --port $(BACKEND_PORT) & \
 	npm --prefix $(STUDIO) run dev; \
 	wait
@@ -100,36 +116,41 @@ qwen:
 	ollama pull $(QWEN_MODEL)
 	@ollama show $(QWEN_MODEL) | sed -n '/Capabilities/,/^$$/p'
 
-# All three processes. Same `kill 0` trap as `run`: Ctrl-C must not leave the image server
-# holding :$(IMAGE_PORT) with an mflux render attached to it.
-#
-# npm directly rather than a recursive `$(MAKE) -C $(IMAGE)`: a recipe line containing
-# $(MAKE) is executed even under `make -n`, and this whole trap is one continued line -- so
-# a dry run would start all three servers for real. It also keeps every child in this
-# process group, which is what `kill 0` relies on.
-studio: install $(IMAGE)/node_modules
-	@echo "stills   http://127.0.0.1:$(IMAGE_PORT)"
-	@echo "backend  http://127.0.0.1:$(BACKEND_PORT)"
-	@echo "frontend http://127.0.0.1:5173   <- use this one, it proxies the API through"
-	@# Said before the servers start rather than discovered as a failed job three clicks in:
-	@# with no model there is no script, no conversation and no caption.
-	@if ollama list 2>/dev/null | grep -q '^$(QWEN_MODEL)'; then \
-		echo "model    $(QWEN_MODEL) via ollama"; \
-	else \
-		echo "model    $(QWEN_MODEL) NOT AVAILABLE -- run 'make qwen', and start Ollama"; \
-	fi
-	@trap 'kill 0' EXIT INT TERM; \
-	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server & \
-	uv run studio.py --port $(BACKEND_PORT) & \
-	npm --prefix $(STUDIO) run dev; \
-	wait
+# `make studio` was the three-server target before `run` became it. Kept as an alias because
+# it is what the README, the docs and a year of muscle memory say.
+studio: run
 
+# Everything either project can leave behind: the studio server, both Vite dev servers, the
+# image project's tsx watcher and the `concurrently` wrapper `make -C image dev` starts them
+# under. Matched by path under each project's node_modules rather than by binary name, so a
+# vite belonging to some other checkout is never a candidate -- and so a tool added to either
+# project later is covered without editing this list.
+#
+# The patterns are split across a quote for the same reason image/Makefile splits its own:
+# pgrep -f sees this recipe's shell too, and an unsplit pattern matches the shell that is
+# running it.
+#
 # An in-flight mflux render survives this on purpose -- it holds ~18 GB and killing it loses
-# the frame. `make -C image stop-mflux` is the one that ends it.
+# the frame. `make stop-mflux` is the one that ends it, and the note below fires only when
+# there is one to end.
 stop:
-	-@pkill -f "studio.py" 2>/dev/null; pkill -f "$(STUDIO)/node_modules/.bin/vite" 2>/dev/null; \
-	pkill -f "$(IMAGE)/node_modules/.bin/tsx" 2>/dev/null; \
-	echo "stopped"
+	@pids=$$( { pgrep -f "studio""\.py"; \
+	            pgrep -f "$(CURDIR)/$(STUDIO)/node_""modules/"; \
+	            pgrep -f "$(CURDIR)/$(IMAGE)/node_""modules/"; } 2>/dev/null | sort -un); \
+	if [ -z "$$pids" ]; then echo "nothing running"; else \
+		kill $$pids 2>/dev/null || true; \
+		echo "stopped: $$(echo $$pids | tr '\n' ' ')"; \
+	fi; \
+	m=$$(pgrep -f "mflux-generate-""flux2" || true); \
+	if [ -n "$$m" ]; then \
+		echo "note: an mflux render is still running (pid $$(echo $$m | tr '\n' ' ')) and holds ~18 GB"; \
+		echo "      'make stop-mflux' ends it -- the frame is lost, the scene on disk is not"; \
+	fi
+
+# Plain `make` rather than $(MAKE): a recipe line containing $(MAKE) runs even under
+# `make -n`, and a dry run must not kill a render.
+stop-mflux:
+	@make -C $(IMAGE) stop-mflux
 
 login:
 	uvx modal setup

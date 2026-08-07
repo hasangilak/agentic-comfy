@@ -24,14 +24,16 @@ what they are. Read it before changing render behaviour, prompt scaffolding, or 
 
 ```bash
 make install      # npm deps + resolve the uv environment (PEP 723 inline deps in studio.py)
-make run          # backend :8787 + Vite :5173 — use the Vite URL, it proxies /api and /media
-make studio       # the above plus the image server on :8791 — the everyday target
+make run          # all three: stills :8791, backend :8787, Vite :5173 — use the Vite URL,
+                  # it proxies /api and /media. The everyday target.
+make studio       # an alias for make run
 make images       # just Papercut Studio's render server (make -C image dev-server)
 make qwen         # ollama pull qwen3.6 — the script writer and still reviewer, one-time ~23 GiB
 make serve        # build the frontend, serve everything from :8787
 make backend      # studio.py only
 make frontend     # vite only
-make stop         # kill whatever the Makefile started, in both projects
+make stop         # kill every server running in either project (mflux render survives)
+make stop-mflux   # end an in-flight mflux render next door — that frame is lost
 make build        # npm --prefix studio run build  (tsc -b && vite build — this is the typecheck)
 
 make login        # uvx modal setup                        one-time, touches Modal

@@ -66,14 +66,17 @@ ready.
 
 ```bash
 make install                                           # npm + the uv environment
-make studio                                            # :8791 stills, :8787 API, :5173 UI
+make run                                               # :8791 stills, :8787 API, :5173 UI
 ```
 
-Use the Vite URL — it proxies the API through. `make studio` starts all three servers and
-takes them down together, so Ctrl-C never leaves one holding a port. `make run` is the same
-without the image server, which is what you want on a session that is only editing a script.
+Use the Vite URL — it proxies the API through. `make run` starts all three servers and
+takes them down together, so Ctrl-C never leaves one holding a port (`make studio` is an
+alias for it). On a session that is only editing a script, `make backend` and `make frontend`
+are the same thing without the image server.
 `make serve` builds the frontend instead and serves everything from :8787; `make backend`,
-`make frontend` and `make images` run one at a time; `make stop` kills any of them.
+`make frontend` and `make images` run one at a time; `make stop` kills every server either
+project has running, whichever target started it (an in-flight mflux render survives it —
+`make stop-mflux` ends that one, losing the frame).
 `make help` lists the rest. Nothing in the Makefile can start a paid render.
 
 ### Where stills come from, and how they are checked

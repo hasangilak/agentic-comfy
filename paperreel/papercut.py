@@ -256,7 +256,7 @@ def generate(board: board_mod.Board, beats: list[int], *,
     if reported is None:
         raise PapercutError(
             f"no image server at {url or config.PAPERCUT_URL}. Start it with `make images` "
-            "(or `make studio`, which starts all three), or upload the stills by hand."
+            "(or `make run`, which starts all three), or upload the stills by hand."
         )
     cap = max_frames(reported)
     made: list[int] = []
