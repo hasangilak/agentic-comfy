@@ -12,6 +12,7 @@ import {
   DEFAULT_NEGATIVE,
   DEFAULT_STYLE,
   MAX_FRAMES,
+  MAX_REFERENCES,
   MIN_FRAMES,
   type SceneSettings,
 } from '../shared/types.ts'
@@ -63,7 +64,10 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'papercut-studio',
     aspects: ASPECT_PRESETS,
-    limits: { minFrames: MIN_FRAMES, maxFrames: MAX_FRAMES },
+    // `maxReferences` is here for the same reason `maxFrames` is: the caller next door batches
+    // its stills against these numbers, and one hardcoded on that side drifts the day this one
+    // moves.
+    limits: { minFrames: MIN_FRAMES, maxFrames: MAX_FRAMES, maxReferences: MAX_REFERENCES },
     defaults: { style: DEFAULT_STYLE, negativePrompt: DEFAULT_NEGATIVE },
   })
 })

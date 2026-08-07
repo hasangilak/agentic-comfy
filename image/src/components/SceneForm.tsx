@@ -43,7 +43,16 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
     setUploadError(null)
     try {
       const result = await api.upload(file)
-      onChange({ ...value, referencePath: result.path, referenceUrl: result.url })
+      // An empty list rather than `undefined`, because JSON.stringify drops undefined keys and a
+      // PATCH without the field leaves the server's copy alone. This slot is the whole reference
+      // as far as this UI is concerned, so picking an image here has to displace a multi-image
+      // list an API caller left on the scene.
+      onChange({
+        ...value,
+        referencePath: result.path,
+        referenceUrl: result.url,
+        referencePaths: [],
+      })
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -155,7 +164,14 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
               <button
                 type="button"
                 className="ghost"
-                onClick={() => onChange({ ...value, referencePath: undefined, referenceUrl: undefined })}
+                onClick={() =>
+                  onChange({
+                    ...value,
+                    referencePath: undefined,
+                    referenceUrl: undefined,
+                    referencePaths: [],
+                  })
+                }
               >
                 Clear
               </button>

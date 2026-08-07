@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import {
   ASPECT_PRESETS,
   MAX_FRAMES,
+  MAX_REFERENCES,
   MIN_FRAMES,
   defaultBeat,
   frameTimings,
@@ -27,6 +28,15 @@ fs.mkdirSync(UPLOADS_ROOT, { recursive: true })
 const CONTINUITY_CLAUSE =
   'Keep the exact same paper cutout collage style, the same characters and costumes, ' +
   'the same background, lighting and camera angle as the reference image, ' +
+  'but move the subject into a clearly different pose and position as described. Now:'
+
+// The same sentence for a frame conditioned on several images. Kept as its own string rather
+// than pluralised at runtime so a single-reference render composes the byte-identical prompt it
+// always did — the clause is part of what a scene looked like, and rewording it silently would
+// change every re-roll of every existing scene.
+const CONTINUITY_CLAUSE_MULTI =
+  'Keep the exact same paper cutout collage style, the same characters and costumes, ' +
+  'the same background, lighting and camera angle as the reference images, ' +
   'but move the subject into a clearly different pose and position as described. Now:'
 
 const scenes = new Map<string, Scene>()
@@ -130,32 +140,54 @@ export function deleteScene(id: string) {
 }
 
 /**
- * Picks the conditioning image for a frame:
- * - chain  -> the previously rendered frame, falling back to the uploaded reference
- * - anchor -> the uploaded reference, falling back to frame 1
+ * Every conditioning image a scene was given, in the order the caller sent them.
+ *
+ * `referencePaths` wins over `referencePath` when both are present, and the single field is
+ * read as a one-image list otherwise — which is what keeps a scene created by the local UI,
+ * or by an older caller, conditioned on exactly the image it uploaded.
+ *
+ * Missing files are dropped rather than raised on: a reel next door can delete the still a
+ * scene pointed at between two renders, and losing one picture of four is a better render
+ * than none.
+ */
+function uploadedReferences(scene: Scene): string[] {
+  const listed = scene.referencePaths?.length ? scene.referencePaths : [scene.referencePath]
+  return listed
+    .filter((p): p is string => !!p && fs.existsSync(p))
+    .slice(0, MAX_REFERENCES)
+}
+
+/**
+ * Picks the conditioning images for a frame:
+ * - chain  -> the previously rendered frame, falling back to the uploaded references
+ * - anchor -> the uploaded references, falling back to frame 1
  * - none   -> nothing, pure text-to-image
  */
 function referenceFor(scene: Scene, index: number): string[] | undefined {
   if (scene.consistency === 'none') return undefined
+  const uploaded = uploadedReferences(scene)
 
   if (scene.consistency === 'anchor') {
-    if (scene.referencePath && fs.existsSync(scene.referencePath)) return [scene.referencePath]
+    if (uploaded.length) return uploaded
     const first = framePath(scene.id, 0)
     if (index > 0 && fs.existsSync(first)) return [first]
     return undefined
   }
 
+  // Chain conditions on the newest rendered frame ALONE, uploads included or not: the point of
+  // the mode is that each frame continues the one before it, and a second picture beside it
+  // pulls the look back towards something that is not where the motion had got to.
   for (let i = index - 1; i >= 0; i--) {
     const prev = framePath(scene.id, i)
     if (fs.existsSync(prev)) return [prev]
   }
-  if (scene.referencePath && fs.existsSync(scene.referencePath)) return [scene.referencePath]
-  return undefined
+  return uploaded.length ? uploaded : undefined
 }
 
-function composePrompt(scene: Scene, frame: Frame, hasReference: boolean): string {
+function composePrompt(scene: Scene, frame: Frame, references: number): string {
   const parts: string[] = []
-  if (hasReference) parts.push(CONTINUITY_CLAUSE)
+  if (references === 1) parts.push(CONTINUITY_CLAUSE)
+  else if (references > 1) parts.push(CONTINUITY_CLAUSE_MULTI)
   parts.push(frame.beat.trim())
   if (scene.style.trim()) parts.push(scene.style.trim())
   return parts.join(' ').replace(/\s+/g, ' ').trim()
@@ -164,7 +196,7 @@ function composePrompt(scene: Scene, frame: Frame, hasReference: boolean): strin
 async function renderFrame(scene: Scene, index: number) {
   const frame = scene.frames[index]
   const references = referenceFor(scene, index)
-  const prompt = composePrompt(scene, frame, !!references)
+  const prompt = composePrompt(scene, frame, references?.length ?? 0)
   const outputPath = framePath(scene.id, index)
 
   frame.status = 'running'

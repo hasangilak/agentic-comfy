@@ -179,6 +179,26 @@ def handle_asset(job: Job, run: Runner) -> dict:
     )}
 
 
+def handle_still_chat(job: Job, run: Runner) -> dict:
+    """One turn of the conversation about a single still, its re-render included.
+
+    Its own job kind rather than a variant of `chat`, because it is a different unit of work:
+    it addresses one beat, it can end in an image render, and the canvas has to be able to tell
+    which node is busy. Same queue as everything else, so it cannot overlap a batch of stills
+    rewriting the same prompt.
+    """
+    board = load(job.slug)
+    n = int(job.detail["beat"])
+    run.log(job, f'[qwen] beat {n} still: {job.detail["message"]}')
+    return stills_mod.converse(
+        board, n, job.detail["message"],
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )
+
+
 def handle_caption(job: Job, run: Runner) -> dict:
     board = load(job.slug)
     run.log(job, "[qwen] writing the caption")
@@ -193,7 +213,7 @@ def handle_render(job: Job, run: Runner) -> dict:
 
 for kind, handler in (
     ("plan", handle_plan), ("chat", handle_chat), ("asset", handle_asset),
-    ("caption", handle_caption), ("render", handle_render),
+    ("still_chat", handle_still_chat), ("caption", handle_caption), ("render", handle_render),
 ):
     runner.register(kind, handler)
 
@@ -405,6 +425,31 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
     return {"job": job.to_json()}
 
 
+@app.post("/api/reels/{slug}/beats/{n}/asset/chat")
+def still_chat(slug: str, n: int, body: dict = Body(...)) -> dict:
+    """Say what is wrong with one still, and have it redrawn.
+
+    The board conversation edits the story; this one edits a picture. Both run on the same
+    local model with the same vision head -- the difference is what is in the prompt: this turn
+    is shown the still itself, the reel's cast reference and everything already said about that
+    one image, and what it writes back is the beat's `asset_prompt`.
+
+    Refused for the same reasons a generation is, from the same place (`stills.discussable`),
+    and refused here rather than only in the job so a stale tab gets a 409 instead of a job that
+    fails a minute later.
+    """
+    board = load(slug)
+    message = (body.get("message") or "").strip()
+    if not message:
+        raise HTTPException(422, "empty message")
+    try:
+        stills_mod.discussable(board, n)
+    except stills_mod.StillsError as refused:
+        raise HTTPException(refused.status, str(refused))
+    job = runner.submit("still_chat", slug, {"beat": n, "message": message})
+    return {"job": job.to_json()}
+
+
 @app.post("/api/reels/{slug}/beats/{n}/asset")
 async def upload_asset(slug: str, n: int, file: UploadFile = File(...),
                        source: str = Form(board_mod.SOURCE_REFERENCE)) -> dict:
@@ -465,9 +510,14 @@ async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) ->
     order they were added, which is why appending is deliberate -- a new picture goes after the
     ones already there rather than shuffling the numbering under the notes describing them.
 
+    The first few also condition the beat's STILL, which takes far fewer pictures than the video
+    model (`config.MAX_STILL_REFS`, the cast reference included) -- see `Board.still_pictures`.
+    That is deliberate: the still is what the clip's opening frames are anchored to, so a picture
+    the clip is held to and the frame it opens on was not is a disagreement about the same puppet.
+
     Uploads cost nothing to place, exactly like an uploaded still. What they cost is render
     time: reference tokens ride through every sampling step, so nine pictures is a slower
-    clip than one.
+    clip than one, and the still they also steer takes longer per picture too.
     """
     board = load(slug)
     if not any(b["n"] == n for b in board.beats):

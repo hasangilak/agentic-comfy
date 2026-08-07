@@ -109,6 +109,18 @@ boundary:
   `image/shared/types.ts`. It exists *only* so stills match `GEN_WIDTH × GEN_HEIGHT` and
   never get cover-cropped by `media.fit_frame`. **If you change `GEN_WIDTH`/`GEN_HEIGHT`,
   change that preset too** — nothing enforces the match, it just silently starts cropping.
+- `limits.maxReferences` on `/api/health`, read by `papercut.max_references` and floored
+  against `config.MAX_STILL_REFS`. A build that does not report it is treated as the older
+  single-reference one, so the cast reference still lands and only the uploads are dropped.
+
+**What a still is drawn from is `Board.still_pictures`** — the reel's locked cast reference, then
+the director's uploads on that beat, sent as `referencePaths` with the first also in the legacy
+`referencePath`. Deliberately *not* the beat's own still, which is the thing being generated. It
+is a different list from `pictures_for` and a much shorter one (4 against 9): mflux encodes every
+conditioning image through every sampling step. The uploads are there because the still is what
+the clip's opening sampling steps are anchored to — a picture the clip is held to and the frame it
+opens on never saw is two answers to the same puppet. Both methods guard on `uses_refs`, so the
+join decides whether a picture counts, in one place.
 
 Papercut is the **only** stills generator; there is no backend switch and no fallback. With
 `/api/health` not answering, a beat's still is an upload — that is what `manual_stills` is for.
@@ -126,9 +138,23 @@ Three modules, three jobs, and keeping them apart is what makes the review possi
 `papercut.py` is transport, `stills.py` is judgement (which beats may get a still, and what
 happens to one that comes back wrong), `qwen.py` is the model.
 
+`stills.converse` is the per-still conversation behind the node's **✎ talk about this still**
+(job kind `still_chat`, `POST /api/reels/{slug}/beats/{n}/asset/chat`). A structured vision call,
+not a tool loop — there are only two outcomes of looking at a picture with someone, the prompt it
+should say instead and whether to draw it again. **The automatic review deliberately does not run
+on what it renders**: the reviewer holds a still to the cast reference, and half of what a
+director asks for here is a departure from it, so it would rewrite the requested change back out.
+The review posts its own verdicts into the same transcript (`beat["asset_chat"]`, trimmed to
+`config.ASSET_CHAT_MEMORY`), which is what makes a prompt rewritten between the render you asked
+for and the one you got readable rather than baffling. `papercut.generate(seed=...)` exists for
+one caller: a re-render with the prompt unchanged, which would otherwise come back byte-identical
+because Papercut derives a frame's seed as `scene.seed + index`.
+
 paperreel maps onto Papercut's model as: `style_bible` + suffix → scene `style`, per-beat
-`asset_prompt` → frame `beat`, cast reference → `anchor` consistency mode. Never `chain`:
-these are hard cuts, and chaining drifts by frame three and serialises for no gain.
+`asset_prompt` (plus its pictures' notes, appended by `papercut._beat_text`) → frame `beat`,
+`still_pictures` → `referencePaths` in `anchor` consistency mode. Never `chain`: these are hard
+cuts, chaining drifts by frame three and serialises for no gain, and Papercut conditions a
+chained frame on the previous frame *alone* — the uploads would be silently dropped.
 
 **Product tension worth knowing:** `image/PRODUCT.md` principle 3 says nothing leaves the
 machine. That still holds of the image project itself — but a still it renders *is* uploaded
@@ -266,7 +292,8 @@ selection downstream; a cut (or a reference beat not carrying motion) breaks the
 
 `jobs.Runner` is a single daemon worker thread with one queue — serial on purpose: one GPU
 container, ComfyUI runs one graph at a time, chaining is serial anyway. `api.py` registers
-handlers (`plan`, `chat`, `asset`, `caption`, `render`) and never blocks the request.
+handlers (`plan`, `chat`, `asset`, `still_chat`, `caption`, `render`) and never blocks the
+request.
 
 The worker must never die. It catches `(Exception, SystemExit)` — `comfy.py` was written for
 CLI use and raises `SystemExit` for things like a 401.
@@ -328,10 +355,24 @@ Listed in `README.md` under "Known gaps" — the CLI can still request 15 s beat
 consistency is unmeasured, the container may be over-provisioned at 8 cores / 64 GiB, and the
 studio's per-step WebSocket progress has never been exercised against a live render.
 
+**A still drawn from more than one picture is timed, not judged.** The cap, the notes clause and
+the join guard are exercised on a real board, and the cost is measured — 18.6 s for one
+reference against 31.4 s for two, same prompt and seed at 768×1344, which is the number in
+`config.MAX_STILL_REFS` and `image/src/estimate.ts`. What has *not* been compared is whether more
+pictures hold the cast better than one, or whether the *reference images show: …* clause helps
+rather than giving `flux2-klein-4b` one more thing to draw into the frame. Do not quote a quality
+claim; `PAPERREEL_MAX_STILL_REFS` is how to explore it, and it is free.
+
 Added with the local model, and unmeasured: the still review's false-accept rate on *subtle*
 cast drift (it is verified to reject an obvious mismatch and to pass a good still, which is not
 the same thing), and how a board behaves when Ollama is stopped mid-turn rather than absent from
 the start. Planning is also slow — draft plus self-check is about five minutes.
+
+The per-still conversation (`stills.converse`) has been exercised against stubs, not against a
+live qwen and mflux: what is unverified is how often the model sets `regenerate` correctly (a
+question about the picture that redraws it anyway costs 10–18 s of nothing) and whether it really
+carries the untouched half of a prompt through a rewrite rather than paraphrasing the style bible.
+Both show up in the transcript on the node, which is where to look first.
 
 **Moving the default cut to ref2va is reasoned, not measured.** No A/B render exists for how
 much exactness the opening frame loses, how much the extra reference tokens cost per beat, or

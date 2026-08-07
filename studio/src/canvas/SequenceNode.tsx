@@ -4,6 +4,7 @@ import { api, clock, money } from "../api";
 import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, Button, STATE_LOOK, inputClass } from "../ui";
+import { StillChat } from "./StillChat";
 
 /**
  * The four joins, in the order the button walks them: the free continuation, the one that also
@@ -476,6 +477,12 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           </div>
         )}
 
+        {/* Talking to the still it already has. Absent until there is a picture, because the
+            model is being asked what is wrong with something it can see — before that, ✦ generate
+            is the whole conversation. Absent on a board that supplies its own stills for the same
+            reason the generate button is: nothing here may redraw the director's own work. */}
+        {carrying || board.manual_stills || !beat.asset ? null : <StillChat beat={beat} />}
+
         {/* The extra pictures, which only this join can take. Its own row rather than sharing the
             one above, because a still and a reference answer different questions -- one is where
             this shot opens, the others are what things look like everywhere. */}
@@ -483,6 +490,21 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] uppercase tracking-wide text-zinc-500">
               references {pictures.length}/{board.max_refs}
+              {/* The still renderer takes a handful, not nine, so which pictures reach it is not
+                  something the numbering above can be read off. `still_refs` is counted on the
+                  server, from the first upload down. */}
+              {beat.still_refs ? (
+                <span
+                  className="text-zinc-600"
+                  title={
+                    `the first ${beat.still_refs} also condition this scene's own still, not ` +
+                    "just the clip — so the frame it opens on is drawn from the same pictures"
+                  }
+                >
+                  {" "}
+                  · {beat.still_refs} in the still
+                </span>
+              ) : null}
             </span>
             <Button
               tone="ghost"
@@ -492,7 +514,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               title={
                 refSlotsLeft
                   ? "add pictures of the cast, the set or a prop — free to place, but each one " +
-                    "is carried through every sampling step, so each one slows the render"
+                    "is carried through every sampling step, so each one slows the render. The " +
+                    `first few (${board.max_still_refs} counting the cast reference) are also ` +
+                    "what this scene's still is drawn from"
                   : `${board.max_refs} is the model's limit; remove one to add another`
               }
             >

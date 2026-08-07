@@ -36,6 +36,18 @@ export const ASPECT_PRESETS: AspectPreset[] = [
 export const MIN_FRAMES = 2
 export const MAX_FRAMES = 9
 
+/**
+ * How many conditioning images one frame may be rendered from.
+ *
+ * `mflux-generate-flux2-edit` takes any number of `--image-paths`, and every one of them is
+ * encoded and carried through every sampling step — so this is a time cap, not a model limit.
+ * Measured: the same prompt, seed and steps at 768x1344 took 18.6 s with one reference and
+ * 31.4 s with two, so each extra picture costs about as much again as the first. Four is
+ * therefore a frame of roughly a minute. Raise it if a scene stops improving before it stops
+ * slowing down — what more pictures buy in fidelity has not been compared.
+ */
+export const MAX_REFERENCES = 4
+
 export interface Frame {
   index: number
   /** Seconds into the scene that this frame lands on. */
@@ -71,6 +83,17 @@ export interface SceneSettings {
   /** Server-side path of an uploaded reference image, if any. */
   referencePath?: string
   referenceUrl?: string
+  /**
+   * More conditioning images, when one is not enough: a character sheet next to a prop next
+   * to the palette. Used in place of `referencePath` when present, capped at
+   * `MAX_REFERENCES`, and every entry must be a path this server can read.
+   *
+   * Separate from `referencePath` rather than replacing it because the local UI uploads one
+   * image and has one slot for it, and because a caller written against the older shape must
+   * keep conditioning on the image it sent. Programmatic callers — the reel pipeline next
+   * door — send both: this list, and its first entry as `referencePath`.
+   */
+  referencePaths?: string[]
 }
 
 export interface Scene extends SceneSettings {

@@ -37,6 +37,8 @@ export interface Beat {
   asset: string | null;
   /** Width/height of the uploaded or generated still, for the crop warning. */
   asset_aspect: number | null;
+  /** The conversation about this still — the director's notes and the review's verdicts. */
+  asset_chat: AssetTurn[];
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
   frame: string | null;
   /** And, on a bridge, the frame it was told to arrive at. Null on every other join. */
@@ -62,6 +64,12 @@ export interface Beat {
   ref_offset: number;
   /** Uploads this beat can still take: `max_refs` less the automatic ones. */
   ref_slots: number;
+  /**
+   * How many of `refs` also condition the STILL, counted from the first. The still renderer
+   * takes far fewer pictures than the video model — `max_still_refs` including the reel's cast
+   * reference — so this is usually smaller than `refs.length`.
+   */
+  still_refs: number;
   /** Whether this beat's still is wired as the composition it opens on. */
   opens_on: boolean;
   /**
@@ -83,6 +91,21 @@ export interface Beat {
     seed: number;
     frames: number;
   } | null;
+}
+
+/**
+ * One line of a single still's conversation. Both writers land here: the director asking for a
+ * change, and the automatic review saying what it made of a render nobody had looked at yet.
+ */
+export interface AssetTurn {
+  role: "user" | "qwen";
+  text: string;
+  /** The rewritten `asset_prompt`, on a turn that changed it. */
+  prompt?: string;
+  /** Whether that turn ended in the still being drawn again. */
+  regenerated?: boolean;
+  /** Why it was not, when it should have been — the image server being down, usually. */
+  error?: string;
 }
 
 export interface Estimate {
@@ -124,6 +147,11 @@ export interface Board {
   assets_needed: number[];
   /** The model's hard cap on pictures per beat: nine. Per-beat `ref_slots` is what a node shows. */
   max_refs: number;
+  /**
+   * And the still renderer's cap, cast reference included — a beat's first `still_refs` pictures
+   * are drawn into its still as well as into its clip. The image server may report a lower one.
+   */
+  max_still_refs: number;
 }
 
 export interface ReelSummary {
@@ -137,7 +165,7 @@ export interface ReelSummary {
 
 export interface Job {
   id: string;
-  kind: "plan" | "chat" | "asset" | "caption" | "render";
+  kind: "plan" | "chat" | "asset" | "still_chat" | "caption" | "render";
   slug: string;
   detail: Record<string, unknown>;
   state: "queued" | "running" | "done" | "error" | "cancelled";

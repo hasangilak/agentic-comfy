@@ -12,7 +12,12 @@ import { FrameCard } from './components/FrameCard.tsx'
 import { Player } from './components/Player.tsx'
 import { SceneForm } from './components/SceneForm.tsx'
 import { SceneList } from './components/SceneList.tsx'
-import { estimateFrameSeconds, formatDuration, observedFrameSeconds } from './estimate.ts'
+import {
+  estimateFrameSeconds,
+  formatDuration,
+  observedFrameSeconds,
+  referenceCount,
+} from './estimate.ts'
 import { useSceneStream, useStored } from './hooks.ts'
 
 function makeDefaults(): SceneSettings {
@@ -46,6 +51,10 @@ function settingsOf(scene: Scene): SceneSettings {
     consistency: scene.consistency,
     referencePath: scene.referencePath,
     referenceUrl: scene.referenceUrl,
+    // Carried even though nothing here can add a second picture: a scene created over the API
+    // (the reel pipeline next door sends several) must not lose them the first time it is edited
+    // in this UI, and the time estimate is counted off them.
+    referencePaths: scene.referencePaths,
   }
 }
 
@@ -158,7 +167,7 @@ export default function App() {
         width: scene.width,
         height: scene.height,
         steps: scene.steps,
-        usesReference: scene.consistency !== 'none',
+        references: referenceCount(scene),
       }))
     : 0
   const remaining = scene ? perFrame * (scene.frames.length - doneCount) : 0

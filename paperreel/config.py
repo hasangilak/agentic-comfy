@@ -283,6 +283,21 @@ PLAN_REVIEW = os.environ.get("PAPERREEL_PLAN_REVIEW", "1") == "1"
 STILL_REVIEW = os.environ.get("PAPERREEL_STILL_REVIEW", "1") == "1"
 STILL_ATTEMPTS = int(os.environ.get("PAPERREEL_STILL_ATTEMPTS", "2"))
 
+# ## Talking to one still
+#
+# The automatic review answers "does this belong in the reel". It cannot answer "the pig should
+# be looking the other way", because that is not a mismatch with anything -- it is the
+# director's taste, and only the director has it. So every generated still carries a
+# conversation of its own: the model is shown the picture, the reel's cast reference and what
+# has already been said about it, rewrites the beat's `asset_prompt`, and renders it again.
+#
+# Two numbers, different on purpose. The first is how much of that conversation goes back into
+# the prompt -- a window, because a still that has been through ten rounds is being judged on
+# what it looks like NOW. The second is how much the board keeps, which is the record the user
+# reads on the node and should outlive the window.
+ASSET_CHAT_HISTORY = int(os.environ.get("PAPERREEL_ASSET_CHAT_HISTORY", "12"))
+ASSET_CHAT_MEMORY = int(os.environ.get("PAPERREEL_ASSET_CHAT_MEMORY", "60"))
+
 # ## Where opening stills come from
 #
 # `beat<n>_asset.png`, rendered by Papercut Studio in image/ over HTTP on this machine:
@@ -300,6 +315,20 @@ PAPERCUT_ASPECT = "9:16-reel"
 # flux2-klein-4b is a distilled few-step model; 4 is what the studio next door defaults to
 # and what its measured timings are quoted at.
 PAPERCUT_STEPS = int(os.environ.get("PAPERREEL_PAPERCUT_STEPS", "4"))
+# How many pictures a still may be drawn FROM. The first is the reel's locked cast reference,
+# which is what a still has always been conditioned on; the rest are the director's own uploads
+# on that beat -- the same pictures the video model is shown, so the puppet in the clip and the
+# puppet in the frame it opens on are being held to one set of images rather than two.
+#
+# Four, which is a time cap rather than a model limit: mflux takes any number of `--image-paths`
+# and encodes every one of them through every sampling step. Measured on this card at 768x1344
+# and 4 steps, same prompt and seed: 18.6 s with one picture, 31.4 s with two -- so each extra
+# picture costs about as much again as the first, and four is a still of roughly a minute. Still
+# free, still unmetered; what more pictures buy in fidelity has not been compared.
+#
+# The image server reports its own cap in `limits.maxReferences` and the smaller of the two wins,
+# exactly as the frame cap already works.
+MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "4"))
 
 # What every still is asked for on top of the board's style bible and the beat's own
 # asset_prompt. One place, because it is also what the vision review judges a still against:

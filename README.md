@@ -88,10 +88,25 @@ in. With that server not listening there is nothing to fall back to — a beat's
 upload, which is what the **my own** switch below is for. That is also the case on a machine
 without Apple Silicon, where mflux cannot run at all.
 
-Papercut is shown the reel's cast reference in **anchor** mode: every still is conditioned on
-one image, so a cut changes the setting rather than the characters. A board with no still at
-all renders its first beat alone, unconditioned — that image becomes the reference the rest are
-anchored to.
+Papercut is shown the reel's cast reference in **anchor** mode, so a cut changes the setting
+rather than the characters. A board with no still at all renders its first beat alone,
+unconditioned — that image becomes the reference the rest are anchored to.
+
+**And the beat's own reference pictures, if it has any.** The pictures dropped on a scene's
+reference tray go to the still renderer as well as to the video model — the first
+`config.MAX_STILL_REFS` of them (4, the cast reference counting as one), because mflux encodes
+every conditioning image through every sampling step. That is a time cap rather than a model
+limit, and it was measured: same prompt and seed at 768×1344, **18.6 s with one picture, 31.4 s
+with two**, so each extra costs about as much again as the first. Still free. The image server
+reports its own cap in `limits.maxReferences` and the smaller number wins.
+The reason to send them at all is that the still is what the clip's first sampling steps are
+anchored to: a prop the *clip* is held to and the frame it opens on never saw is two answers to
+what the same object looks like. Their one-line notes ride along too, appended to the frame's
+prompt as *the reference images show: …*, for the same reason they exist on the video side —
+shown a picture with no explanation, a model reads the picture as the scene.
+
+Uploads on a beat that has since been moved off the reference join are ignored here, exactly as
+they are in the video render: the join decides whether a picture counts, in one place.
 
 Then the model looks at what came back. A style bible is words, and the same paragraph that
 produced a round-eared pig in beat 1 produces a sharper-eared one in beat 4 — neither prompt
@@ -123,6 +138,45 @@ By hand, if you prefer:
 cd studio && npm install && npm run build && cd ..
 uv run studio.py                                       # http://127.0.0.1:8787
 ```
+
+### Talking to a still
+
+The review answers one question — *does this belong in the reel* — and it is usually not the
+question you have. "The pig should be facing the other way" is not a mismatch with anything; it
+is taste, and the reviewer is explicitly told not to reject for it. So every still has a
+conversation of its own, on its node: **✎ talk about this still**.
+
+Same model, same vision head, different prompt. This turn is shown the picture itself, the reel's
+cast reference beside it, and everything already said about that one image; what it writes back is
+the beat's `asset_prompt`, and then it renders the still again — free, ~10–18 s, and the video is
+never touched.
+
+```
+✎ her ears are too pointed, and move the lamp off the table
+  Rounded the ears back to the reference and put the lamp on the windowsill.
+  ✦ rendered again
+```
+
+Three things worth knowing:
+
+- **The automatic review does not run on what this renders.** Half of what a director asks for
+  here is a departure from the cast reference — asked for rounder ears, the reviewer would compare
+  the result against a reference with sharp ones, call it drift and rewrite your note away. The
+  review is for stills nobody has looked at. This one has been.
+- **"Same thing again, a different draw" works.** With the prompt unchanged the still is redrawn
+  on a seed the beat has not used, because Papercut derives a frame's seed from the scene's and a
+  plain re-render would otherwise come back byte-identical.
+- **The reviewer posts here too**, so the panel is the whole history of how that picture got to be
+  what it is — including the turn where the prompt you can see was rewritten between the render
+  you asked for and the one you got.
+
+Talking to beat 1's still redraws the reel's cast reference, since that is what it is by default.
+That stays allowed — otherwise the first image a board ever produced would lock its cast forever —
+and it is said in the job log when it happens. Existing stills are left alone; regenerate the ones
+you want matched.
+
+The window the model is shown is the last `PAPERREEL_ASSET_CHAT_HISTORY` (12) lines; the board
+keeps `PAPERREEL_ASSET_CHAT_MEMORY` (60), which is what you read on the node.
 
 ### Bring your own script
 
@@ -240,7 +294,8 @@ encode. `asset` is still there for the beat that needs the frame itself.
 
 Drop more pictures on a scene's reference tray and they upload in order, starting at
 `<Picture 3>`; the node shows the numbers the prompt uses. Remove one and the rest renumber,
-because the numbers are what the prompt refers to.
+because the numbers are what the prompt refers to. The first few also condition the beat's
+**still** — the node says how many, and "Where stills come from" above says why.
 
 Each picture gets its own one-line **prompt** on the node, numbered to match: what the model
 should take *from* that picture. It matters more than it sounds. Shown a picture with no
@@ -476,11 +531,30 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   is, since `SECONDS_PER_FRAME` is fitted on the keyframe path and will read low; and whether
   the checkpoint swap at every shot boundary costs enough container time to matter. `asset` is
   the same cut on the old path, so an A/B is one join click and two renders.
+- **A still drawn from several pictures is timed but not judged.** The plumbing is exercised end
+  to end — the paths go over, the notes reach the prompt, the cap is honoured from both sides, a
+  beat moved off the reference join is ignored — and a two-reference frame renders in 31.4 s
+  against 18.6 s for one, same prompt and seed. What nobody has *looked at* is whether it is
+  better: whether four pictures hold the cast harder than one or average them into something
+  blander, and whether the *reference images show: …* clause helps or gives `flux2-klein-4b` one
+  more thing to draw into the frame. `PAPERREEL_MAX_STILL_REFS` is how to explore it, and it
+  costs nothing but wall clock.
+- **The still review is shown the cast reference, not the beat's uploads.** So a still that
+  correctly follows a prop reference is judged against the reel's cast alone. That is the right
+  question for the review to ask, but it means an upload cannot defend a still the reviewer
+  wants to reject.
 - **The review passes are not deterministic.** The script self-check and the still review are
   the same model reading its own output, so two runs of the same board can disagree about
   whether something needs fixing. The still review is pinned to temperature 0.1 to keep that
   narrow, and both are capped — one still retry, one script pass — so a swing costs wall clock
   and never loops. Turn either off with `PAPERREEL_STILL_REVIEW=0` / `PAPERREEL_PLAN_REVIEW=0`.
+- **The per-still conversation is unmeasured against a live model.** Its plumbing is exercised —
+  the prompt is rewritten, the still is redrawn, a retry moves the seed, an image server that is
+  down leaves the rewrite saved rather than failing the turn — but two things are only as good as
+  the model on the day: whether it sets `regenerate` correctly (a question about the picture that
+  redraws it anyway costs 10–18 s of nothing), and whether it carries the untouched half of a
+  prompt through a rewrite instead of paraphrasing the style bible. Both are visible in the
+  transcript on the node.
 - **Planning is slow.** Draft plus self-check is about five minutes on a 36B local model,
   against a few seconds for a hosted one. It costs nothing and it is a job the UI shows
   progress for, but it is not interactive.

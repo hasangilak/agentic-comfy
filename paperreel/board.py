@@ -605,6 +605,38 @@ class Board:
         uploaded = list(zip(self.ref_paths(n), self.ref_prompts(n)))
         return (self.auto_pictures(n) + uploaded)[:config.MAX_REF_IMAGES]
 
+    def still_pictures(self, n: int, limit: int | None = None) -> list[tuple[Path, str]]:
+        """What beat `n`'s STILL is drawn from, paired with what each picture is for.
+
+        A different list from `pictures_for`, and the difference is the beat's own still: that is
+        the thing being generated here, so it cannot also condition itself. What is left is the
+        reel's locked cast reference -- the one image a still has always been conditioned on, and
+        first here because that is the order it was the only entry in -- followed by the
+        director's uploads on this beat.
+
+        Sending the uploads to the still renderer as well as to the video model is the point.
+        They are pictures of the cast, the set or a prop: the things that must look the same in
+        this shot as everywhere else in the film. Conditioning the clip on them while the frame
+        it opens on was drawn from the style bible alone left the two disagreeing about the same
+        puppet, and the frame is what the clip's first sampling steps are anchored to.
+
+        Guarded on `uses_refs` for the same reason `pictures_for` is: a beat moved off the
+        reference join keeps its uploaded files on disk, and a picture that is not in the video
+        render must not quietly steer the still either. One rule, read off the join.
+
+        Pairs, like `pictures_for`, though the still prompt names nothing by number: the notes are
+        the director's words about a specific picture, and a path list beside a note list that can
+        slip by one is the bug that method exists to make impossible.
+        """
+        found: list[tuple[Path, str]] = []
+        cast = self.reference_for(n)
+        if cast is not None:
+            found.append((cast, ""))
+        if uses_refs(self.source_for(self.beat(n))):
+            found += list(zip(self.ref_paths(n), self.ref_prompts(n)))
+        cap = config.MAX_STILL_REFS if limit is None else min(limit, config.MAX_STILL_REFS)
+        return found[:max(0, cap)]
+
     def ref_budget(self, n: int) -> int:
         """How many pictures the director may upload to this beat, after the automatic ones.
 
@@ -878,6 +910,11 @@ class Board:
                 "asset": self.media_url(self.asset_path(n)),
                 # So the node can warn when an uploaded still will be cropped hard.
                 "asset_aspect": image_aspect(self.asset_path(n)),
+                # The conversation about this still: what the director asked for, and what the
+                # automatic review made of each render. Not derived and not a render input --
+                # it is the record of how the picture got to be what it is, which is why it
+                # lives on the beat rather than being recomputed.
+                "asset_chat": beat.get("asset_chat") or [],
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
                 "frame": self.media_url(self.frame_path(n)),
@@ -904,6 +941,14 @@ class Board:
                 "ref_offset": len(self.auto_pictures(n)),
                 # What is left of the model's nine after the automatic ones.
                 "ref_slots": self.ref_budget(n),
+                # How many of the director's pictures also condition the STILL, which takes far
+                # fewer than the video model: the cast reference is one of them, and the still
+                # renderer encodes every picture through every sampling step. Derived here rather
+                # than worked out on the canvas so there is one answer to "is this picture in the
+                # still" -- see `still_pictures`.
+                "still_refs": max(
+                    0, len(self.still_pictures(n)) - (self.reference_for(n) is not None)
+                ),
                 # Whether this beat's still is wired as the composition it opens on. False on a
                 # reference beat carrying the previous clip, which opens on that instead.
                 "opens_on": self.opens_on_still(beat),
@@ -962,6 +1007,10 @@ class Board:
             # The node grows one upload slot per picture and stops here. Per-beat `ref_slots` is
             # the number that actually matters on a node; this is the model's hard cap.
             "max_refs": config.MAX_REF_IMAGES,
+            # And the still renderer's much smaller cap, so a node can say how many of a beat's
+            # pictures reach the still as well as the clip. The image server may report a lower
+            # one, which `papercut.max_references` honours -- this is the ceiling, not a promise.
+            "max_still_refs": config.MAX_STILL_REFS,
         }
 
     def cost_of_at(self, beats: list[int], seconds: float) -> dict:

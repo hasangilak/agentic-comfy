@@ -73,6 +73,17 @@ export const api = {
     post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats }).then((r) => r.job),
 
   /**
+   * Talk about one beat's still. The model is shown the picture itself alongside the reel's
+   * cast reference, rewrites that beat's `asset_prompt`, and usually renders it again — free,
+   * and roughly 10–18 s. The automatic review deliberately does not run on what comes back:
+   * half of what a director asks for here is a departure from the reference.
+   */
+  stillChat: (slug: string, n: number, message: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/asset/chat`, { message }).then(
+      (r) => r.job,
+    ),
+
+  /**
    * `source` says what the picture is for: "reference" makes it the composition this beat opens
    * on, alongside the reel's cast reference (the ordinary cut); "asset" makes it an exact opening
    * keyframe instead; "bridge" keeps the continuation and makes it the frame the clip has to

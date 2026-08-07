@@ -37,7 +37,7 @@ identical across the sequence without retyping it.
 | Mode | Conditioning | Use it for |
 | --- | --- | --- |
 | **Chain** | each frame conditions on the previous frame | walk cycles and continuous motion — best flow, renders strictly in order |
-| **Anchor** | every frame conditions on one uploaded reference | a fixed character or set across independent poses |
+| **Anchor** | every frame conditions on the uploaded reference(s) | a fixed character or set across independent poses |
 | **Free** | no image conditioning | fastest, loosest — style suffix alone holds the look |
 
 Chain and Anchor use `mflux-generate-flux2-edit`, which costs roughly 3.2 s/step against
@@ -45,6 +45,14 @@ Chain and Anchor use `mflux-generate-flux2-edit`, which costs roughly 3.2 s/step
 
 Upload a reference image to lock a character's design. In Chain mode the reference seeds
 frame 1 and each frame takes over from there; in Anchor mode every frame sees it.
+
+The UI uploads one image. The API takes up to `MAX_REFERENCES` (4) as `referencePaths` — a
+character sheet next to a prop next to the palette — and Anchor mode passes all of them to
+`mflux-generate-flux2-edit`, which supports multi-image editing. That is a time cap rather than a
+model limit: every picture is encoded through every sampling step, and each one costs about as
+much again as the first. Measured at 768×1344 and 4 steps, same prompt and seed: **18.6 s with
+one reference, 31.4 s with two.** Chain mode ignores the list and conditions on the previous
+frame alone, which is the point of the mode.
 
 ## Timing
 
