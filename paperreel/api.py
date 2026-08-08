@@ -22,8 +22,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (agent, board as board_mod, comfy, config, papercut, qwen, render, script,
-               stills as stills_mod)
+from . import (agent, board as board_mod, comfy, config, papercut, pictures, qwen, render,
+               script, stills as stills_mod)
 from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
@@ -157,14 +157,15 @@ def handle_chat(job: Job, run: Runner) -> dict:
     return result
 
 
-def still_progress(job: Job, run: Runner):
+def still_progress(job: Job, run: Runner, label: str = "still"):
     """The image server's 0..1 per-frame fraction, on the fields the UI already has.
 
     The studio's progress strip is built around ComfyUI's step counters, so this scales onto
-    those rather than teaching the UI a second shape.
+    those rather than teaching the UI a second shape. `label` says which image is being made,
+    because a beat now has ten of them and "still for beat 3" is wrong for nine.
     """
     return lambda n, fraction: run.update(
-        job, phase=f"still for beat {n}", beat=n,
+        job, phase=f"{label} for beat {n}", beat=n,
         step=round(fraction * config.PAPERCUT_STEPS), step_max=config.PAPERCUT_STEPS)
 
 
@@ -192,11 +193,67 @@ def handle_still_chat(job: Job, run: Runner) -> dict:
     run.log(job, f'[qwen] beat {n} still: {job.detail["message"]}')
     return stills_mod.converse(
         board, n, job.detail["message"],
+        attached=int(job.detail.get("attached") or 0),
         log=lambda line: run.log(job, line),
         progress=still_progress(job, run),
         announce=lambda: run.publish_board(board.slug),
         cancelled=lambda: job.cancelling,
     )
+
+
+def handle_ref_draw(job: Job, run: Runner) -> dict:
+    """Draw one of a beat's reference pictures.
+
+    Its own kind rather than a variant of `asset`: it addresses one picture rather than a set of
+    beats, it never runs the still review -- a reference picture is supposed to differ from the
+    cast -- and the canvas has to be able to tell which slot is busy. Same queue as everything
+    else, so it cannot overlap a still batch or a render reading the same files.
+    """
+    board = load(job.slug)
+    n = int(job.detail["beat"])
+    index = job.detail.get("index")
+    slot = pictures.draw(
+        board, n, None if index is None else int(index),
+        prompt=job.detail.get("prompt"),
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run, label="picture"),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )
+    run.publish_board(board.slug)
+    return {"beat": n, "index": slot}
+
+
+def handle_ref_chat(job: Job, run: Runner) -> dict:
+    """One turn of the conversation about one reference picture, its redraw included."""
+    board = load(job.slug)
+    n = int(job.detail["beat"])
+    index = int(job.detail["index"])
+    run.log(job, f'[qwen] beat {n} picture {index}: {job.detail["message"]}')
+    return pictures.converse(
+        board, n, index, job.detail["message"],
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run, label="picture"),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )
+
+
+def handle_revise(job: Job, run: Runner) -> dict:
+    """Rewrite one beat's scene or action from a note about it.
+
+    A job rather than a synchronous endpoint even though it is one short model call: it is a
+    board edit, and the queue is what stops it landing in the middle of a conversation turn or
+    a batch of stills that is already rewriting the same beat.
+    """
+    board = load(job.slug)
+    n = int(job.detail["beat"])
+    field = str(job.detail["field"])
+    run.log(job, f'[qwen] beat {n} {field}: {job.detail["message"]}')
+    result = agent.revise(board, n, field, job.detail["message"],
+                          log=lambda line: run.log(job, line))
+    run.publish_board(board.slug)
+    return result
 
 
 def handle_caption(job: Job, run: Runner) -> dict:
@@ -213,7 +270,9 @@ def handle_render(job: Job, run: Runner) -> dict:
 
 for kind, handler in (
     ("plan", handle_plan), ("chat", handle_chat), ("asset", handle_asset),
-    ("still_chat", handle_still_chat), ("caption", handle_caption), ("render", handle_render),
+    ("still_chat", handle_still_chat), ("revise", handle_revise),
+    ("ref_draw", handle_ref_draw), ("ref_chat", handle_ref_chat),
+    ("caption", handle_caption), ("render", handle_render),
 ):
     runner.register(kind, handler)
 
@@ -426,27 +485,63 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
 
 
 @app.post("/api/reels/{slug}/beats/{n}/asset/chat")
-def still_chat(slug: str, n: int, body: dict = Body(...)) -> dict:
-    """Say what is wrong with one still, and have it redrawn.
+async def still_chat(slug: str, n: int, message: str = Form(""),
+                     files: list[UploadFile] = File(default=[])) -> dict:
+    """Say what is wrong with one still -- optionally showing it a picture -- and have it redrawn.
 
     The board conversation edits the story; this one edits a picture. Both run on the same
     local model with the same vision head -- the difference is what is in the prompt: this turn
-    is shown the still itself, the reel's cast reference and everything already said about that
-    one image, and what it writes back is the beat's `asset_prompt`.
+    is shown the still itself, everything the still is drawn from, and everything already said
+    about that one image, and what it writes back is the beat's `asset_prompt`.
+
+    Multipart rather than JSON because a note can arrive with pictures attached, and those go
+    through `store_refs`: the same place the node's ⤒ add picture sends them, so they become
+    part of the beat rather than context for one turn. That is the only way an attachment
+    reaches the renderer at all -- `Board.still_pictures` reads the beat, so a transient image
+    would steer the model's words and nothing else. It carries the same consequence as that
+    button, and it is the reason the modal says so: the beat moves onto the reference join.
 
     Refused for the same reasons a generation is, from the same place (`stills.discussable`),
-    and refused here rather than only in the job so a stale tab gets a 409 instead of a job that
-    fails a minute later.
+    checked BEFORE anything is stored and here rather than only in the job, so a stale tab gets
+    a 409 instead of a job that fails a minute later.
     """
     board = load(slug)
-    message = (body.get("message") or "").strip()
-    if not message:
+    message = (message or "").strip()
+    sent = [file for file in files or [] if file is not None and file.filename]
+    if not message and not sent:
         raise HTTPException(422, "empty message")
     try:
         stills_mod.discussable(board, n)
     except stills_mod.StillsError as refused:
         raise HTTPException(refused.status, str(refused))
-    job = runner.submit("still_chat", slug, {"beat": n, "message": message})
+    attached = await store_refs(board, n, sent)
+    if attached:
+        runner.publish_board(slug)
+    job = runner.submit("still_chat", slug,
+                        {"beat": n, "message": message, "attached": attached})
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/text")
+def revise_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
+    """Rewrite this beat's scene or action from a note about it, rather than typing it.
+
+    The chat panel can already do this -- it is one `set_beat` call -- but only after working
+    out from the sentence which beat and which field were meant, which is the part that goes
+    wrong on a board where every beat says something similar. Here both are in the URL, so the
+    turn is spent on the writing.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    field = str(body.get("field") or "")
+    if field not in agent.REVISE_FIELDS:
+        raise HTTPException(
+            422, f"field must be one of {', '.join(agent.REVISE_FIELDS)}")
+    message = (body.get("message") or "").strip()
+    if not message:
+        raise HTTPException(422, "say what should be different about it")
+    job = runner.submit("revise", slug, {"beat": n, "field": field, "message": message})
     return {"job": job.to_json()}
 
 
@@ -524,6 +619,24 @@ async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) ->
         raise HTTPException(404, f"beat {n} not in {slug}")
     if not files:
         raise HTTPException(422, "no images sent")
+    stored = await store_refs(board, n, files)
+    runner.publish_board(slug)
+    return {"board": board_json(board), "stored": stored}
+
+
+async def store_refs(board: board_mod.Board, n: int, files: list[UploadFile]) -> int:
+    """Store reference pictures on a beat and put it on the reference join. Returns how many.
+
+    Shared with the still conversation, which can carry attachments: there is one way a picture
+    becomes part of a beat, so a note with an image behind it and the ⤒ add picture button
+    cannot end up meaning different things.
+
+    Saves the board, and does not publish -- the two callers announce at different moments.
+    """
+    if not files:
+        # Before the join is touched, because an empty attachment list must not quietly turn a
+        # continuation into a cut on its way past.
+        return 0
 
     # The join moves FIRST, before a single file is stored, because the budget depends on it:
     # two of the model's nine slots fill themselves on a reference beat, and `next_ref_index`
@@ -552,31 +665,118 @@ async def upload_refs(slug: str, n: int, files: list[UploadFile] = File(...)) ->
         stored += 1
 
     board.save()
+    return stored
+
+
+# Declared BEFORE the `/refs/{index}` routes below, because FastAPI matches in declaration
+# order and would otherwise try to parse "draw" as an int and answer 422.
+@app.post("/api/reels/{slug}/beats/{n}/refs/draw")
+def draw_new_ref(slug: str, n: int, body: dict = Body(...)) -> dict:
+    """Draw a NEW reference picture for this beat, from a prompt alone.
+
+    The join moves here rather than in the job, for the same reason `store_refs` moves it before
+    storing a file: `next_ref_index` reads the join to know that two of the model's nine slots
+    fill themselves on a reference beat, so a chained beat asked first would be told it has all
+    nine. The canvas warns about the move before sending.
+
+    The asymmetry with `store_refs` is worth naming: there, a partial upload leaves files behind
+    that justify the moved join; here a draw that fails leaves the beat on `reference` with
+    nothing new on it. That is visible on the node and one click to undo, and moving the join
+    only on success would make the budget check above it a lie.
+
+    No empty slot is ever created. `Board.ref_paths` is file-existence based, so a picture with a
+    prompt and no file is not a thing this board can represent -- the job renders first and the
+    slot exists because the file does.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    prompt = " ".join(str(body.get("prompt") or "").split()).strip()
+    if not prompt:
+        raise HTTPException(422, "say what the picture should be")
+    board.beat(n)["source"] = board_mod.SOURCE_REFERENCE
+    board.save()
+    try:
+        pictures.drawable(board, n, None)
+    except pictures.PicturesError as refused:
+        raise HTTPException(refused.status, str(refused))
     runner.publish_board(slug)
-    return {"board": board_json(board), "stored": stored}
+    job = runner.submit("ref_draw", slug, {"beat": n, "index": None, "prompt": prompt})
+    return {"job": job.to_json()}
 
 
 @app.patch("/api/reels/{slug}/beats/{n}/refs/{index}")
 def describe_ref(slug: str, n: int, index: int, body: dict = Body(...)) -> dict:
-    """Say what one reference picture is FOR, in the model's own words.
+    """Say what one reference picture is FOR, and what it should be drawn as.
 
-    This is the fix for the two-of-the-same-character problem: shown a picture of the cast
+    `prompt` is the fix for the two-of-the-same-character problem: shown a picture of the cast
     standing in the finished set, ref2va reproduces it AND acts the beat out with a second
     copy of the same puppet. Told "<Picture 1> is the same single Moth that performs the
     action, not an extra one", it collapses them back into one.
 
-    Free, and it marks the beat stale, because these words go into the render.
+    `draw` is the other half and a different register: what mflux is asked for when this picture
+    is drawn again. Two fields rather than one because a good draw prompt -- "a close-up of an
+    iron-grey club on flat black" -- is a terrible end to the sentence "<Picture 3> is ...".
+
+    One route for both, because it already meant "say things about picture `index`" and `draw`
+    is one more thing to say. Only the keys present are written, so the two fields can be edited
+    independently by two different controls.
+
+    `prompt` marks the beat stale, because those words go into the render. `draw` does not, and
+    deliberately: it produces a picture, and the picture's own content hash is already in the
+    fingerprint -- exactly as `asset_prompt` is left out because the still it made is hashed.
     """
     board = load(slug)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
     try:
-        board.set_ref_prompt(n, index, str(body.get("prompt") or ""))
+        if "prompt" in body:
+            board.set_ref_prompt(n, index, str(body.get("prompt") or ""))
+        if "draw" in body:
+            board.set_ref_draw(n, index, str(body.get("draw") or ""))
     except IndexError:
         raise HTTPException(404, f"beat {n} has no reference picture {index}")
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/refs/{index}/draw")
+def redraw_ref(slug: str, n: int, index: int) -> dict:
+    """Draw an existing reference picture again, from the prompt already stored on it.
+
+    Bodyless, matching how a still is regenerated: PATCH the prompt, then POST the job. That
+    keeps "what it should be" and "make it now" as two decisions, which is what lets the node
+    show a rewritten prompt while the picture it produced is still the old one.
+    """
+    board = load(slug)
+    try:
+        pictures.drawable(board, n, index)
+    except pictures.PicturesError as refused:
+        raise HTTPException(refused.status, str(refused))
+    job = runner.submit("ref_draw", slug, {"beat": n, "index": index, "prompt": None})
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/refs/{index}/chat")
+def chat_ref(slug: str, n: int, index: int, body: dict = Body(...)) -> dict:
+    """Say what should be different about one reference picture.
+
+    JSON, not multipart, unlike the still's conversation. There an attachment means "here is
+    what I mean" and is stored, because `Board.still_pictures` reads the beat. Here the picture
+    IS the subject, and a file sent with the note would become a tenth reference nobody asked
+    for -- adding a picture is what the tray is for.
+    """
+    board = load(slug)
+    message = " ".join(str(body.get("message") or "").split()).strip()
+    if not message:
+        raise HTTPException(422, "say what should be different about the picture")
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    if not board.ref_path(n, index).is_file():
+        raise HTTPException(404, f"beat {n} has no reference picture {index}")
+    job = runner.submit("ref_chat", slug, {"beat": n, "index": index, "message": message})
+    return {"job": job.to_json()}
 
 
 @app.delete("/api/reels/{slug}/beats/{n}/refs/{index}")
@@ -585,11 +785,33 @@ def remove_ref(slug: str, n: int, index: int) -> dict:
 
     The survivors are renumbered to close the gap, because the prompt numbers them by
     position: leaving a hole would have the model told about a <Picture 2> that is really the
-    third image, or a picture with no tag at all. Their descriptions move with them.
+    third image, or a picture with no tag at all. Their descriptions, their draw prompts and
+    their conversations move with them, and any @-mention of the departed one is rewritten to
+    what it was for.
+
+    Refused while a picture job for this beat is in flight: that job captured its index when it
+    was queued, and the renumber would have it drawing into whatever slid up into the slot.
     """
     board = load(slug)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
+    # Narrowed to this beat's picture jobs rather than reusing `require_structure_idle`, which
+    # blocks on anything at all: removing a picture from scene 3 while scene 5 renders is fine.
+    busy = next(
+        (
+            job for job in runner.jobs.values()
+            if job.slug == slug and job.kind in ("ref_draw", "ref_chat")
+            and job.state in ("queued", "running")
+            and int(job.detail.get("beat") or 0) == n
+        ),
+        None,
+    )
+    if busy:
+        raise HTTPException(
+            409,
+            f"a picture on scene {n} is being drawn. Removing one now would renumber the rest "
+            "underneath it -- wait for the job to finish.",
+        )
     try:
         board.remove_ref(n, index)
     except IndexError:

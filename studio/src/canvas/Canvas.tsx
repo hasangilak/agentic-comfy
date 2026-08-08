@@ -119,6 +119,9 @@ export function Canvas() {
     if (structureChanged) {
       setSelection([]);
       studio.setRenderSelection([]);
+      // Beat numbers are positional, so the scene behind the open modal is not the one that
+      // was opened any more -- closing it beats silently swapping what is on screen.
+      studio.setExpanded(null);
     }
     beatCount.current = board.beats.length;
   }, [board, setNodes, setEdges, setSelection]);

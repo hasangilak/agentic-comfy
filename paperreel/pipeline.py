@@ -46,6 +46,12 @@ class Shot:
     asset: Path | None = None
     pictures: list[tuple[Path, str]] = field(default_factory=list)
     opens_on: bool = False
+    # How to resolve any @-token the director typed into the action or the scene line -- token
+    # body to (position in `pictures`, what that picture is for). Carried on the shot rather
+    # than looked up at render time for the same reason `pictures` is: this dataclass is the
+    # whole description of what one beat was handed, and a board read halfway through a batch
+    # could answer differently than the one the batch was planned from.
+    mentions: dict[str, tuple[int | None, str]] = field(default_factory=dict)
     # Reference beats only: send the tail of the previous clip as a reference video, which is
     # how this join gets continuity without a keyframe.
     carry: bool = False
@@ -226,7 +232,8 @@ def render_beats(
                                                    # missing the whole list shifted under it.
                                                    opens_on=(shot.opens_on and bool(pictures)
                                                              and pictures[0][0] == shot.asset),
-                                                   ref_videos=1 if carry else 0),
+                                                   ref_videos=1 if carry else 0,
+                                                   mentions=shot.mentions or None),
                         length=length, steps=steps, seed=seed + n,
                     ),
                     log=log,
@@ -306,6 +313,9 @@ def render_reel(
             asset=workdir / f"beat{beat['n']}_asset.png",
             pictures=view.pictures_for(beat["n"]),
             opens_on=view.opens_on_still(view.beat(beat["n"])),
+            # Resolved against the same read-only view the pictures came from, so the numbering
+            # a token expands to and the list it is numbering are one decision.
+            mentions=view.mentions(beat["n"], view.pictures_for(beat["n"])),
             carry=(beat.get("ref_video") == board_mod.CARRY_UPSTREAM and index > 0),
         )
         for index, (beat, source) in enumerate(zip(beats, resolved))

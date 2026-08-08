@@ -200,6 +200,11 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # Swaps "compose the opening frame yourself" for "open on the
                                 # moment <Video 1> ends and carry it on".
                                 ref_videos=1 if carry else 0,
+                                # Resolved against the list this batch queued, for the same
+                                # reason `opens_on` is above: a picture added to the beat while
+                                # the render is in flight must not renumber a token in a prompt
+                                # that has already been handed over.
+                                mentions=board.mentions(n, pictures),
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
                         ),

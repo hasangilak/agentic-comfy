@@ -1,5 +1,6 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useState } from "react";
+import { BeatModal } from "./canvas/BeatModal";
 import { Canvas } from "./canvas/Canvas";
 import { StoryPanel } from "./panels/StoryPanel";
 import { ReelRail } from "./panels/ReelRail";
@@ -45,6 +46,9 @@ export default function App() {
           {studio.board ? <StoryPanel /> : null}
         </div>
       </div>
+      {/* Outside the canvas on purpose: a fixed overlay inside a node would be positioned
+          against React Flow's transformed viewport and pan away with it. */}
+      <BeatModal />
     </StudioContext.Provider>
   );
 }

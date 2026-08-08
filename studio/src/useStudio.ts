@@ -40,6 +40,11 @@ export function useStudioState() {
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<number[]>([]);
   const [renderSelection, setRenderSelection] = useState<number[]>([]);
+  // Which beat is open full-screen, if any. Shared state rather than the node's own, because
+  // the modal is rendered at the top of the app: inside a node it would live under React
+  // Flow's transformed viewport, where `position: fixed` is measured from the panned and
+  // zoomed layer instead of from the window.
+  const [expanded, setExpanded] = useState<number | null>(null);
   const [authOk, setAuthOk] = useState(true);
   // The two local services this studio orchestrates, and both can simply not be running.
   // Optimistic defaults: the copy that depends on them is a warning, and flashing "the image
@@ -91,6 +96,7 @@ export function useStudioState() {
       setChat([]);
       setSelection([]);
       setRenderSelection([]);
+      setExpanded(null);
       await refreshBoard(target);
     },
     [refreshBoard],
@@ -120,6 +126,7 @@ export function useStudioState() {
       setChat([]);
       setSelection([]);
       setRenderSelection([]);
+      setExpanded(null);
     };
 
     followLocation();
@@ -242,11 +249,13 @@ export function useStudioState() {
     error,
     selection,
     renderSelection,
+    expanded,
     authOk,
     stillsBackend,
     model,
     setSelection,
     setRenderSelection,
+    setExpanded,
     setError,
     openReel,
     refreshBoard,
@@ -300,4 +309,26 @@ export function useDraft(value: string, commit: (next: string) => void, delay = 
   };
 
   return { draft, change, flush };
+}
+
+/**
+ * Is a job of this kind in flight for the thing `match` describes?
+ *
+ * The same four lines — kind, slug, queued-or-running, then something about `detail` — were
+ * written out in four components before this, and the picture work would have made it six. The
+ * slug is always the current board's: a job on another reel cannot make a control here busy.
+ */
+export function useBusy(
+  kind: Job["kind"],
+  match: (detail: Record<string, unknown>) => boolean,
+): boolean {
+  const studio = useStudio();
+  const slug = studio.board?.slug;
+  return Object.values(studio.jobs).some(
+    (job) =>
+      job.kind === kind &&
+      job.slug === slug &&
+      (job.state === "queued" || job.state === "running") &&
+      match(job.detail),
+  );
 }

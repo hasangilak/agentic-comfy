@@ -73,13 +73,33 @@ export const api = {
     post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats }).then((r) => r.job),
 
   /**
-   * Talk about one beat's still. The model is shown the picture itself alongside the reel's
-   * cast reference, rewrites that beat's `asset_prompt`, and usually renders it again — free,
+   * Talk about one beat's still. The model is shown the picture itself alongside everything it
+   * is drawn from, rewrites that beat's `asset_prompt`, and usually renders it again — free,
    * and roughly 10–18 s. The automatic review deliberately does not run on what comes back:
    * half of what a director asks for here is a departure from the reference.
+   *
+   * `pictures` are attachments, and they are not context for one turn: they are stored on the
+   * beat exactly as ⤒ add picture stores them, which is the only way an image reaches the
+   * still renderer at all. So they carry that button's consequence too — the beat moves onto
+   * the reference join.
    */
-  stillChat: (slug: string, n: number, message: string) =>
-    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/asset/chat`, { message }).then(
+  stillChat: (slug: string, n: number, message: string, pictures: File[] = []) => {
+    const form = new FormData();
+    form.append("message", message);
+    for (const file of pictures) form.append("files", file);
+    return call<{ job: Job }>(`/api/reels/${slug}/beats/${n}/asset/chat`, {
+      method: "POST",
+      body: form,
+    }).then((r) => r.job);
+  },
+
+  /**
+   * Have the model rewrite one beat's scene or action from a note about it. The board's own
+   * chat can do the same thing, but it has to work out which beat and which line were meant
+   * first; here both are in the URL. Marks the beat stale, like typing the change would.
+   */
+  reviseBeat: (slug: string, n: number, field: "scene" | "action", message: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/text`, { field, message }).then(
       (r) => r.job,
     ),
 
@@ -114,12 +134,45 @@ export const api = {
   },
 
   /**
-   * Describe one reference picture — what the model should take FROM it. `index` is 1-based,
-   * the number the prompt uses. Marks the beat stale: these words are part of the render.
+   * Say things about one reference picture. `index` is 1-based, the number the prompt uses.
+   *
+   * `prompt` is what the model should take FROM the picture, and it marks the beat stale
+   * because those words go into the render. `draw` is what mflux is asked for when the picture
+   * is drawn again, and it does not — it produces a picture, and the picture's own content hash
+   * is already in the fingerprint, exactly as `asset_prompt` is left out because the still it
+   * made is hashed.
+   *
+   * One call for both, because the route already meant "say things about picture `index`". Only
+   * the keys given are written, so two controls can edit the two fields independently.
    */
-  describeRef: (slug: string, n: number, index: number, prompt: string) =>
-    patch<{ board: Board }>(`/api/reels/${slug}/beats/${n}/refs/${index}`, { prompt }).then(
+  describeRef: (slug: string, n: number, index: number, body: { prompt?: string; draw?: string }) =>
+    patch<{ board: Board }>(`/api/reels/${slug}/beats/${n}/refs/${index}`, body).then(
       (r) => r.board,
+    ),
+
+  /**
+   * Draw a NEW reference picture from a prompt alone, and put the beat on the reference join.
+   *
+   * No empty slot is created on the way: the picture exists when its file does, so the tile
+   * for one in flight comes from the job rather than from the board.
+   */
+  createRef: (slug: string, n: number, prompt: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/refs/draw`, { prompt }).then((r) => r.job),
+
+  /** Draw an existing picture again, from the prompt already stored on it. Free, ~10–18 s. */
+  drawRef: (slug: string, n: number, index: number) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/refs/${index}/draw`, {}).then((r) => r.job),
+
+  /**
+   * Say what should be different about one reference picture.
+   *
+   * JSON rather than multipart, unlike `stillChat`: there an attachment means "here is what I
+   * mean" and is kept on the beat, because the still is drawn from the beat. Here the picture
+   * IS the subject, so a file sent with the note would mint a tenth reference nobody asked for.
+   */
+  refChat: (slug: string, n: number, index: number, message: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/refs/${index}/chat`, { message }).then(
+      (r) => r.job,
     ),
 
   /** `index` is 1-based: the number in the prompt, not the array position. */

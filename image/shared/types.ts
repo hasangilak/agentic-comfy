@@ -8,8 +8,29 @@ export type ConsistencyMode =
   | 'chain'
   /** Every frame is conditioned on one fixed anchor image. Style holds, poses stay independent. */
   | 'anchor'
+  /**
+   * Conditioned on the references and told to change nothing the beat does not ask for.
+   *
+   * The same conditioning as `anchor`; the difference is the continuity clause, which every
+   * other conditioned mode prepends and this one omits. That clause ends "but move the subject
+   * into a clearly different pose and position as described" -- correct when the reference is
+   * the previous frame of a moving sequence, and the exact opposite of what is wanted when the
+   * reference IS the picture being edited and the instruction is "make the club longer".
+   *
+   * So: `anchor` re-poses the subject against a fixed look, `edit` holds the picture and
+   * changes only what the beat names.
+   */
+  | 'edit'
   /** Pure text-to-image. Fastest, loosest continuity. */
   | 'none'
+
+/**
+ * Every mode this build understands, for `/api/health`.
+ *
+ * Declared here rather than in the server so the list cannot fall behind the union it is
+ * advertising -- the annotation makes adding a mode without listing it a type error.
+ */
+export const CONSISTENCY_MODES: ConsistencyMode[] = ['chain', 'anchor', 'edit', 'none']
 
 export interface AspectPreset {
   id: string

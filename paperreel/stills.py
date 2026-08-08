@@ -134,7 +134,8 @@ CHAT_SYSTEM = (
     "paraphrasing them here is how one shot quietly stops matching the rest.\n\n"
     "Rendering the still again is free and takes about 10 to 18 seconds, so ask for it whenever "
     "the picture itself should change. Rendering the VIDEO is not something you can do; it "
-    "costs real money and only the director starts it."
+    "costs real money and only the director starts it.\n\n"
+    + config.MENTION_NOTE
 )
 
 
@@ -263,6 +264,14 @@ def _attempts(board: board_mod.Board, beats: list[int], *,
             # the image server streams its progress at all.
             on_still=None if announce is None else (lambda _n: announce()),
             cancelled=cancelled,
+            # A beat that already had a still is being asked for a DIFFERENT one, so its seed
+            # has to move. Papercut derives a frame's seed as `scene.seed + index`, and a
+            # single-beat run is always index 0 -- so ✦ regenerate with the prompt unchanged
+            # came back byte-identical, which reads as a button that did nothing. Only the
+            # conversation moved the seed before this. Left alone for a batch, where every beat
+            # sits at a different index and the board seed is what makes a reel reproducible.
+            seed=(_retry_seed(board, pending[0])
+                  if len(pending) == 1 and board.asset_path(pending[0]).is_file() else None),
         )
         made |= set(landed)
         if not landed or not config.STILL_REVIEW or attempt >= max(1, config.STILL_ATTEMPTS):
@@ -358,6 +367,12 @@ def review(board: board_mod.Board, n: int) -> dict:
     parts.append(f"REQUIRED OF EVERY STILL: {config.ASSET_STYLE_SUFFIX}")
     if prompt:
         parts.append(f"THIS STILL WAS ASKED FOR AS: {prompt}")
+        # This pass rewrites `asset_prompt` without anyone asking for it, and it is told to
+        # correct "the problems and nothing else" -- which a model reads as licence to normalise
+        # an unfamiliar @ref: token into prose. Of the five prompts that can rewrite a field
+        # holding tokens, this is the one nobody is watching when it does.
+        if config.mention_bodies(prompt):
+            parts.append(config.MENTION_NOTE)
     parts.append(JUDGEMENT)
     parts.append("Return JSON only.")
     return qwen.structured(
@@ -416,6 +431,7 @@ def discussable(board: board_mod.Board, n: int) -> None:
 
 
 def converse(board: board_mod.Board, n: int, message: str, *,
+             attached: int = 0,
              log: Callable[[str], None] = print,
              progress: Callable[[int, float], None] | None = None,
              announce: Callable[[], None] | None = None,
@@ -426,6 +442,13 @@ def converse(board: board_mod.Board, n: int, message: str, *,
     that can come out of looking at a picture with someone -- what it should say instead, and
     whether to draw it again -- so a loop would be a round trip spent deciding to do the only
     thing available.
+
+    `attached` is how many reference pictures the director sent along with this note; they are
+    already on the beat by the time this runs (the API stores them, exactly as the node's
+    ⤒ add picture does, because `Board.still_pictures` is what the still renderer reads and it
+    reads it off the board). It forces the re-render rather than leaving that to the model: new
+    pictures change what the still is drawn from, so the one on screen is out of date whatever
+    the model makes of the words.
 
     **The automatic review deliberately does not run on what this renders.** The reviewer's
     whole job is holding a still to the cast reference, and half of what a director asks for
@@ -439,7 +462,7 @@ def converse(board: board_mod.Board, n: int, message: str, *,
     discussable(board, n)
     before = (board.beat(n).get("asset_prompt") or "").strip()
     verdict = qwen.structured(
-        _chat_messages(board, n, message), CHAT_SCHEMA,
+        _chat_messages(board, n, message, attached=attached), CHAT_SCHEMA,
         # Warmer than the review's 0.1: this one is writing a prompt, not checking one, and a
         # near-deterministic decode answers a second attempt at the same note with the same
         # words -- which reads as not having listened.
@@ -448,8 +471,16 @@ def converse(board: board_mod.Board, n: int, message: str, *,
     )
     corrected = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
     reply = " ".join(str(verdict.get("reply") or "").split()).strip()
-    regenerate = bool(verdict.get("regenerate"))
+    # A picture arriving with the note is not the model's call: the conditioning changed, so
+    # what is on screen was drawn from something the beat no longer says.
+    regenerate = bool(verdict.get("regenerate")) or attached > 0
     changed = bool(corrected) and corrected != before
+    # A rewrite that drops an @ref: token does not fail -- it renders a still no longer told
+    # about a picture it is still conditioned on. Unrepairable here (only the model knows where
+    # it meant them), so it goes in the transcript the director already reads.
+    lost = config.lost_mentions(before, corrected) if changed else []
+    if lost:
+        log(f"[stills] beat {n}: the rewrite dropped {', '.join(lost)}")
     if changed:
         board.beat(n)["asset_prompt"] = corrected
         log(f"[stills] beat {n}: prompt rewritten -> {corrected}")
@@ -460,6 +491,8 @@ def converse(board: board_mod.Board, n: int, message: str, *,
         reply or ("Rewrote the prompt." if changed else "Nothing to change."),
         prompt=corrected if changed else None,
         regenerated=regenerate or None,
+        error=(f"this rewrite dropped {', '.join(lost)} -- put it back if it mattered"
+               if lost else None),
     )
     # Saved and published before the render starts, not after: the rewritten prompt is what the
     # picture is about to be drawn from, and the node should be showing it while that happens.
@@ -535,8 +568,20 @@ def _history(board: board_mod.Board, n: int) -> str:
     )
 
 
-def _chat_messages(board: board_mod.Board, n: int, message: str) -> list[dict]:
+def _chat_messages(board: board_mod.Board, n: int, message: str,
+                   attached: int = 0) -> list[dict]:
     """The prompt for one turn: the pictures, the reel's rules, the history, then the note.
+
+    The pictures are `Board.still_pictures` -- what this still is actually drawn from -- and
+    then the still itself, last. Showing the director's own uploads here rather than only the
+    cast reference is what makes "give her the scarf from the picture I just sent" answerable
+    instead of guessed at. The automatic `review` is deliberately shown only the cast reference,
+    because it answers a different question: whether the still belongs in the reel, which the
+    director's intent for one shot has no bearing on.
+
+    Numbered rather than tagged. `<Picture 1>` is the *video* model's vocabulary, and asked in
+    it the reviewer answered about one of the two images it had been given -- but "the first
+    image / the second image" does not scale past two, so the images are simply listed.
 
     The director's note goes LAST, after everything it might be about, for the reason
     `agent.turn` puts the board after the transcript -- whatever sits nearest the question is
@@ -544,23 +589,46 @@ def _chat_messages(board: board_mod.Board, n: int, message: str) -> list[dict]:
     """
     beat = board.beat(n)
     reference = board.reference_for(n)
+    drawn_from = board.still_pictures(n)
+    images: list[Path] = [path for path, _ in drawn_from] + [board.asset_path(n)]
     parts: list[str] = []
-    images: list[Path] = []
-    if reference is not None:
-        images.append(reference)
+    listed = []
+    for index, (path, note) in enumerate(drawn_from, start=1):
+        if reference is not None and path == reference:
+            listed.append(
+                f"{index}. this reel's locked cast reference: it fixes what the characters, the "
+                "materials and the palette look like, and this still is held to it."
+            )
+        else:
+            said = " ".join(str(note or "").split())
+            listed.append(
+                f"{index}. a picture the director attached to this shot, which this still is "
+                "drawn from as well as the clip"
+                + (f". They say it is for: {said}" if said else ".")
+            )
+    listed.append(f"{len(images)}. the still you are talking about.")
+    parts.append(
+        (f"You are given {len(images)} images, in this order:\n" if len(images) > 1
+         else "You are given one image:\n") + "\n".join(listed)
+    )
+    if reference is None:
         parts.append(
-            "The first image is this reel's locked cast reference: it fixes what the "
-            "characters, the materials and the palette look like, and this still is held to "
-            "it. The second image is the still you are talking about."
+            "This still is also this reel's cast reference -- every other still in the film is "
+            "matched against it. Anything you change about the characters here changes them for "
+            "the whole reel, which is allowed, and is worth saying in your reply."
         )
-    else:
+    if attached:
+        # Not necessarily all of them in the list above: the still renderer takes far fewer
+        # pictures than the video model, so a beat already at `config.MAX_STILL_REFS` steers its
+        # clip with the new picture and its still with the older ones.
         parts.append(
-            "The image is this still, and it is also this reel's cast reference -- every "
-            "other still in the film is matched against it. Anything you change about the "
-            "characters here changes them for the whole reel, which is allowed, and is worth "
-            "saying in your reply."
+            f'The director has just attached {attached} new '
+            + (f"pictures to this shot, so the still on screen was drawn before they existed."
+               if attached != 1 else
+               "picture to this shot, so the still on screen was drawn before it existed.")
+            + " Write the prompt so the next render uses what the pictures above show, and "
+              "render it again."
         )
-    images.append(board.asset_path(n))
 
     history = _history(board, n)
     if history:

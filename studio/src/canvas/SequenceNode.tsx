@@ -1,9 +1,11 @@
 import { Handle, Position } from "@xyflow/react";
 import { useRef, useState } from "react";
 import { api, clock, money } from "../api";
+import { slotsLeft, videoPictures } from "../beat";
 import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, Button, STATE_LOOK, inputClass } from "../ui";
+import { AddPicture } from "./AddPicture";
 import { StillChat } from "./StillChat";
 
 /**
@@ -74,17 +76,29 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   // pictures none of the others can take.
   const isReference = beat.source === "reference";
   const refs = beat.refs ?? [];
-  const autoRefs = beat.auto_refs ?? [];
-  // The whole conditioning set in the order the prompt numbers it: the automatic slots first,
-  // then the director's. `index` is the number the API addresses an upload by, and it is null on
-  // an automatic one -- those follow the still and the cast reference and cannot be edited here.
-  const pictures = [
-    ...autoRefs.map((auto) => ({ url: auto.url, note: auto.note, index: null as number | null })),
-    ...refs.map((url, i) => ({ url, note: beat.ref_prompts?.[i] ?? "", index: i + 1 })),
-  ];
+  // The whole conditioning set in the order the prompt numbers it, from the one module that
+  // knows that order. `index` is the number the API addresses an upload by, and it is null on
+  // an automatic slot -- those follow the still and the cast reference and cannot be edited here.
+  const pictures = videoPictures(beat);
+  // `videoPictures` is empty off the reference join, mirroring the server -- so a beat whose join
+  // was cycled away afterwards would show none of the pictures it still has on disk, and offer no
+  // way to remove them. They reach no renderer there, which is worth SAYING rather than hiding:
+  // silently dropping them from the canvas is how a director ends up believing a scene is
+  // conditioned on something it is not.
+  const stranded = isReference
+    ? []
+    : refs.map((url, i) => ({
+        url,
+        note: beat.ref_prompts?.[i] ?? "",
+        index: i + 1,
+        id: beat.ref_ids?.[i] ?? null,
+        tag: "",
+        label: `picture ${i + 1}`,
+        token: null,
+      }));
   // Against the per-beat budget, not the model's flat cap: two of the nine slots are already
   // spoken for on a scene that opens a shot.
-  const refSlotsLeft = Math.max(0, beat.ref_slots - refs.length);
+  const refSlotsLeft = slotsLeft(beat);
   // The one reference shape with nowhere to put a still: it opens where the previous clip ended.
   const carrying = isReference && beat.carry;
 
@@ -214,10 +228,21 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           />
           render
         </label>
+        {/* The same beat, full screen. A node is 240px wide so the whole chain stays readable;
+            everything that needs looking AT rather than reading -- the still, the pictures it is
+            drawn from, the conversation about them -- is unusable at that size. */}
+        <button
+          onClick={() => studio.setExpanded(beat.n)}
+          className="nodrag ml-auto text-[10px] text-zinc-600 hover:text-[#d99a4e]"
+          title="open this scene full screen — its stills, the pictures they are drawn from, and
+            the conversation about them"
+        >
+          ⤢
+        </button>
         <button
           onClick={() => void studio.guard(() => api.addBeat(board.slug, { n: beat.n }))}
           disabled={structureBusy}
-          className="ml-auto text-[10px] text-zinc-600 hover:text-[#d99a4e]
+          className="text-[10px] text-zinc-600 hover:text-[#d99a4e]
             disabled:cursor-not-allowed disabled:opacity-30"
           title={
             structureBusy
@@ -289,13 +314,13 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         />
         {thumb ? (
           <img src={thumb} alt="" className="h-full w-full object-contain opacity-90" />
-        ) : pictures.length ? (
+        ) : (pictures.length || stranded.length) ? (
           /* No still, but pictures: a scene conditioned only on uploads, or one carrying the
              clip before it. Numbered, because the numbers are load-bearing -- the prompt tells
              the model about <Picture 1>..<Picture N> in exactly this order. */
           <div className="nodrag nowheel grid h-full auto-rows-[2.85rem] grid-cols-3 gap-0.5
             overflow-y-auto p-0.5">
-            {pictures.map((picture, index) => (
+            {(pictures.length ? pictures : stranded).map((picture, index) => (
               <div key={picture.url ?? index} className="group relative bg-[#0d0d10]">
                 {picture.url ? (
                   <img src={picture.url} alt="" className="h-full w-full object-cover opacity-90" />
@@ -483,13 +508,18 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             reason the generate button is: nothing here may redraw the director's own work. */}
         {carrying || board.manual_stills || !beat.asset ? null : <StillChat beat={beat} />}
 
-        {/* The extra pictures, which only this join can take. Its own row rather than sharing the
-            one above, because a still and a reference answer different questions -- one is where
-            this shot opens, the others are what things look like everywhere. */}
-        {isReference ? (
-          <div className="flex items-center gap-1.5">
+        {/* The extra pictures. Its own row rather than sharing the one above, because a still and
+            a reference answer different questions -- one is where this shot opens, the others are
+            what things look like everywhere.
+
+            Shown on EVERY join, not only the reference one it used to be gated on. Adding a
+            picture is how a scene moves ONTO that join, so hiding the control until it was
+            already there made it unreachable from the two joins a scene most often starts on --
+            and left a director on a keyframe cut with no picture UI anywhere at all. `AddPicture`
+            says what the move costs before it happens. */}
+        <div className="flex items-center gap-1.5">
             <span className="text-[10px] uppercase tracking-wide text-zinc-500">
-              references {pictures.length}/{board.max_refs}
+              references {isReference ? pictures.length : refs.length}/{board.max_refs}
               {/* The still renderer takes a handful, not nine, so which pictures reach it is not
                   something the numbering above can be read off. `still_refs` is counted on the
                   server, from the first upload down. */}
@@ -505,25 +535,24 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                   · {beat.still_refs} in the still
                 </span>
               ) : null}
+              {stranded.length ? (
+                <span
+                  className="text-[#d99a4e]"
+                  title={
+                    `this scene is on the ${beat.source} join, where reference pictures reach ` +
+                    "neither the still nor the clip. Move it back to the reference join, or " +
+                    "remove them"
+                  }
+                >
+                  {" "}
+                  · not used on this join
+                </span>
+              ) : null}
             </span>
-            <Button
-              tone="ghost"
-              className="ml-auto"
-              disabled={uploading || refSlotsLeft === 0}
-              onClick={() => refPicker.current?.click()}
-              title={
-                refSlotsLeft
-                  ? "add pictures of the cast, the set or a prop — free to place, but each one " +
-                    "is carried through every sampling step, so each one slows the render. The " +
-                    `first few (${board.max_still_refs} counting the cast reference) are also ` +
-                    "what this scene's still is drawn from"
-                  : `${board.max_refs} is the model's limit; remove one to add another`
-              }
-            >
-              {uploading ? "uploading…" : "⤒ add picture"}
-            </Button>
-          </div>
-        ) : null}
+            <div className="ml-auto">
+              <AddPicture beat={beat} />
+            </div>
+        </div>
 
         {/* The reference join's only route to continuity. ref2va has no keyframe input, so
             the previous clip cannot be handed over as a frame -- but the node takes reference
@@ -725,7 +754,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
  * note to a different picture than the one it describes -- and nothing about the result looks
  * wrong until the render comes back with the cast reference acted out as a second character.
  */
-function ReferenceNote({
+export function ReferenceNote({
   slug,
   n,
   index,
@@ -740,7 +769,9 @@ function ReferenceNote({
 }) {
   const studio = useStudio();
   const note = useDraft(value, (next) =>
-    void studio.guard(() => api.describeRef(slug, n, index, next)),
+    // `prompt` only: the same route also carries the draw prompt, and a note edit must not
+    // clear it. The server writes only the keys it is given, which is what makes that safe.
+    void studio.guard(() => api.describeRef(slug, n, index, { prompt: next })),
   );
 
   return (

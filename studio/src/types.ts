@@ -55,6 +55,24 @@ export interface Beat {
    */
   ref_prompts: string[];
   /**
+   * What each picture was last DRAWN from — the mflux prompt, the analogue of `asset_prompt`
+   * for a still. "" on one that was uploaded rather than drawn. Same order, same length.
+   *
+   * A different field from `ref_prompts` on purpose: that says what the picture is FOR and
+   * reaches both renderers, this says what to draw and reaches neither. "A close-up of an
+   * iron-grey club on flat black" is a good draw prompt and a terrible end to the sentence
+   * "<Picture 3> is …".
+   */
+  ref_draws: string[];
+  /** The conversation about each picture, one transcript per picture. Same order and length. */
+  ref_chats: AssetTurn[][];
+  /**
+   * A stable handle per picture. The position is not one: removing a picture renumbers every
+   * file after it, so `refs[2]` addresses a different image afterwards. Selection keys off
+   * these, and so does an @-mention.
+   */
+  ref_ids: string[];
+  /**
    * The slots that filled themselves: this beat's own still as the composition it opens on,
    * and the reel's cast reference. Read-only — they follow the still and the reference rather
    * than being editable here. Empty on every join but a reference cut.
@@ -165,7 +183,18 @@ export interface ReelSummary {
 
 export interface Job {
   id: string;
-  kind: "plan" | "chat" | "asset" | "still_chat" | "caption" | "render";
+  kind:
+    | "plan"
+    | "chat"
+    | "asset"
+    | "still_chat"
+    | "revise"
+    /** Draw one reference picture. `detail.index` is null when it is a new one. */
+    | "ref_draw"
+    /** One turn about one reference picture, its redraw included. */
+    | "ref_chat"
+    | "caption"
+    | "render";
   slug: string;
   detail: Record<string, unknown>;
   state: "queued" | "running" | "done" | "error" | "cancelled";

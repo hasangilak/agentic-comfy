@@ -146,16 +146,25 @@ question you have. "The pig should be facing the other way" is not a mismatch wi
 is taste, and the reviewer is explicitly told not to reject for it. So every still has a
 conversation of its own, on its node: **✎ talk about this still**.
 
-Same model, same vision head, different prompt. This turn is shown the picture itself, the reel's
-cast reference beside it, and everything already said about that one image; what it writes back is
-the beat's `asset_prompt`, and then it renders the still again — free, ~10–18 s, and the video is
-never touched.
+Same model, same vision head, different prompt. This turn is shown the picture itself, everything
+that picture is drawn from — the cast reference and the beat's own reference pictures — and
+everything already said about that one image; what it writes back is the beat's `asset_prompt`,
+and then it renders the still again — free, ~10–18 s, and the video is never touched.
 
 ```
 ✎ her ears are too pointed, and move the lamp off the table
   Rounded the ears back to the reference and put the lamp on the windowsill.
   ✦ rendered again
 ```
+
+**A note can arrive with pictures attached** (⤒ picture, beside send). They are not context for
+one turn: they are stored on the scene exactly as the reference tray stores them, which is the
+only way an image reaches the renderer at all — `Board.still_pictures` reads the beat, so a
+transient upload would steer the model's words and nothing else. So attaching carries the tray's
+consequence too, and the panel says so before you send: the scene moves onto the reference join,
+which on a continuation means it stops continuing. An attachment also forces the re-render rather
+than leaving it to the model — the conditioning changed, so what is on screen was drawn from
+something the scene no longer says.
 
 Three things worth knowing:
 
@@ -177,6 +186,45 @@ you want matched.
 
 The window the model is shown is the last `PAPERREEL_ASSET_CHAT_HISTORY` (12) lines; the board
 keeps `PAPERREEL_ASSET_CHAT_MEMORY` (60), which is what you read on the node.
+
+### One scene, full screen
+
+A node is 240px wide because the whole chain has to stay readable at once, which makes it the
+wrong place to actually *look* at a picture — the still is 36px tall there and the conversation
+about it is a 40px scroller. **⤢** in a node's header opens the same scene full screen: the
+same state, the same endpoints, a second view and never a second copy.
+
+The strip along the bottom is everything that scene owns, in the order the prompt numbers them —
+its still, the reel's cast reference, each reference picture, the rendered clip, the frame it
+actually opened on. Pick one and the right-hand column is what can be done to *that* thing: the
+prompt a still is drawn from and the conversation about it, what a picture is FOR, the clip's
+download. Esc, the ×, or a click outside closes it.
+
+Deliberately not in there: the join and the ▶ render checkbox. Both are decisions about the
+chain, which is what the canvas exists to show — the join is drawn as the wire between two nodes
+and stops meaning anything when you can only see one of them.
+
+### Rewriting a line instead of typing it
+
+The scene and the action are both rendered — the video prompt is the style bible, then the
+scene, then the action — so both are ordinary text boxes you can edit. **✎ revise** beside
+either hands it to the model instead:
+
+```
+✎ slower, and it must read as carrying straight on from the beat before
+  Replaced "deliberate slowness" with "agonizing slowness" to stretch the movement
+  over the 10-second beat.
+```
+
+The board's own chat panel can already do this — it is one `set_beat` call — but only after
+working out from the sentence which scene and which line you meant, which is the part that goes
+wrong on a board where every beat says something similar. Here both are decided by which box you
+typed in, so the turn is spent on the writing. It is held to the same rules as every other
+prompt that writes a beat (one copy of them, shared with the chat agent: the camera never moves,
+one thing animates, a continuation reads as continuing), it is shown the scenes either side for
+exactly that reason, and it marks the beat for re-rendering just as typing the change would. The
+turn lands in the board's transcript too, so the next thing you say to the chat panel knows the
+line moved.
 
 ### Bring your own script
 
@@ -555,6 +603,16 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   redraws it anyway costs 10–18 s of nothing), and whether it carries the untouched half of a
   prompt through a rewrite instead of paraphrasing the style bible. Both are visible in the
   transcript on the node.
+- **The expanded scene view has not been driven in a browser.** Its server side has: a note with
+  a picture attached stores the picture, moves the join, redraws the still and writes both turns
+  into the transcript, and a revise of a scene and of an action both came back with the line
+  rewritten and a sentence about it. What has not been exercised is the view itself — picking
+  between assets, the modal following a beat that changes underneath it, Esc while a job is
+  running.
+- **`revise` is one model call with no self-check.** The script self-check reads a whole draft
+  against the brief; this reads one line and the two beside it, and nothing looks at what comes
+  back. It is free and it is undo-able by typing, but a rewrite that quietly drops half the
+  movement is caught by you, not by the studio.
 - **Planning is slow.** Draft plus self-check is about five minutes on a 36B local model,
   against a few seconds for a hosted one. It costs nothing and it is a job the UI shows
   progress for, but it is not interactive.

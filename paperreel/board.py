@@ -254,6 +254,51 @@ class Board:
                 return index if index <= budget else None
         return None
 
+    # Everything a beat stores per reference picture, one entry per file in `ref_paths`. They
+    # are read and written through one pair of methods rather than a trio each, because the
+    # thing that has to be true of all of them is the same thing: `remove_ref` deletes index
+    # i-1 from EVERY one of them, and a list that grew its own accessor is a list somebody
+    # forgets there. `blank` is what a missing entry reads as.
+    REF_SLOT_KEYS: tuple[tuple[str, object], ...] = (
+        ("ref_prompts", ""),   # what the picture is FOR -- reaches both prompts
+        ("ref_draws", ""),     # the mflux prompt it was drawn from -- reaches neither
+        ("ref_chats", None),   # the conversation about it; None means "a fresh list each time"
+        ("ref_ids", ""),       # opaque, minted on store, the one value a renumber preserves
+    )
+
+    def _ref_slots(self, n: int, key: str, blank) -> list:
+        """One per-picture list, padded or truncated to exactly `len(ref_paths(n))`.
+
+        Always exactly as long as the picture list. Missing entries come back blank rather
+        than short, so index i of one list always describes index i of the others even after a
+        hand-edit of the storyboard. `blank=None` means a fresh mutable per call -- shared
+        `[]` defaults across four slots would have appending to one append to all of them.
+        """
+        stored = self.beat(n).get(key) or []
+        count = len(self.ref_paths(n))
+        return [
+            stored[i] if i < len(stored)
+            else (blank if blank is not None else [])
+            for i in range(count)
+        ]
+
+    def _store_ref_slots(self, n: int, key: str, values: list) -> None:
+        """Write one list back, or drop the key when there is nothing left in it.
+
+        Trailing blanks are trimmed so a board where nobody described, drew or discussed
+        anything carries none of these keys at all -- the document stays readable, and the
+        difference between "no notes" and "notes that happen to be blank" never has to be
+        meaningful. Falsiness is the test, which covers "" and [] together.
+        """
+        values = list(values)
+        while values and not values[-1]:
+            values.pop()
+        beat = self.beat(n)
+        if values:
+            beat[key] = values
+        else:
+            beat.pop(key, None)
+
     def ref_prompts(self, n: int) -> list[str]:
         """What each reference picture is FOR, aligned to `ref_paths` position by position.
 
@@ -263,36 +308,96 @@ class Board:
         in one shot. Saying "<Picture 1> is the same single Moth that acts in this shot" is
         what collapses them back into one.
 
-        Always exactly as long as the picture list. Missing entries come back empty rather
-        than short, so index i of one list always describes index i of the other even after a
-        hand-edit of the storyboard.
+        Reaches both renderers: `config.reference_roles` turns it into "<Picture 3> is ..." for
+        the video model, and `papercut._beat_text` splices it into "The reference images show:
+        ..." for the still. That is why it is not the same field as `ref_draws`.
         """
-        stored = self.beat(n).get("ref_prompts") or []
-        count = len(self.ref_paths(n))
-        return [str(stored[i]) if i < len(stored) else "" for i in range(count)]
+        return [str(value) for value in self._ref_slots(n, "ref_prompts", "")]
+
+    def ref_draws(self, n: int) -> list[str]:
+        """The mflux prompt each reference picture was last drawn from, or "" for an upload.
+
+        The analogue of `asset_prompt` for a picture, and kept apart from `ref_prompts` for the
+        same reason `asset_prompt` is kept apart from `scene`: one says what to draw, the other
+        says what the drawing is for, and they read in different registers. "A close-up of an
+        iron-grey club on flat black" is a good draw prompt and a terrible end to the sentence
+        "<Picture 3> is ...".
+
+        Reaches no renderer. It is an input to `pictures.draw` alone, which is why it is
+        deliberately absent from the fingerprint -- see `frame_ids_for`.
+        """
+        return [str(value) for value in self._ref_slots(n, "ref_draws", "")]
+
+    def ref_chats(self, n: int) -> list[list[dict]]:
+        """The conversation about each reference picture, aligned position by position.
+
+        Per picture rather than one feed on the beat, unlike `asset_chat`: a mixed transcript
+        would let one chatty picture evict the still's automatic review verdicts, which are the
+        thing that makes a surprising still legible at all.
+        """
+        return [list(value or []) for value in self._ref_slots(n, "ref_chats", None)]
+
+    def ref_ids(self, n: int) -> list[str]:
+        """A stable handle for each picture, minted on store and preserved across a renumber.
+
+        The file index is not one. `remove_ref` compacts, so `beat3_ref3.png` becomes
+        `beat3_ref2.png` and every position-shaped thing pointing at it -- a mention typed into
+        an action, the modal's current selection, a queued draw job -- silently re-points at a
+        different picture. An id is the one address that survives that, which is why the
+        mention token carries it rather than a number.
+
+        Backfilled for any picture a hand-edit or an older board left without one, so the list
+        is never short and never has to be checked for holes.
+        """
+        stored = [str(value) for value in self._ref_slots(n, "ref_ids", "")]
+        if all(stored):
+            return stored
+        filled = [value or self._mint_ref_id(n, stored) for value in stored]
+        for index, value in enumerate(filled):
+            stored[index] = value
+        self._store_ref_slots(n, "ref_ids", filled)
+        return filled
+
+    def _mint_ref_id(self, n: int, taken: list[str]) -> str:
+        """A short id no picture on this beat is already using.
+
+        Random rather than counted: a counter would have to live somewhere, and the only place
+        to keep it is the beat -- a second piece of state whose whole job is to not disagree
+        with the list beside it. Six hex characters is 16M, against nine pictures.
+        """
+        import secrets
+
+        while True:
+            candidate = secrets.token_hex(3)
+            if candidate not in taken:
+                return candidate
 
     def set_ref_prompt(self, n: int, index: int, text: str) -> None:
         """Describe picture `index` (1-based, as the prompt names it)."""
-        prompts = self.ref_prompts(n)
-        if not 1 <= index <= len(prompts):
-            raise IndexError(f"beat {n} has no reference picture {index}")
-        prompts[index - 1] = " ".join(text.split())
-        self._store_ref_prompts(n, prompts)
+        self._set_ref_text(n, index, "ref_prompts", text)
 
-    def _store_ref_prompts(self, n: int, prompts: list[str]) -> None:
-        """Write the list back, or drop the key when there is nothing left to say.
+    def store_ref_chats(self, n: int, chats: list[list[dict]]) -> None:
+        """Write every picture's transcript back. The trim to a memory length is the caller's.
 
-        Trailing empties are trimmed so a board where nobody described anything carries no
-        `ref_prompts` at all -- the document stays readable, and the difference between "no
-        notes" and "notes that happen to be blank" never has to be meaningful.
+        Public because `pictures.remember` owns how long a conversation is kept -- that is a
+        prompt-budget decision and lives beside the other ones -- while the trailing-blank rule
+        that keeps a quiet board free of empty keys belongs here with its three siblings.
         """
-        while prompts and not prompts[-1]:
-            prompts.pop()
-        beat = self.beat(n)
-        if prompts:
-            beat["ref_prompts"] = prompts
-        else:
-            beat.pop("ref_prompts", None)
+        self._store_ref_slots(n, "ref_chats", chats)
+
+    def set_ref_draw(self, n: int, index: int, text: str) -> None:
+        """Say what picture `index` (1-based) should be drawn as."""
+        self._set_ref_text(n, index, "ref_draws", text)
+
+    def _set_ref_text(self, n: int, index: int, key: str, text: str) -> None:
+        values = self._ref_slots(n, key, "")
+        if not 1 <= index <= len(values):
+            raise IndexError(f"beat {n} has no reference picture {index}")
+        values[index - 1] = " ".join(text.split())
+        self._store_ref_slots(n, key, values)
+        # Minting here rather than on upload is what keeps `ref_ids` honest without a second
+        # write path: every route that touches a picture reads it, and `ref_ids` backfills.
+        self.ref_ids(n)
 
     def discard_video(self, n: int) -> Path:
         """Throw away a beat's rendered clip, so it can be rendered again.
@@ -324,23 +429,107 @@ class Board:
         return moved
 
     def remove_ref(self, n: int, index: int) -> None:
-        """Delete one reference picture and the note that described it, then close the gap.
+        """Delete one reference picture and everything the beat said about it, then close the gap.
 
-        Both halves move together or the board starts lying: deleting <Picture 1> of three
+        Every half moves together or the board starts lying: deleting <Picture 1> of three
         leaves files 2 and 3, which the prompt -- numbering by connection order -- would then
         call 1 and 2. If the notes did not shift with them, picture 1 would be rendered under
-        the description written for the one that was deleted.
+        the description written for the one that was deleted. The same is now true of the draw
+        prompt and the conversation, which is why they are one list of keys rather than four
+        places to remember.
+
+        The mentions are the half that reaches outside the picture list. A sentence saying
+        "@ref:a1b2c3 is what he swings" outlives the picture it names, and the expander would
+        quietly drop it at render time -- the beat would read one way on screen and render
+        another. So the token is replaced here by what the picture was FOR, which keeps the
+        sentence, and removed entirely when nothing was ever said about it. Lossy, and the
+        honest option: a reference to a file that does not exist is not recoverable, only
+        hideable.
+
+        Done here rather than in the route because `agent.apply_ops` and the CLI reach this
+        method without going through HTTP.
+
+        Deliberately NOT rewritten: `asset_chat` and `ref_chats`. Those are history, and
+        editing what was already said is exactly the drift `agent.transcript` exists to prevent.
         """
-        prompts = self.ref_prompts(n)
-        if not 1 <= index <= len(prompts):
+        count = len(self.ref_paths(n))
+        # Bounds-checked against the FILES, not against a text list. They are the same length
+        # by construction, but a hand-edited `ref_draws` that ran long must not widen what this
+        # method accepts -- it would delete a note for a picture that was never there.
+        if not 1 <= index <= count:
             raise IndexError(f"beat {n} has no reference picture {index}")
+
+        # Every list is read BEFORE the file goes, and that ordering is the whole trick.
+        # `_ref_slots` sizes itself off `ref_paths`, so one read taken after the unlink is
+        # already a picture short -- it silently drops the LAST entry, and then deleting
+        # index i-1 on top of that loses a second one. Read at the old length, delete the one
+        # entry that is actually going, write back at the new length.
+        keeping = {key: self._ref_slots(n, key, blank) for key, blank in self.REF_SLOT_KEYS}
+        going_id = str(self.ref_ids(n)[index - 1])
+        going_role = self.ref_prompts(n)[index - 1]
+
         self.ref_path(n, index).unlink(missing_ok=True)
-        del prompts[index - 1]
         for target, path in enumerate(self.ref_paths(n), start=1):
             wanted = self.ref_path(n, target)
             if path != wanted:
                 path.replace(wanted)
-        self._store_ref_prompts(n, prompts)
+        for key, values in keeping.items():
+            del values[index - 1]
+            self._store_ref_slots(n, key, values)
+
+        self._drop_mentions(n, going_id, going_role)
+
+    def _drop_mentions(self, n: int, going_id: str, role: str) -> None:
+        """Replace every mention of a picture that has gone with what it was for.
+
+        Scanned: the beat's own words and the words about its other pictures. Not the reel's
+        style bible or another beat -- a picture is beat-scoped, so a token naming it cannot
+        have been valid anywhere else.
+        """
+        if not going_id:
+            return
+        beat = self.beat(n)
+        for field in ("scene", "action", "asset_prompt"):
+            if beat.get(field):
+                beat[field] = config.drop_mention(str(beat[field]), going_id, role)
+        for key in ("ref_prompts", "ref_draws"):
+            values = self._ref_slots(n, key, "")
+            if any(values):
+                self._store_ref_slots(
+                    n, key,
+                    [config.drop_mention(str(value), going_id, role) for value in values],
+                )
+
+    def mentions(self, n: int, pictures: list[tuple[Path, str]]) -> dict[str, tuple[int | None, str]]:
+        """Where each mentionable picture sits in `pictures`, and what it is FOR.
+
+        Keyed by the token body that names it -- a picture's id, or `config.CAST_MENTION` --
+        and valued as a pair, for the same reason `pictures_for` returns pairs: the position IS
+        the meaning here, and a positions dict beside a roles dict is one edit away from
+        expanding a token onto the picture next to it.
+
+        Positions are found by matching PATHS against the list handed in, never by counting the
+        automatic slots. That is what lets one method serve `pictures_for` (own still, cast,
+        uploads), `still_pictures` (cast first, capped at four) and a picture redraw (itself,
+        then the cast) without any of them having to declare how they are ordered -- and it is
+        what makes a truncated list answer None for the pictures that fell off the end, which
+        is the signal the expander needs to stop naming a position the model was never given.
+        """
+        where = {path: position for position, (path, _note) in enumerate(pictures, start=1)}
+        found: dict[str, tuple[int | None, str]] = {}
+        for index, (path, role) in enumerate(zip(self.ref_paths(n), self.ref_prompts(n))):
+            token = self.ref_ids(n)[index]
+            if token:
+                found[token] = (where.get(path), role)
+        # `reference_for`, not `reference_path`: the cast slot in both picture lists comes from
+        # it, so this is the cast AS THIS BEAT SEES IT. On the beat whose own still is the
+        # reference that is None, and `@cast` correctly degrades to its role text rather than
+        # resolving onto <Picture 1> and telling the model its opening composition is the cast
+        # sheet. (`pictures.conditioning` asks the other question and uses `reference_path`.)
+        cast = self.reference_for(n)
+        if cast is not None:
+            found[config.CAST_MENTION] = (where.get(cast), config.CAST_MENTION_ROLE)
+        return found
 
     def media_makers(self) -> tuple:
         """Every per-beat file, so a move or a delete cannot leave one of them behind.
@@ -928,6 +1117,17 @@ class Board:
                 # What each of those pictures is for, same order, same length. Empty string
                 # where nothing has been said about one yet.
                 "ref_prompts": self.ref_prompts(n),
+                # What each was last drawn from, "" for one that was uploaded rather than drawn.
+                "ref_draws": self.ref_draws(n),
+                # The conversation about each, one transcript per picture rather than one feed
+                # on the beat -- see `ref_chats`.
+                "ref_chats": self.ref_chats(n),
+                # The handle that survives a delete. The canvas keys its selection off these
+                # rather than off the position, because `remove_ref` compacts: without them,
+                # deleting picture 2 of four leaves the modal showing "picture 3" while the
+                # panel beside it edits what used to be picture 4. It is also what an @-mention
+                # carries.
+                "ref_ids": self.ref_ids(n),
                 # The slots that filled themselves: the beat's own still as the composition to
                 # open on, and the reel's cast reference. Read-only on the canvas -- they follow
                 # the still and the reference rather than being editable in their own right.

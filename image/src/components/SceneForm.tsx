@@ -13,6 +13,7 @@ import { estimateSceneSeconds, formatDuration } from '../estimate.ts'
 const CONSISTENCY_OPTIONS: { id: ConsistencyMode; label: string; blurb: string }[] = [
   { id: 'chain', label: 'Chain', blurb: 'Each frame builds on the one before. Best motion flow.' },
   { id: 'anchor', label: 'Anchor', blurb: 'Every frame follows one reference. Style locked, poses free.' },
+  { id: 'edit', label: 'Edit', blurb: 'Hold the reference exactly. Only what the beat names changes.' },
   { id: 'none', label: 'Free', blurb: 'Text only. Fastest, loosest continuity.' },
 ]
 

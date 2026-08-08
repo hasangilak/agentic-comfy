@@ -9,6 +9,7 @@ import multer from 'multer'
 
 import {
   ASPECT_PRESETS,
+  CONSISTENCY_MODES,
   DEFAULT_NEGATIVE,
   DEFAULT_STYLE,
   MAX_FRAMES,
@@ -64,6 +65,13 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'papercut-studio',
     aspects: ASPECT_PRESETS,
+    // Advertised so a caller can tell a build that knows `edit` from one that does not. An
+    // older server handed `consistency: "edit"` stores the string and then matches none of the
+    // arms in `referenceFor`, which falls through to chain's backward walk -- conditioning on
+    // a frame that does not exist, and quietly rendering from the text alone. Sending `anchor`
+    // instead loses the "change nothing else" instruction but keeps the picture, which is the
+    // better half to keep.
+    modes: CONSISTENCY_MODES,
     // `maxReferences` is here for the same reason `maxFrames` is: the caller next door batches
     // its stills against these numbers, and one hardcoded on that side drifts the day this one
     // moves.

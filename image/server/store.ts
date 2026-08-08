@@ -161,11 +161,18 @@ function uploadedReferences(scene: Scene): string[] {
  * Picks the conditioning images for a frame:
  * - chain  -> the previously rendered frame, falling back to the uploaded references
  * - anchor -> the uploaded references, falling back to frame 1
+ * - edit   -> the uploaded references, and nothing else
  * - none   -> nothing, pure text-to-image
  */
 function referenceFor(scene: Scene, index: number): string[] | undefined {
   if (scene.consistency === 'none') return undefined
   const uploaded = uploadedReferences(scene)
+
+  // Edit conditions on what it was handed and never falls back to frame 1. The mode means
+  // "hold THIS picture and change only what the beat says", so silently editing a different
+  // image would be worse than rendering from the text alone -- and a caller that meant to send
+  // a reference and did not has a bug worth seeing.
+  if (scene.consistency === 'edit') return uploaded.length ? uploaded : undefined
 
   if (scene.consistency === 'anchor') {
     if (uploaded.length) return uploaded
@@ -186,7 +193,13 @@ function referenceFor(scene: Scene, index: number): string[] | undefined {
 
 function composePrompt(scene: Scene, frame: Frame, references: number): string {
   const parts: string[] = []
-  if (references === 1) parts.push(CONTINUITY_CLAUSE)
+  // Edit is the one conditioned mode that omits the clause -- see ConsistencyMode. Checked
+  // before the reference count rather than folded into it, because the mode is the reason and
+  // "it happened to have references" is not: a future mode that also holds its reference should
+  // land here too, and a reader should not have to work out which arm of the count it fell down.
+  if (scene.consistency === 'edit') {
+    // nothing prepended
+  } else if (references === 1) parts.push(CONTINUITY_CLAUSE)
   else if (references > 1) parts.push(CONTINUITY_CLAUSE_MULTI)
   parts.push(frame.beat.trim())
   if (scene.style.trim()) parts.push(scene.style.trim())

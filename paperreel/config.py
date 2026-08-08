@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -339,6 +340,39 @@ ASSET_STYLE_SUFFIX = (
     "paper grain, soft contact shadows, no text, no watermarks, no signature."
 )
 
+# ## Reference pictures the studio draws rather than receives
+#
+# A beat's reference pictures used to be uploads only. mflux is next door and free, so they are
+# now drawable too: a prop sheet, a set with nobody in it, a costume detail -- anything the
+# director would otherwise have had to find a photograph of.
+#
+# `1:1`, not PAPERCUT_ASPECT. `9:16-reel` (768x1344) exists for exactly one reason -- a STILL is
+# handed to H3 as a frame and anything off that grid is cover-cropped by media.fit_frame. A
+# reference picture is never a frame; it is conditioning, and the graph rescales it. So this is
+# free to be the neutral shape for a design sheet, and at 1024x1024 it is ~0.8x the pixels, which
+# is ~0.8x the wall clock.
+PAPERCUT_REF_ASPECT = "1:1"
+
+# The still's suffix asks for a vertical 9:16 SHOT. A design reference is the opposite of a shot:
+# no framing to speak of, nothing implied off the edges, the subject whole and centred so it can
+# be read rather than staged. Sharing ASSET_STYLE_SUFFIX would ask every prop sheet to be a
+# composition, which is how a picture of a club comes back as a scene with a club in it.
+REF_DRAW_STYLE_SUFFIX = (
+    "Handcrafted layered paper-cutout construction, visible paper grain, soft contact shadows, "
+    "plain neutral background, the subject complete and centred with nothing cropped, even "
+    "frontal lighting, no scenery, no text, no watermarks, no signature."
+)
+
+# The window and the memory for one picture's conversation, mirroring the still's pair above.
+#
+# 12 against the still's 60, and the difference is not timidity. `to_json` serialises the whole
+# board on every SSE-announced refetch, and a beat has one still against up to nine pictures --
+# so this grows in two dimensions where ASSET_CHAT_MEMORY grows in one. It is also only ever the
+# director's own turns: no automatic reviewer posts here, because a reference picture is SUPPOSED
+# to differ from the cast.
+REF_CHAT_HISTORY = int(os.environ.get("PAPERREEL_REF_CHAT_HISTORY", "8"))
+REF_CHAT_MEMORY = int(os.environ.get("PAPERREEL_REF_CHAT_MEMORY", "12"))
+
 # ## Prompt scaffold
 #
 # H3 holds a paper-cutout look far better when the instruction pins down what must
@@ -511,10 +545,151 @@ def reference_roles(notes: list[str]) -> str:
     return " ".join(said)
 
 
+# A director naming one particular picture inside a prompt, so a field can say "@ref:a1b2c3
+# swings the club" instead of describing the club again.
+#
+# The token carries the picture's ID, not its number, and that is the whole design. The same
+# stored string is read by two prompt builders with two incompatible orderings -- the video
+# model gets `pictures_for` (own still, cast, uploads) tagged `<Picture N>`, the still model
+# gets `still_pictures` (cast first, capped at four) with no tags at all -- so one literal
+# expansion cannot be correct in both places, and a number typed into prose is persisted
+# derived state, which is the thing `board.py` exists to not have. `ref_offset` alone moves
+# when beat 1's still lands, when a character.png is uploaded, when carry is ticked, and when
+# the join is cycled: four events that touch no text and would silently relabel every literal.
+CAST_MENTION = "cast"
+MENTION_RE = re.compile(r"@(?:ref:([0-9a-f]{4,12})|(cast))(?![\w:])")
+
+# What @cast degrades to when the render it lands in is not conditioned on the cast reference.
+# Short on purpose: REF_ROLE_CAST is a whole paragraph, correct as the answer to "what is
+# <Picture 2> for" and absurd spliced mid-sentence in place of two words.
+CAST_MENTION_ROLE = "this reel's cast reference"
+
+
+def _mention_body(match: "re.Match[str]") -> str:
+    """Which picture a matched token names: an id, or the cast reference's fixed word."""
+    return match.group(1) or CAST_MENTION
+
+
+def mention_token(body: str) -> str:
+    """The literal a field stores to name one picture. The one place the spelling is decided."""
+    return "@cast" if body == CAST_MENTION else f"@ref:{body}"
+
+
+def mention_bodies(text: str) -> list[str]:
+    """Every picture named in this text, in order, duplicates kept.
+
+    A multiset rather than a set: the post-check that catches a model rewriting a token away
+    has to notice "said it twice, now says it once" as well as "dropped it entirely".
+    """
+    return [_mention_body(match) for match in MENTION_RE.finditer(text or "")]
+
+
+def lost_mentions(before: str, after: str) -> list[str]:
+    """Tokens a rewrite dropped, as the literals they were written as.
+
+    A multiset difference rather than a set one: "named it twice, now names it once" is the same
+    class of loss as "dropped it entirely", and both leave a picture the render is no longer
+    told about.
+
+    It cannot be repaired -- only the model knows where in its new sentence it meant them -- so
+    every caller does the same thing with the answer: logs it, and puts it in the transcript the
+    director already reads to find out why an image changed. That turns a silent loss into a
+    visible line, which is the whole ambition.
+    """
+    kept = mention_bodies(after)
+    lost: list[str] = []
+    for body in mention_bodies(before):
+        if body in kept:
+            kept.remove(body)
+        else:
+            lost.append(mention_token(body))
+    return lost
+
+
+def expand_mentions(text: str, mentions: dict[str, tuple[int | None, str]] | None,
+                    *, prose: bool = False) -> str:
+    """Turn every @-token into whatever the model reading this text can act on.
+
+    `mentions` maps a token body to `(its position in THIS consumer's picture list, what it is
+    for)`. `prose=False` writes the video model's `<Picture N>`; `prose=True` writes an ordinal
+    for the still model, whose prompt carries no tags at all.
+
+    The ordinal is the weakest link in the whole feature and the role is appended as a hedge:
+    "the 2nd reference image" asks a four-step distilled model to count its conditioning
+    images, and `papercut._beat_text`'s existing "The reference images show: ..." clause is
+    unnumbered, so the ordinal has no antecedent in the prompt it lands in. Reasoned, not
+    measured -- the same register as the multi-picture note in CLAUDE.md.
+
+    A token whose picture is not in this consumer's list -- truncated past MAX_REF_IMAGES,
+    past MAX_STILL_REFS on the still side, or simply not conditioning this render -- degrades
+    to the role text, and to nothing when there is no role. Never emit a position for a
+    picture the model was not given: a prompt that says "<Picture 5>" over four pictures is
+    worse than one that says nothing, because the model answers it anyway.
+
+    `mentions=None` returns the text untouched, which is what keeps `reel.py` -- no board, so
+    nothing to resolve against -- composing byte-identical prompts.
+    """
+    if mentions is None or not text:
+        return text
+
+    def swap(match: "re.Match[str]") -> str:
+        position, role = mentions.get(_mention_body(match), (None, ""))
+        role = " ".join((role or "").split()).rstrip(".")
+        if position is None:
+            return role
+        if not prose:
+            return f"<Picture {position}>"
+        return f"the {_ordinal(position)} reference image" + (f", {role}" if role else "")
+
+    # Collapsing whitespace afterwards, because a token that expanded to nothing leaves the
+    # spaces either side of it behind and " ,  ." reads as a typo the model tries to explain.
+    return " ".join(MENTION_RE.sub(swap, text).split()).replace(" ,", ",").replace(" .", ".")
+
+
+def drop_mention(text: str, body: str, role: str) -> str:
+    """Rewrite mentions of one picture out of a text, leaving what it was FOR behind.
+
+    Called when the picture is deleted. `expand_mentions` would drop the token silently at
+    render time, which reads on screen as a sentence that still names something -- so the
+    board is rewritten instead, once, where it can be seen.
+    """
+    role = " ".join((role or "").split()).rstrip(".")
+    swapped = MENTION_RE.sub(
+        lambda match: role if _mention_body(match) == body else match.group(0), text or ""
+    )
+    return " ".join(swapped.split()).replace(" ,", ",").replace(" .", ".")
+
+
+def _ordinal(position: int) -> str:
+    """1 -> "1st". Small integers only; there are at most nine pictures."""
+    if 10 <= position % 100 <= 20:
+        return f"{position}th"
+    return f"{position}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(position % 10, 'th') }"
+
+
+# Handed to every model that rewrites a field which may contain tokens -- five of them, listed
+# in CLAUDE.md. One copy for the reason ASSET_STYLE_SUFFIX is one copy: two prompts written
+# from two summaries of the same rule drift, and nothing fails when they do.
+#
+# The automatic still review is the one this is really for. It fires without anyone asking and
+# is told to correct "the problems and nothing else", which a model reads as licence to
+# normalise an unfamiliar `@ref:a1b2c3` into prose -- and a lost token does not fail, it
+# renders a shot conditioned on a picture nobody told the model about.
+MENTION_NOTE = (
+    "Some text you are given contains reference tokens that look like @ref:a1b2c3 or @cast. "
+    "They are not words and not typos: each one names a specific picture attached to this "
+    "shot, and it is replaced with that picture's number at render time. Copy every token you "
+    "keep EXACTLY as it is written, characters and all. Never reword one, never renumber one, "
+    "never turn one into a description. Delete one only if you are deliberately removing the "
+    "thing it refers to."
+)
+
+
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
                  continues: bool = False, lands: bool = False, refs: int = 0,
                  ref_notes: list[str] | None = None, ref_videos: int = 0,
-                 opens_on: bool = False) -> str:
+                 opens_on: bool = False,
+                 mentions: dict[str, tuple[int | None, str]] | None = None) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -539,7 +714,16 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     the clip begins on it instead of on something the model invents from the scene line. It is
     a flag rather than being inferred from `refs`, because the same picture count means the
     opposite thing on a beat whose references are all uploads of the cast.
+
+    `mentions` resolves the @-tokens a director may have typed into any of the three texts.
+    One keyword here rather than three expanded call sites, so every path into a render --
+    studio, CLI, and whatever comes next -- gets it by construction rather than by remembering.
+    None means no expansion, which is what `reel.py` (no board, so nothing to resolve against)
+    passes and why its prompts are byte-identical to what they always were.
     """
+    action = expand_mentions(action, mentions)
+    scene = expand_mentions(scene, mentions)
+    ref_notes = [expand_mentions(note, mentions) for note in (ref_notes or [])] or None
     if refs > 0 or ref_videos > 0:
         parts = [MEDIUM]
         if refs > 0:

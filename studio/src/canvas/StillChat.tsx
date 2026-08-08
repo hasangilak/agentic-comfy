@@ -1,50 +1,79 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { api } from "../api";
+import { joinWarning, slotsLeft } from "../beat";
 import type { Beat } from "../types";
-import { useStudio } from "../useStudio";
-import { Button, inputClass } from "../ui";
+import { useBusy, useStudio } from "../useStudio";
+import { AssetChat } from "./AssetChat";
 
 /**
  * The conversation about one still.
  *
  * The board's own chat panel edits the story — beats, joins, lengths. This edits a picture, and
- * it is a different conversation on purpose: the model is shown this still and the reel's cast
- * reference, and what it writes back is this beat's `asset_prompt`, followed by a re-render.
+ * it is a different conversation on purpose: the model is shown this still and everything the
+ * still is drawn from, and what it writes back is this beat's `asset_prompt`, followed by a
+ * re-render.
  *
  * The automatic review posts here too, so a node reads as the whole history of how its picture
  * got to be what it is: what was asked for, what the reviewer objected to, which turns ended in
  * a redraw. That is the thing which is baffling anywhere else — a still that came back different
  * from the prompt you can see — and obvious here.
  *
- * Collapsed by default. A node is 240px wide and most of them are finished; the count on the
- * toggle is what makes an unread verdict findable without opening eight panels.
+ * Collapsed by default on a node. A node is 240px wide and most of them are finished; the count
+ * on the toggle is what makes an unread verdict findable without opening eight panels. `expanded`
+ * is the modal, where there is room for the whole transcript and the toggle would be in the way.
+ *
+ * The panel itself is `AssetChat`, shared with the per-picture conversation. What stays here is
+ * everything that makes it the STILL's: its turns, its endpoint, and the fact that a picture
+ * attached to a note is kept on the beat — which is why this one can move the join and the
+ * other cannot.
  */
-export function StillChat({ beat }: { beat: Beat }) {
+export function StillChat({ beat, expanded = false }: { beat: Beat; expanded?: boolean }) {
   const studio = useStudio();
   const board = studio.board!;
   const [open, setOpen] = useState(false);
-  const [message, setMessage] = useState("");
-  const scroller = useRef<HTMLDivElement>(null);
   const turns = beat.asset_chat ?? [];
+  const busy = useBusy("still_chat", (detail) => detail.beat === beat.n);
 
-  const busy = Object.values(studio.jobs).some(
-    (job) =>
-      job.kind === "still_chat" &&
-      job.slug === board.slug &&
-      (job.state === "queued" || job.state === "running") &&
-      job.detail.beat === beat.n,
+  const panel = (
+    <AssetChat
+      turns={turns}
+      busy={busy}
+      expanded={expanded}
+      onSend={(message, files) =>
+        void studio.guard(() => api.stillChat(board.slug, beat.n, message, files))
+      }
+      placeholder="what should be different about this still?"
+      empty={
+        <>
+          “her ears are too pointed”, “move the lamp to the left”, “same thing again, a different
+          draw”. Attach a picture and the still is drawn from that too. The picture is redrawn
+          from the corrected prompt; the video is not touched.
+        </>
+      }
+      attach={{
+        // Against the per-beat budget, which is what the server enforces: two of the model's
+        // nine slots are already spoken for on a scene that opens a shot.
+        slotsLeft: slotsLeft(beat),
+        // Attaching a picture is the same gesture as ⤒ add picture, consequence included — the
+        // beat moves onto the reference join. One sentence, from the same place the tray's is.
+        warning: joinWarning(beat),
+        title:
+          "show the model a picture — of the cast, the set, a prop. It is kept on this scene " +
+          "as a reference picture, so the still is drawn from it and so is the clip" +
+          (joinWarning(beat) ? `, and ${joinWarning(beat)}` : ""),
+        fullTitle: `${board.max_refs} pictures is the model's limit — remove one first`,
+      }}
+      offline={
+        studio.stillsBackend === "papercut"
+          ? null
+          : "the image server is down — the prompt will be rewritten, but nothing redrawn"
+      }
+    />
   );
 
-  useEffect(() => {
-    if (open) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [open, turns.length, busy]);
-
-  const send = () => {
-    const trimmed = message.trim();
-    if (!trimmed || busy) return;
-    setMessage("");
-    void studio.guard(() => api.stillChat(board.slug, beat.n, trimmed));
-  };
+  if (expanded) {
+    return <div className="rounded border border-[#26262e]">{panel}</div>;
+  }
 
   return (
     <div className="rounded border border-[#26262e]">
@@ -61,78 +90,7 @@ export function StillChat({ beat }: { beat: Beat }) {
         {busy ? "looking at this still…" : "talk about this still"}
         {turns.length ? <span className="ml-auto text-zinc-600">{turns.length}</span> : null}
       </button>
-
-      {open ? (
-        <div className="space-y-1.5 border-t border-[#26262e] p-1.5">
-          {turns.length ? (
-            <div ref={scroller} className="thin nodrag nowheel max-h-40 space-y-1.5 overflow-y-auto">
-              {turns.map((turn, index) => (
-                <div key={index}>
-                  <div
-                    className={
-                      turn.role === "user"
-                        ? "ml-4 rounded rounded-br-sm bg-[#26262e] px-1.5 py-1 text-[10px] " +
-                          "leading-snug text-zinc-200"
-                        : "text-[10px] leading-snug text-zinc-400"
-                    }
-                  >
-                    {turn.text}
-                  </div>
-                  {turn.regenerated ? (
-                    <div className="text-[10px] text-[#4ade80]/80">✦ rendered again</div>
-                  ) : null}
-                  {turn.error ? (
-                    <div className="text-[10px] leading-snug text-[#f59e0b]">{turn.error}</div>
-                  ) : null}
-                  {/* The prompt the picture is drawn from, on the turn that changed it. Shown
-                      in full rather than truncated: it is the one thing on this panel you may
-                      need to copy, and reading half of it says nothing. */}
-                  {turn.prompt ? (
-                    <details className="mt-0.5">
-                      <summary className="cursor-pointer text-[10px] text-zinc-600
-                        hover:text-zinc-400">
-                        prompt rewritten
-                      </summary>
-                      <p className="mt-0.5 leading-snug text-[10px] text-zinc-500">
-                        {turn.prompt}
-                      </p>
-                    </details>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[10px] leading-snug text-zinc-600">
-              “her ears are too pointed”, “move the lamp to the left”, “same thing again, a
-              different draw”. The picture is redrawn from the corrected prompt; the video is
-              not touched.
-            </p>
-          )}
-
-          <textarea
-            className={`${inputClass} thin nodrag h-12`}
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                send();
-              }
-            }}
-            placeholder="what should be different about this still?"
-          />
-          <div className="flex items-center gap-1.5">
-            <Button tone="primary" onClick={send} disabled={busy || !message.trim()}>
-              {busy ? "…" : "send"}
-            </Button>
-            {studio.stillsBackend === "papercut" ? null : (
-              <span className="text-[10px] leading-snug text-[#f59e0b]">
-                the image server is down — the prompt will be rewritten, but nothing redrawn
-              </span>
-            )}
-          </div>
-        </div>
-      ) : null}
+      {open ? panel : null}
     </div>
   );
 }

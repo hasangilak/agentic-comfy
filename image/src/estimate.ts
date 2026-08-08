@@ -35,7 +35,12 @@ export function referenceCount(settings: SceneSettings): number {
   if (settings.consistency === 'none') return 0
   // Chain conditions on the previous frame alone, whatever was uploaded.
   if (settings.consistency === 'chain') return 1
-  return Math.max(1, settings.referencePaths?.length ?? (settings.referencePath ? 1 : 0))
+  const uploaded = settings.referencePaths?.length ?? (settings.referencePath ? 1 : 0)
+  // Edit has no fallback: with nothing uploaded it renders from the text, so the floor of 1
+  // below -- which is right for anchor, where frame 1 stands in -- would overcharge it by a
+  // whole edit pass.
+  if (settings.consistency === 'edit') return uploaded
+  return Math.max(1, uploaded)
 }
 
 export function estimateSceneSeconds(settings: SceneSettings) {

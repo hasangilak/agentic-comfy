@@ -65,18 +65,25 @@ TOOLS = [
         "Change one existing beat. Send only the fields you are changing; anything you leave "
         "out is kept as it is.",
         {
+            # Tool parameter descriptions are load-bearing here -- given a bare "Edit one beat"
+            # the model spent a whole turn reasoning about what a field wanted. The @ref: warning
+            # is repeated on all three rather than stated once, because a model rewriting the
+            # action reads the action's description and nothing else.
             "n": {"type": "integer", "description": "which beat, 1-based"},
             "scene": {
                 "type": "string",
-                "description": "replacement line for WHERE this beat happens and at what scale",
+                "description": ("replacement line for WHERE this beat happens and at what "
+                                "scale. Copy any @ref: or @cast token in it exactly."),
             },
             "action": {
                 "type": "string",
-                "description": "replacement line for what MOVES in this shot",
+                "description": ("replacement line for what MOVES in this shot. Copy any @ref: "
+                                "or @cast token in it exactly."),
             },
             "asset_prompt": {
                 "type": "string",
-                "description": "replacement prompt for this beat's own still frame",
+                "description": ("replacement prompt for this beat's own still frame. Copy any "
+                                "@ref: or @cast token in it exactly."),
             },
             "seconds": {
                 "type": "number", "enum": [5, 10],
@@ -158,10 +165,12 @@ TOOLS = [
     ),
 ]
 
-SYSTEM = f"""You are the story editor for a paper-cutout stop-motion Instagram Reel studio.
-You edit a board of beats. Each beat is ONE continuous shot from a locked-off camera.
-
-Hard rules of the medium -- breaking these wastes the user's money:
+# The rules of the medium, in one copy, because two prompts now write beats: the tool loop
+# below and `revise`, which rewrites a single line at the director's dictation. A summary of
+# these rules living in the second prompt is how the two paths quietly start writing to
+# different specifications -- the same failure `planner.py` avoids by handing over the whole
+# brief rather than a précis of it.
+MEDIUM = f"""Hard rules of the medium -- breaking these wastes the user's money:
 - The camera never moves, pans, zooms or cuts inside a beat.
 - Only one thing animates at a time. No new characters walk into frame.
 - No dialogue, no on-screen text, no watermarks.
@@ -207,7 +216,13 @@ the model reset the puppet and start over, which is visible as a jolt at the joi
 
 On a "bridge" beat the `asset_prompt` describes the LAST frame, not the first: the composition
 the clip has to end on. Everything else about writing it is the same, and it must still match
-the style bible word for word.
+the style bible word for word."""
+
+
+SYSTEM = f"""You are the story editor for a paper-cutout stop-motion Instagram Reel studio.
+You edit a board of beats. Each beat is ONE continuous shot from a locked-off camera.
+
+{MEDIUM}
 
 Use the tools to carry out what the user asked for, and nothing else. Do not call a tool that
 would not change anything, and do not restate the board back at the user. Rendering video is
@@ -217,7 +232,9 @@ answer in one or two plain sentences -- no markdown, no lists.
 The board you are shown is the truth. Read every answer about it straight off that list --
 count the BEAT lines, quote the text -- rather than working it out from the conversation above,
 which describes edits and not the result of them. If you have made a change and need to see
-where it left things, call read_board; do not reason about it."""
+where it left things, call read_board; do not reason about it.
+
+{config.MENTION_NOTE}"""
 
 
 def board_digest(board: board_mod.Board) -> str:
@@ -540,6 +557,152 @@ def reset_sequence_layout(board: board_mod.Board) -> None:
     canvas = board.data.setdefault("canvas", {})
     nodes = canvas.get("nodes") or {}
     canvas["nodes"] = {"script": nodes["script"]} if "script" in nodes else {}
+
+
+# ## Rewriting one line
+#
+# The same relationship to `turn` that `stills.converse` has to the still review: the board
+# conversation edits the whole story and has to work out which beat and which field the user
+# meant, where this is handed both. Asked to fix the wording of beat 3's action, the tool loop
+# spends a round deciding to call set_beat and can decide to "helpfully" touch the beat either
+# side of it; here there is exactly one field, so a structured call is the whole turn.
+
+REVISE_FIELDS = {
+    "scene": (
+        "the SCENE line: where this beat happens and at what scale, in one line. It is rendered "
+        "-- the video prompt is the style bible, then the scene, then the action -- so it must "
+        "never contain movement, and beats belonging to one continuous shot carry the same line."
+    ),
+    "action": (
+        "the ACTION: what MOVES in this shot, and only that. Not what anything looks like, which "
+        "is the style bible's job, and not where it happens, which is the scene line."
+    ),
+}
+
+# `text` before `reply`, because Ollama decodes in schema-property order: the model commits to
+# the line first and then describes what it did, rather than announcing a change and writing a
+# different one. Same lesson as `stills.CHAT_SCHEMA` and `planner.REVIEW_SCHEMA`.
+REVISE_SCHEMA = {
+    "type": "object",
+    "required": ["text", "reply"],
+    "properties": {
+        "text": {
+            "type": "string",
+            "description": (
+                "The whole replacement line, rewritten to do what the director asked and nothing "
+                "else, carrying over every part of it they did not mention. Return the current "
+                "text unchanged when nothing about it should change."
+            ),
+        },
+        "reply": {
+            "type": "string",
+            "description": (
+                "One or two plain sentences TO the director, in your own words, about what you "
+                "changed and why. Never the line itself and never a copy of any part of the "
+                "board -- that is what `text` is for. No markdown, no lists."
+            ),
+        },
+    },
+}
+
+REVISE_SYSTEM = f"""You are the story editor for a paper-cutout stop-motion Instagram Reel
+studio. You are rewriting ONE line of ONE beat with the director, and nothing else on the board.
+
+{MEDIUM}
+
+The director is the authority on this shot: they are not asking whether their note is a good
+idea, only for the line that says it. What is not theirs to overrule is the medium above -- a
+line that moves the camera or adds a second animating thing costs them a render to find out.
+
+Rewrite the WHOLE line every time, carrying over every part of it the director did not ask you
+to change. Rendering video is not something you can do; it costs real money and only the
+director starts it.
+
+{config.MENTION_NOTE}"""
+
+
+def revise(board: board_mod.Board, n: int, field: str, message: str, *,
+           log: Callable[[str], None] = print) -> dict:
+    """Rewrite one beat's scene or action from a note about it. Saves and returns what changed.
+
+    Written into the board's own transcript, not a per-field one: this IS a story edit, the
+    kind the chat panel makes, and hiding it in a corner of one node would leave the next
+    conversational turn reading a board that had changed for no reason it can see.
+    """
+    if field not in REVISE_FIELDS:
+        raise ValueError(f"there is nothing called {field!r} to rewrite")
+    beat = board.beat(n)
+    before = str(beat.get(field) or "").strip()
+    verdict = qwen.structured(
+        _revise_messages(board, beat, field, message), REVISE_SCHEMA,
+        # The same warmth `stills.converse` uses, and for the same reason: this writes prose
+        # rather than checking it, and a near-deterministic decode answers a second attempt at
+        # the same note with the same words, which reads as not having listened.
+        temperature=0.4,
+    )
+    text = " ".join(str(verdict.get("text") or "").split()).strip()
+    reply = " ".join(str(verdict.get("reply") or "").split()).strip()
+    changed = bool(text) and text != before
+    # An @ref: token rewritten away does not fail: the beat renders conditioned on a picture the
+    # prompt has stopped naming. Unrepairable from here, so it is said out loud in the reply --
+    # which is the line the director reads to find out what this rewrite did.
+    lost = config.lost_mentions(before, text) if changed else []
+    ops = apply_ops(board, [{"op": "set_beat", "n": n, field: text}]) if changed else []
+    if changed:
+        log(f"[qwen] beat {n} {field} -> {text}")
+    if lost:
+        log(f"[qwen] beat {n} {field}: the rewrite dropped {', '.join(lost)}")
+    if not reply:
+        reply = f"Rewrote the {field}." if changed else "Nothing to change."
+    if lost:
+        reply += f" (This dropped {', '.join(lost)} -- put it back if it mattered.)"
+    chat = board.data.setdefault("chat", [])
+    chat.append({"role": "user", "text": f"({field} of beat {n}) {message}", "selection": [n]})
+    chat.append({"role": "qwen", "text": reply, "ops": ops})
+    board.save()
+    return {"field": field, "beat": n, "text": text or before, "reply": reply,
+            "changed": changed, "ops": ops}
+
+
+def _revise_messages(board: board_mod.Board, beat: dict, field: str, message: str) -> list[dict]:
+    """One beat in its context, then the note -- which goes last, like everywhere else here.
+
+    The neighbouring beats are in the prompt because half of what makes a line right is not in
+    the line: a chained or bridged beat's action has to read as the continuation of the one
+    before it, and a scene line shared with the beat either side is what says they are one
+    continuous shot. Given the beat alone the model rewrote both of those out.
+    """
+    n = beat["n"]
+    other = "action" if field == "scene" else "scene"
+    parts = [f"STYLE BIBLE: {board.identity()}"]
+    for neighbour, label in ((board.upstream(n), "THE BEAT BEFORE THIS ONE"),
+                             (next((b for b in board.ordered_beats() if b["n"] == n + 1), None),
+                              "THE BEAT AFTER THIS ONE")):
+        if neighbour is not None:
+            parts.append(
+                f'{label} (beat {neighbour["n"]}, frames from {board.source_for(neighbour)}):\n'
+                f'  scene: {neighbour.get("scene", "")}\n'
+                f'  action: {neighbour.get("action", "")}'
+            )
+    parts.append(
+        f'THE BEAT YOU ARE EDITING is beat {n}: {board.seconds_for(beat):.0f}s, frames from '
+        f'{board.source_for(beat)}.\n'
+        f'Its {other}, which you are NOT editing: {beat.get(other, "")}\n'
+        f'Its {field}, which is the line you ARE editing: {beat.get(field, "")}'
+    )
+    parts.append(f"YOU ARE REWRITING {REVISE_FIELDS[field]}")
+    parts.append(f"THE DIRECTOR SAYS: {message}")
+    # Both fields spelled out at the end. Given only the schema, the model filled `reply` with
+    # the beat's other line -- reading the JSON as a form to copy the board into rather than as
+    # a rewrite plus a sentence about it.
+    parts.append(
+        f'Return JSON only: "text" is the whole rewritten {field} line and nothing else, '
+        '"reply" is your own sentence to the director about what you changed.'
+    )
+    return [
+        {"role": "system", "content": REVISE_SYSTEM},
+        {"role": "user", "content": "\n\n".join(parts)},
+    ]
 
 
 # ## Creating a board from a concept

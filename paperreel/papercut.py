@@ -146,6 +146,11 @@ def _runs(board: board_mod.Board, beats: list[int], cap: int,
 def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
     """The frame text for one beat: its asset prompt, plus what its extra pictures are.
 
+    Any @-token in either half is expanded in PROSE mode, because nothing in this prompt carries
+    a `<Picture i>` tag -- the still model is handed images and a paragraph, and the paragraph
+    has never named them. A beat with no tokens composes byte-identical text to what it always
+    did, which is the same promise the notes clause below makes.
+
     The notes are the same ones the video model is given, and they are here for the same reason
     they exist there: shown a picture with no explanation, a model reads the picture as the scene.
     A reference of the cast standing in the finished set comes back as the finished set, whatever
@@ -158,15 +163,24 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
     continuity clause already says what it is for.
     """
     beat = board.beat(n)
-    prompt = (beat.get("asset_prompt") or beat.get("action") or "").strip()
-    notes = [" ".join(note.split()).rstrip(".") for _path, note in pictures if note.strip()]
+    mentions = board.mentions(n, pictures)
+    prompt = config.expand_mentions(
+        (beat.get("asset_prompt") or beat.get("action") or "").strip(), mentions, prose=True
+    )
+    notes = [
+        " ".join(config.expand_mentions(note, mentions, prose=True).split()).rstrip(".")
+        for _path, note in pictures if note.strip()
+    ]
+    notes = [note for note in notes if note]
     if not notes:
         return prompt
     return f"{prompt} The reference images show: {'; '.join(notes)}.".strip()
 
 
 def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
-                seed: int | None = None) -> dict:
+                seed: int | None = None, texts: list[str] | None = None,
+                aspect: str | None = None, consistency: str | None = None,
+                style: str | None = None) -> dict:
     """One Papercut scene describing a run of stills.
 
     Papercut composes `continuity clause (when conditioned) + frame beat + scene style`. The
@@ -183,15 +197,26 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
     rendering the same beat twice off the same board seed comes back byte-identical -- which
     reads as a button that did nothing. Everything else leaves it alone, because a still that
     was regenerated after an edit should differ where the words differ and nowhere else.
+
+    `texts`, `aspect`, `consistency` and `style` exist for `draw`, which renders something that
+    is not a beat's still: a reference picture, from its own prompt, at its own shape, held
+    rather than re-posed, and NOT made of the reel's cast. They default to what a still has
+    always used, so a scene composed for `generate` is byte-identical to before they existed.
+
+    `style` is the one to watch. Papercut composes every frame as `continuity clause + frame beat
+    + scene style`, so the default here -- the board's style bible -- reaches the model on every
+    frame whatever the beat text says. That is right for a still, which is supposed to contain
+    the cast; it is how a prop sheet asked for "a single iron-grey club" came back as the fox the
+    bible describes.
     """
     body: dict = {
         "title": f"{board.data.get('title') or board.slug} · stills",
         "description": board.data.get("concept") or board.data.get("title") or board.slug,
         "duration": float(len(beats)),
         "frameCount": len(beats),
-        "style": style_for(board),
+        "style": style_for(board) if style is None else style,
         "negativePrompt": "",
-        "aspectId": config.PAPERCUT_ASPECT,
+        "aspectId": aspect or config.PAPERCUT_ASPECT,
         "steps": config.PAPERCUT_STEPS,
         "seed": int(board.data.get("seed") or 0) if seed is None else int(seed),
         # Independent shots, so an identical seed across them buys nothing and costs
@@ -202,8 +227,8 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
         # drifts by frame three and renders strictly in order for no gain. Chain would also
         # throw the uploads away: Papercut conditions a chained frame on the frame before it
         # alone.
-        "consistency": "anchor" if pictures else "none",
-        "beats": [_beat_text(board, n, pictures) for n in beats],
+        "consistency": (consistency or "anchor") if pictures else "none",
+        "beats": texts if texts is not None else [_beat_text(board, n, pictures) for n in beats],
     }
     if pictures:
         body["referencePaths"] = [str(path.resolve()) for path, _note in pictures]
@@ -256,9 +281,20 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
                   progress: Callable[[int, float], None] | None,
                   on_still: Callable[[int], None] | None,
                   cancelled: Callable[[], bool] | None,
-                  seed: int | None = None) -> list[int]:
-    """Create, render and collect one scene. Returns the beats whose stills landed."""
-    created = client.post("/api/scenes", json=_scene_body(board, beats, pictures, seed))
+                  seed: int | None = None, texts: list[str] | None = None,
+                  out_paths: list[Path] | None = None,
+                  aspect: str | None = None,
+                  consistency: str | None = None,
+                  style: str | None = None) -> list[int]:
+    """Create, render and collect one scene. Returns the beats whose frames landed.
+
+    `out_paths` says where each frame goes, positionally. Without it every frame lands on its
+    beat's still, which is what this module was written to do and what `generate` still wants;
+    with it, `draw` puts a frame on a reference picture instead.
+    """
+    created = client.post("/api/scenes", json=_scene_body(
+        board, beats, pictures, seed, texts=texts, aspect=aspect, consistency=consistency,
+        style=style))
     created.raise_for_status()
     scene_id = created.json()["id"]
     # Explicit frame indices, because Papercut clamps a scene to a minimum of two frames --
@@ -287,7 +323,8 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
             if frame.get("status") != "done" or index in seen:
                 continue
             seen.add(index)
-            _download(client, frame["url"], board.asset_path(n))
+            _download(client, frame["url"],
+                      out_paths[index] if out_paths else board.asset_path(n))
             made.append(n)
             log(f"[stills] beat {n}: done in {frame.get('elapsed', 0)}s")
             # Announced per still, not per batch: a nine-beat run is minutes long, and the
@@ -343,3 +380,72 @@ def generate(board: board_mod.Board, beats: list[int], *,
                                       progress=progress, on_still=on_still,
                                       cancelled=cancelled, seed=seed))
     return made
+
+
+def edits(reported: dict | None) -> bool:
+    """Does this image server know the `edit` consistency mode?
+
+    Handed a mode it does not recognise, an older build stores the string and then matches no
+    arm of its own `referenceFor` -- falling through to chain's backward walk, which on a
+    one-frame scene finds nothing and renders from the text alone. The picture would be
+    silently dropped, which is the worst of the three outcomes. So a build that does not
+    advertise it gets `anchor`: that keeps the picture and loses only the "change nothing else"
+    half, which is the better half to lose.
+    """
+    return "edit" in ((reported or {}).get("modes") or [])
+
+
+def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_path: Path,
+         editing: bool,
+         log: Callable[[str], None] = print,
+         progress: Callable[[int, float], None] | None = None,
+         cancelled: Callable[[], bool] | None = None,
+         seed: int | None = None, url: str | None = None) -> bool:
+    """Render one picture that is not a beat's still, straight into `out_path`.
+
+    Deliberately not routed through `generate`: `_runs` groups beats by `still_pictures` and
+    `_beat_text` reads `asset_prompt`, and neither is what a reference picture is drawn from or
+    drawn to. What is worth sharing is everything below the scene body -- the health probe, the
+    event stream, the per-frame progress, the cancel path -- and that is what this reuses.
+
+    `pictures` is conditioning, passed in rather than derived: the caller knows whether this
+    slot already has a file, and `board.py` has no method for "the picture being redrawn plus
+    the cast" because nothing else wants that list.
+
+    `editing` says whether `pictures[0]` is this same file, being changed. It gets
+    `consistency="edit"`, the mode that omits the image server's continuity clause -- that clause
+    ends "but move the subject into a clearly different pose and position", which is right when
+    the reference is the previous frame of a moving sequence and exactly wrong when the reference
+    IS the thing being changed and the note said "make the club longer".
+
+    A first draw has no conditioning at all (see `pictures.conditioning` for why the cast
+    reference is deliberately absent) and falls through to `_scene_body`'s "none", which is pure
+    text-to-image. The medium travels in the words instead.
+
+    `out_path` is also `referencePaths[0]` when editing, and that is safe: Papercut resolves its
+    conditioning at render start and `_download` only fires once the frame reports done.
+    """
+    reported = health(url)
+    if reported is None:
+        raise PapercutError(
+            f"no image server at {url or config.PAPERCUT_URL}. Start it with `make images` "
+            "(or `make run`, which starts all three), or upload the picture by hand."
+        )
+    mode = "edit" if editing and edits(reported) else "anchor"
+    if editing and mode != "edit":
+        log("[picture] this image server predates the `edit` mode, so the redraw is anchored "
+            "instead -- it keeps the reference and may re-pose the subject")
+    refs = pictures[:max_references(reported)]
+    log(f"[picture] beat {n}: drawing {out_path.name}"
+        + (f", from {', '.join(path.name for path, _note in refs)}" if refs
+           else " (from the words alone)"))
+    with httpx.Client(base_url=url or config.PAPERCUT_URL, timeout=30.0) as client:
+        made = _render_scene(
+            client, board, [n], refs, log=log, progress=progress, on_still=None,
+            cancelled=cancelled, seed=seed, texts=[text], out_paths=[out_path],
+            aspect=config.PAPERCUT_REF_ASPECT, consistency=mode,
+            # The medium, and NOT the board's style bible -- see `_scene_body`. A prop sheet
+            # shares the paper with the film, not the cast.
+            style=config.REF_DRAW_STYLE_SUFFIX,
+        )
+    return bool(made)
