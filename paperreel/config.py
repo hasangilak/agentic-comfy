@@ -267,8 +267,8 @@ AGENT_MAX_ROUNDS = int(os.environ.get("PAPERREEL_AGENT_MAX_ROUNDS", "8"))
 
 # ## Reviewing its own work
 #
-# Both passes exist because the model is local and unmetered. Neither would have been worth
-# a quota slot; both are worth ten seconds.
+# Both passes exist because the review catches failures that are hard to see in prose. Their
+# additional Gemini requests are controlled by the existing review switches.
 #
 # The script pass re-reads the draft against the rules of the medium -- one continuous
 # locked-off shot per beat, one thing moving, the style bible quoted verbatim in every asset
@@ -279,7 +279,7 @@ PLAN_REVIEW = os.environ.get("PAPERREEL_PLAN_REVIEW", "1") == "1"
 # says whether the same characters, palette and paper stock came back. A still that missed
 # gets its asset prompt rewritten and is rendered again.
 #
-# One retry, not five: mflux is free but not instant at ~10-18 s a frame, and a still the
+# One retry, not five: Gemini is metered and not instant, and a still the
 # model rejects twice is usually telling you the style bible is the problem.
 STILL_REVIEW = os.environ.get("PAPERREEL_STILL_REVIEW", "1") == "1"
 STILL_ATTEMPTS = int(os.environ.get("PAPERREEL_STILL_ATTEMPTS", "2"))
@@ -302,30 +302,26 @@ ASSET_CHAT_MEMORY = int(os.environ.get("PAPERREEL_ASSET_CHAT_MEMORY", "60"))
 # ## Where opening stills come from
 #
 # `beat<n>_asset.png`, rendered by Papercut Studio in image/ over HTTP on this machine:
-# flux2-klein-4b through mflux, free, unmetered, ~10-18 s per still, and straight onto the H3
-# grid so nothing is cropped on the way to the video model.
+# Gemini Nano Banana through Papercut Studio, with the output straight onto the H3 grid so
+# nothing is cropped on the way to the video model.
 #
 # It is the only generator. The old fallback was agy, whose five-per-five-hours window is
-# gone along with it -- so on a machine where the image server is not up (or where mflux
-# cannot run at all), stills are uploads. That is what `manual_stills` on a board is for.
+# gone along with it -- so on a machine where the image server is not up, stills are uploads.
+# That is what `manual_stills` on a board is for.
 PAPERCUT_URL = os.environ.get("PAPERREEL_PAPERCUT_URL", "http://127.0.0.1:8791")
 # The aspect preset in image/shared/types.ts that matches GEN_WIDTH x GEN_HEIGHT exactly.
 # Anything else gets cover-cropped by media.fit_frame at render time, which is how a still
 # loses its framing between being approved and being rendered.
 PAPERCUT_ASPECT = "9:16-reel"
-# flux2-klein-4b is a distilled few-step model; 4 is what the studio next door defaults to
-# and what its measured timings are quoted at.
+# Kept in the transport contract for older scene documents; Gemini controls its own inference
+# steps and does not use this value.
 PAPERCUT_STEPS = int(os.environ.get("PAPERREEL_PAPERCUT_STEPS", "4"))
 # How many pictures a still may be drawn FROM. The first is the reel's locked cast reference,
 # which is what a still has always been conditioned on; the rest are the director's own uploads
 # on that beat -- the same pictures the video model is shown, so the puppet in the clip and the
 # puppet in the frame it opens on are being held to one set of images rather than two.
 #
-# Four, which is a time cap rather than a model limit: mflux takes any number of `--image-paths`
-# and encodes every one of them through every sampling step. Measured on this card at 768x1344
-# and 4 steps, same prompt and seed: 18.6 s with one picture, 31.4 s with two -- so each extra
-# picture costs about as much again as the first, and four is a still of roughly a minute. Still
-# free, still unmetered; what more pictures buy in fidelity has not been compared.
+# Four is a conservative request-size and consistency cap across the supported Gemini models.
 #
 # The image server reports its own cap in `limits.maxReferences` and the smaller of the two wins,
 # exactly as the frame cap already works.
@@ -342,7 +338,7 @@ ASSET_STYLE_SUFFIX = (
 
 # ## Reference pictures the studio draws rather than receives
 #
-# A beat's reference pictures used to be uploads only. mflux is next door and free, so they are
+# A beat's reference pictures used to be uploads only. Gemini supports inline references, so they are
 # now drawable too: a prop sheet, a set with nobody in it, a costume detail -- anything the
 # director would otherwise have had to find a photograph of.
 #

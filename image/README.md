@@ -1,14 +1,13 @@
 # Papercut Studio
 
-A local UI for generating paper-cutout stop-motion keyframes. You describe a scene and its
-length, choose how many frames to cut it into (2–9), and it renders each frame with
-`flux2-klein-4b` through [mflux](https://github.com/filipstrand/mflux) on the local GPU.
-
-Nothing leaves the machine.
+A UI for generating paper-cutout stop-motion keyframes with Google's Gemini Nano Banana image
+models. Describe a scene and its length, choose how many frames to cut it into (2–9), and the
+local render server sends each prompt to Gemini and saves the returned image in the existing
+scene store.
 
 ## Requirements
 
-- Apple Silicon Mac with mflux installed and `flux2-klein-4b` weights cached
+- A Google AI API key in the repository `.env` as `X-GOOG-API-KEY`
 - Node 20+
 
 ```sh
@@ -19,79 +18,71 @@ npm run dev
 The web app runs on <http://localhost:5173> and the render server on `127.0.0.1:8791`.
 Override the server port with `PORT=… npm run dev:server`.
 
+The **Look and quality** section in the UI lets each scene choose the Gemini model and output
+size. The default model is `gemini-3-pro-image`. For API-created scenes, or to change the
+fallback defaults without using the UI:
+
+```sh
+GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
+GEMINI_IMAGE_SIZE=2K
+```
+
+Supported models are `gemini-3-pro-image`, `gemini-3.1-flash-image`, and
+`gemini-3.1-flash-lite-image`. Lite automatically uses 1K output because that is its supported
+resolution. The model and image size are read from `.env` or the server environment.
+
 ## How a scene works
 
-A scene is a duration plus a frame count. Ten seconds split into five frames gives each
-frame a 2.0 s hold — the app shows the resulting hold and fps as you drag the sliders.
+A scene is a duration plus a frame count. Ten seconds split into five frames gives each frame a
+2.0 s hold — the app shows the resulting hold and fps as you drag the sliders.
 
-Every frame carries its own **beat**: a one-line description of what that moment shows.
-Beats are seeded from the scene description with concrete staging (subject enters left,
-peaks at centre, exits right) because vague hints like "mid-action" let the model redraw
-the same pose. Edit any beat and re-render just that frame.
+Every frame carries its own **beat**: a one-line description of what that moment shows. Beats are
+seeded from the scene description with concrete staging (subject enters left, peaks at centre,
+exits right) because vague hints let the model redraw the same pose. Edit any beat and re-render
+just that frame.
 
-The scene's **style suffix** is appended to every beat, so the papercraft look stays
-identical across the sequence without retyping it.
+The scene's **style suffix** is appended to every beat, and the Gemini renderer adds a stable
+paper-cutout direction so the medium stays consistent across a sequence.
 
 ## Consistency modes
 
 | Mode | Conditioning | Use it for |
 | --- | --- | --- |
-| **Chain** | each frame conditions on the previous frame | walk cycles and continuous motion — best flow, renders strictly in order |
-| **Anchor** | every frame conditions on the uploaded reference(s) | a fixed character or set across independent poses |
+| **Chain** | each frame conditions on the previous frame | walk cycles and continuous motion |
+| **Anchor** | every frame conditions on the uploaded reference(s) | a fixed character or set across poses |
 | **Free** | no image conditioning | fastest, loosest — style suffix alone holds the look |
 
-Chain and Anchor use `mflux-generate-flux2-edit`, which costs roughly 3.2 s/step against
-1.97 s/step for plain text-to-image, so they render slower.
-
-Upload a reference image to lock a character's design. In Chain mode the reference seeds
-frame 1 and each frame takes over from there; in Anchor mode every frame sees it.
-
-The UI uploads one image. The API takes up to `MAX_REFERENCES` (4) as `referencePaths` — a
-character sheet next to a prop next to the palette — and Anchor mode passes all of them to
-`mflux-generate-flux2-edit`, which supports multi-image editing. That is a time cap rather than a
-model limit: every picture is encoded through every sampling step, and each one costs about as
-much again as the first. Measured at 768×1344 and 4 steps, same prompt and seed: **18.6 s with
-one reference, 31.4 s with two.** Chain mode ignores the list and conditions on the previous
-frame alone, which is the point of the mode.
+Chain and Anchor send reference images as inline inputs to Gemini. The API supports multiple
+reference images, so the existing four-image cap remains useful for a character sheet, prop, or
+palette while keeping requests bounded. Chain passes only the previous frame; Anchor passes every
+uploaded reference.
 
 ## Timing
 
-Measured on this machine at 1152×640, 4 steps:
-
-- text-to-image frame — about 7 s
-- chained edit frame — about 13 s
-
-At 768×1344 (the **9:16 reel** preset, ~1.8× the pixels) the same two measured 10.7 s and
-18.5 s.
-
-So a 5-frame scene in Chain mode lands around a minute. The header shows a live estimate
-that switches to your machine's real measured average once frames start landing.
-
-Renders are serialised through one global lock — mflux holds roughly 18 GB of weights and
-two concurrent renders would thrash.
+Gemini request latency varies by model, image size, and reference count. The header starts with a
+broad estimate and switches to the measured average once frames start landing. Renders remain
+serialised through one global lock so scene order and cancellation stay predictable.
 
 ## Output
 
 Frames are written to `out/scenes/<id>/frame-NN.png` alongside a `scene.json` that survives
-restarts. **Play** runs them back at their real hold durations so you can judge the timing
-before committing; **Download zip** packages the rendered frames.
+restarts. **Play** runs them back at their real hold durations so you can judge the timing before
+committing; **Download zip** packages the rendered frames.
 
 ## Feeding the reel pipeline
 
-The **9:16 reel** aspect preset renders at 768×1344, which is the generation grid MiniMax-H3
-uses in the paperreel project one directory up. A still made at any other size is
-cover-cropped on the way into the video model, so this preset is the one to pick when the
-frame is going to become a shot rather than a look test.
+The **9:16 reel** aspect preset renders at 768×1344, the generation grid MiniMax-H3 uses in the
+paperreel project one directory up. A still made at another size is cover-cropped on the way into
+the video model, so this preset is the one to pick when the frame becomes a shot.
 
-paperreel drives this server directly — start it with `make images` from the parent directory
-(or `make dev-server` here) and the reel studio's ✦ generate buttons render through mflux
-instead of a cloud image tool with a five-per-five-hours cap. It falls back on its own if this
-server is not listening.
+paperreel drives this server directly — start it with `make images` from the parent directory (or
+`make dev-server` here) and the reel studio's ✦ generate buttons render through Gemini. It falls
+back on its own if this server is not listening.
 
 ## Known behaviour
 
-- Chain mode drifts. Around frame 3+ the model may add or drop background elements. Re-roll
-  that frame, or switch to Anchor if the drift matters more than the flow.
-- Re-rendering a middle frame in Chain mode does not update the frames after it — they were
-  conditioned on the old version. Re-render the tail too.
-- Hands are `flux2-klein-4b`'s consistent weak point. Keep them out of frame or expect fixes.
+- Chain mode can drift. If a later frame changes the set, re-roll it or switch to Anchor when the
+  fixed reference matters more than the flow.
+- Re-rendering a middle frame in Chain mode does not update frames after it; re-render the tail if
+  the changed frame should influence them.
+- Gemini image output includes Google's SynthID watermark metadata.

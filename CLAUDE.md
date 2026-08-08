@@ -7,11 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two apps that make one thing. **paperreel** (this directory) turns a concept into a vertical
 1080×1920 Instagram Reel in paper-cutout stop-motion, rendering MiniMax-H3 on a single GPU on
 Modal via ComfyUI. **Papercut Studio** (`image/`, a separate project with its own CLAUDE.md)
-renders the opening stills locally with mflux. paperreel calls it over HTTP; see
+renders the opening stills through Gemini. paperreel calls it over HTTP; see
 "The two projects" below.
 
 Everything that is words runs on **one local model** — `qwen3.6` on Ollama — and everything
-that is a still runs on mflux next door. Nothing but the video render is metered. See "The
+that is a still runs through Google's API next door. Image generation and video rendering are
+metered. See "The
 language model" below; there is no hosted LLM anywhere in this repo.
 
 Two front ends drive paperreel: `storyboard.py` / `reel.py` (CLI) and a local FastAPI + React
@@ -32,8 +33,7 @@ make qwen         # ollama pull qwen3.6 — the script writer and still reviewer
 make serve        # build the frontend, serve everything from :8787
 make backend      # studio.py only
 make frontend     # vite only
-make stop         # kill every server running in either project (mflux render survives)
-make stop-mflux   # end an in-flight mflux render next door — that frame is lost
+make stop         # kill every server running in either project
 make build        # npm --prefix studio run build  (tsc -b && vite build — this is the typecheck)
 
 make login        # uvx modal setup                        one-time, touches Modal
@@ -56,8 +56,8 @@ studio's render button. Planning, asset generation, uploads and compositing are 
 
 Never run a render to "verify" a change. A 4×10 s reel costs ~$1.13.
 
-**Nothing outside the GPU render is metered.** The language model is local (Ollama) and the
-stills are local (mflux), so there is no quota, no key and no per-token charge anywhere. The
+**Image generation is explicit and metered.** The language model is local (Ollama), while
+stills are generated through Gemini with `X-GOOG-API-KEY` from `.env`. The
 Antigravity CLI (`agy`) is gone; its ~five-images-per-five-hours window is the reason chaining
 is the default and a reel was designed to need one image rather than one per beat. Both are
 still good filmmaking. Neither is forced. **Do not write new copy or docs that state an image
@@ -72,7 +72,7 @@ paperreel/board.py      the board document and ALL derived state
 paperreel/comfy.py      ComfyUI HTTP/WS client + the H3 graph builder
 paperreel/pipeline.py   Modal app lifecycle + chained batch rendering (CLI path)
 paperreel/render.py     the same, with per-beat telemetry and cancellation (studio path)
-paperreel/papercut.py   HTTP client for image/ — the transport to the mflux stills server
+paperreel/papercut.py   HTTP client for image/ — the transport to the Gemini stills server
 paperreel/qwen.py       Ollama transport: structured output, tool calls, vision
 paperreel/stills.py     rendering stills, then LOOKING at them; the still-job rules
 paperreel/pictures.py   reference pictures as drawable assets; NO review pass, deliberately
@@ -94,8 +94,8 @@ Ollama :11434            paperreel  this repo            Modal
   vision · tools · think        caption, still review      the paid stage
                                      │        ▲
 image/  Papercut Studio               ▼        │ the still, looked at
-  mflux · flux2-klein-4b   ──▶   storyboard.json
-  local, free, unmetered         board + joins
+  Gemini image API          ──▶   storyboard.json
+  API, configured in .env         board + joins
   Express :8791                  FastAPI :8787
 ```
 
@@ -125,7 +125,7 @@ boundary:
 **What a still is drawn from is `Board.still_pictures`** — the reel's locked cast reference, then
 the director's uploads on that beat, sent as `referencePaths` with the first also in the legacy
 `referencePath`. Deliberately *not* the beat's own still, which is the thing being generated. It
-is a different list from `pictures_for` and a much shorter one (4 against 9): mflux encodes every
+is a different list from `pictures_for` and a much shorter one (4 against 9): Gemini accepts
 conditioning image through every sampling step. The uploads are there because the still is what
 the clip's opening sampling steps are anchored to — a picture the clip is held to and the frame it
 opens on never saw is two answers to the same puppet. Both methods guard on `uses_refs`, so the
@@ -161,7 +161,7 @@ different clothes — a model shown the cast will draw the cast:
 
 - **Nothing conditions a first draw.** The obvious design anchors it on the cast reference so it
   is made of the same paper. Tried: "a single iron-grey club" against a fox reference came back
-  as the fox, because `flux2-klein-edit` reproduces the subject it is shown. `pictures.conditioning`
+  as the fox, because Gemini reproduces the subject it is shown. `pictures.conditioning`
   therefore returns `[]` for a new picture and the picture *itself* for a redraw. The medium
   travels as words instead.
 - **`papercut.draw` overrides the scene `style`.** Papercut composes every frame as
@@ -191,7 +191,7 @@ not scale past two.
 That endpoint is **multipart**, because a note can arrive with pictures attached, and they go
 through `api.store_refs` — the same function the reference tray posts to. Storing them is the
 only thing that works: `Board.still_pictures` reads the beat, so an image held for one turn would
-steer the model's words and never reach mflux. It therefore carries the tray's consequence, the
+steer the model's words and never reach Gemini. It therefore carries the tray's consequence, the
 join moving to `reference`, which `StillChat` warns about before the send. An attachment also
 forces `regenerate` on: the conditioning changed, so the picture on screen was drawn from
 something the beat no longer says, whatever the model makes of the words. **The automatic review deliberately does not run
@@ -345,11 +345,11 @@ order is decided:
 2. the reel's locked cast reference (`Board.reference_for`, so `None` on the beat that *is* the
    reference) — `config.REF_ROLE_CAST`;
 3. then the director's uploads, `beat<n>_ref1.png` upward — which are now *drawn or* uploaded;
-   `pictures.py` puts an mflux render into the same file, and nothing downstream can tell.
+   `pictures.py` puts a Gemini render into the same file, and nothing downstream can tell.
 
 Everything a beat stores per picture is a list the same length as `ref_paths`, read and written
 through one pair of methods (`Board.REF_SLOT_KEYS`, `_ref_slots`, `_store_ref_slots`) rather than
-a trio each: `ref_prompts` (what it is FOR — reaches both prompts), `ref_draws` (the mflux prompt
+a trio each: `ref_prompts` (what it is FOR — reaches both prompts), `ref_draws` (the Gemini prompt
 — reaches neither), `ref_chats` (its conversation), `ref_ids` (a stable handle). `remove_ref`
 deletes index `i-1` from every one of them, renumbers the files, and rewrites the mentions — and
 it reads all four lists **before** unlinking, because `_ref_slots` sizes itself off `ref_paths`
@@ -522,12 +522,12 @@ consistency is unmeasured, the container may be over-provisioned at 8 cores / 64
 studio's per-step WebSocket progress has never been exercised against a live render.
 
 **A still drawn from more than one picture is timed, not judged.** The cap, the notes clause and
-the join guard are exercised on a real board, and the cost is measured — 18.6 s for one
-reference against 31.4 s for two, same prompt and seed at 768×1344, which is the number in
+the join guard are exercised on a real board, and reference counts affect Gemini request cost;
+the exact latency depends on the selected model and output size.
 `config.MAX_STILL_REFS` and `image/src/estimate.ts`. What has *not* been compared is whether more
 pictures hold the cast better than one, or whether the *reference images show: …* clause helps
-rather than giving `flux2-klein-4b` one more thing to draw into the frame. Do not quote a quality
-claim; `PAPERREEL_MAX_STILL_REFS` is how to explore it, and it is free.
+rather than giving Gemini one more thing to draw into the frame. Do not quote a quality claim;
+`PAPERREEL_MAX_STILL_REFS` is how to explore it.
 
 Added with the local model, and unmeasured: the still review's false-accept rate on *subtle*
 cast drift (it is verified to reject an obvious mismatch and to pass a good still, which is not
@@ -545,9 +545,9 @@ the schema the model filled `reply` with the beat's *other* line, reading the ob
 copy the board into. Do not drop that closing sentence.
 
 The per-still conversation (`stills.converse`) has now run end to end against a live qwen and
-mflux — one turn with a picture attached rewrote the prompt and redrew the still — but that is one
+Gemini — one turn with a picture attached rewrote the prompt and redrew the still — but that is one
 turn. What is unverified is how often the model sets `regenerate` correctly (a question about the
-picture that redraws it anyway costs 10–18 s of nothing) and whether it really carries the
+picture that redraws it anyway costs a new Gemini request) and whether it really carries the
 untouched half of a prompt through a rewrite rather than paraphrasing the style bible. Both show
 up in the transcript on the node, which is where to look first.
 

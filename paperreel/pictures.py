@@ -1,7 +1,7 @@
 """Reference pictures the studio draws, rather than only receives.
 
 A beat's reference pictures used to be uploads and nothing else: a file, a one-line note saying
-what it was for, and a delete button. mflux is next door and unmetered, so they are now the same
+what it was for, and a delete button. Gemini is next door through the image server, so they are now the same
 kind of thing the beat's own still is -- drawn from a prompt, talked about, redrawn.
 
     index = pictures.draw(board, 3, prompt="a close-up of an iron-grey club, side on")
@@ -89,7 +89,7 @@ DRAW_SYSTEM = (
     "-- layered paper cutout, visible paper grain, soft contact shadows -- because every other "
     "image in the reel is made of it.\n\n"
     "Rewrite the WHOLE prompt every time, carrying over every part the director did not ask you "
-    "to change. Drawing it again is free and takes about 10 to 18 seconds, so ask for it "
+    "to change. Drawing it again is a new Gemini request, so ask for it "
     "whenever the picture itself should change. Rendering the VIDEO is not something you can do; "
     "it costs real money and only the director starts it.\n\n"
     + config.MENTION_NOTE
@@ -160,7 +160,7 @@ def conditioning(board: board_mod.Board, n: int, index: int | None) -> papercut.
     **The reel's cast reference is not in here, and that is a measured decision rather than an
     oversight.** The obvious design conditions every draw on the cast so the picture is made of
     the same paper as the rest of the film. Tried against a real board, it does something worse:
-    flux2-klein-edit reproduces the subject it is shown, so "a single iron-grey club" drawn
+    Gemini reproduces the subject it is shown, so "a single iron-grey club" drawn
     against a fox-on-green-hills reference came back as the fox on green hills with a grey post
     in it -- under `anchor`, whose continuity clause explicitly demands "the same background,
     lighting and camera angle as the reference image", and under `edit` for the plainer reason
@@ -192,7 +192,7 @@ def draw_text(board: board_mod.Board, n: int, index: int | None, prompt: str) ->
     **The board's style bible must not reach this render, and that is the whole reason `style` is
     overridable at all.** It describes the cast and the set -- on a real board it reads "A single
     fox cut from warm orange cardstock with a cream chest, on layered green paper hills" -- and a
-    still is supposed to contain those. A prop sheet is not. Left on the default, mflux was
+    still is supposed to contain those. A prop sheet is not. Left on the default, Gemini was
     effectively handed "a single iron-grey club. A single fox ... on layered green paper hills."
     and drew the fox, which is exactly what it was asked for. Measured on a live render.
     """

@@ -261,7 +261,7 @@ class Board:
     # forgets there. `blank` is what a missing entry reads as.
     REF_SLOT_KEYS: tuple[tuple[str, object], ...] = (
         ("ref_prompts", ""),   # what the picture is FOR -- reaches both prompts
-        ("ref_draws", ""),     # the mflux prompt it was drawn from -- reaches neither
+        ("ref_draws", ""),     # the Gemini prompt it was drawn from -- reaches neither
         ("ref_chats", None),   # the conversation about it; None means "a fresh list each time"
         ("ref_ids", ""),       # opaque, minted on store, the one value a renumber preserves
     )
@@ -315,7 +315,7 @@ class Board:
         return [str(value) for value in self._ref_slots(n, "ref_prompts", "")]
 
     def ref_draws(self, n: int) -> list[str]:
-        """The mflux prompt each reference picture was last drawn from, or "" for an upload.
+        """The Gemini prompt each reference picture was last drawn from, or "" for an upload.
 
         The analogue of `asset_prompt` for a picture, and kept apart from `ref_prompts` for the
         same reason `asset_prompt` is kept apart from `scene`: one says what to draw, the other

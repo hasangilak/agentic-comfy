@@ -1,19 +1,9 @@
 import type { Scene, SceneSettings } from '../shared/types.ts'
 import { ASPECT_PRESETS } from '../shared/types.ts'
 
-/**
- * Measured on an Apple Silicon Mac with flux2-klein-4b at 8-bit:
- * 1.97 s/step for text-to-image and ~3.2 s/step when a reference image is
- * attached, both at 1024x1024, plus process start and weight load per frame.
- *
- * The edit cost is per reference, not per render: the same prompt, seed and steps at 768x1344
- * took 18.6 s with one reference and 31.4 s with two, so the second picture cost 12.8 s — about
- * 3.2 s/step again once the pixel scale is divided out. Multiplying is therefore the right
- * shape, and it keeps the same ~15% underread the single-reference model already had.
- */
-const SECONDS_PER_STEP_TXT = 1.97
-const SECONDS_PER_STEP_EDIT = 3.2
-const FRAME_OVERHEAD = 3
+/** A deliberately broad first estimate for a remote Gemini image request. */
+const BASE_RENDER_SECONDS = 25
+const REFERENCE_SECONDS = 7
 const BASE_PIXELS = 1024 * 1024
 
 export function estimateFrameSeconds(opts: {
@@ -24,10 +14,7 @@ export function estimateFrameSeconds(opts: {
   references: number
 }) {
   const scale = (opts.width * opts.height) / BASE_PIXELS
-  const perStep = opts.references
-    ? SECONDS_PER_STEP_EDIT * opts.references
-    : SECONDS_PER_STEP_TXT
-  return perStep * scale * opts.steps + FRAME_OVERHEAD
+  return (BASE_RENDER_SECONDS + REFERENCE_SECONDS * opts.references) * scale
 }
 
 /** How many pictures a frame of this scene conditions on, as `referenceFor` will resolve it. */

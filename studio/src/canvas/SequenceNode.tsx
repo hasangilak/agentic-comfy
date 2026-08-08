@@ -20,7 +20,7 @@ const JOIN_CYCLE: Record<Source, Source> = {
   asset: "chain",
 };
 
-// A still is free and unmetered while the local mflux renderer is up, so what these describe is
+// A still is generated through Gemini while the image server is up, so what these describe is
 // what each join buys and what it gives up -- not a price. The panel on the script node is where
 // the live stills backend is named.
 const JOIN_HELP: Record<Source, string> = {

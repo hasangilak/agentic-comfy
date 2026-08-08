@@ -714,7 +714,7 @@ def describe_ref(slug: str, n: int, index: int, body: dict = Body(...)) -> dict:
     copy of the same puppet. Told "<Picture 1> is the same single Moth that performs the
     action, not an extra one", it collapses them back into one.
 
-    `draw` is the other half and a different register: what mflux is asked for when this picture
+    `draw` is the other half and a different register: what Gemini is asked for when this picture
     is drawn again. Two fields rather than one because a good draw prompt -- "a close-up of an
     iron-grey club on flat black" -- is a terrible end to the sentence "<Picture 3> is ...".
 

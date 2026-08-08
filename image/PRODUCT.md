@@ -8,11 +8,11 @@ web
 
 ## Users
 
-One user: the author, working alone on their own paper-cutout stop-motion films. They sit at an Apple Silicon Mac with mflux installed, describe a shot, and want to see whether the sequence reads as motion before spending real time on it. There is no second audience — no team, no clients, no handoff. The interface never has to explain itself to a stranger, but it does have to stay legible to someone returning to a half-finished scene days later.
+One user: the author, working alone on their own paper-cutout stop-motion films. They describe a shot, and want to see whether the sequence reads as motion before spending real time on it. There is no second audience — no team, no clients, no handoff. The interface never has to explain itself to a stranger, but it does have to stay legible to someone returning to a half-finished scene days later.
 
 ## Product Purpose
 
-Papercut Studio turns a written scene description into a sequence of rendered keyframes that can be played back at their real hold durations. The user sets a duration and a frame count; the app derives each frame's timestamp and hold, seeds a per-frame beat with concrete staging, appends a shared style suffix, and renders each frame locally.
+Papercut Studio turns a written scene description into a sequence of rendered keyframes that can be played back at their real hold durations. The user sets a duration and a frame count; the app derives each frame's timestamp and hold, seeds a per-frame beat with concrete staging, appends a shared style suffix, and renders each frame through Gemini.
 
 Success is judging a shot's timing and staging from the rendered playback — deciding "that works" or "that doesn't" — without leaving the machine and without hand-writing a prompt per frame.
 
@@ -24,9 +24,9 @@ The mechanism a neighboring tool could not truthfully copy: a scene is a *durati
 
 ## Operating Context
 
-- Runs entirely on the local machine: Vite web app on `localhost:5173`, Express render server on `127.0.0.1:8791`.
-- Rendering is slow and visible — roughly 7 s per text-to-image frame and 13 s per chained edit frame at 1152×640 / 4 steps. A 5-frame chained scene is about a minute. Waiting is a normal part of the usage scene, not an edge case.
-- Renders are serialized through one global lock; mflux holds roughly 18 GB of weights, so two concurrent renders would thrash.
+- The UI and render server run locally, while prompts and reference images are sent to Google's Gemini API for image generation.
+- Rendering is slow and visible, and latency varies by Gemini model, output size, and reference count. Waiting is a normal part of the usage scene, not an edge case.
+- Renders are serialized through one global lock so scene ordering and cancellation remain predictable.
 - Work is iterative and partial: re-roll a single frame, edit one beat, re-render the tail. Scenes are returned to across sessions.
 - Output lives on disk at `out/scenes/<id>/frame-NN.png` with a `scene.json` beside it, so scenes survive restarts.
 
@@ -44,7 +44,7 @@ Confirmed capabilities:
 
 Technical constraints (current implementation facts, not user-declared promises — a future decision could change these):
 
-- Backend is mflux with `flux2-klein-4b`; chain and anchor go through `mflux-generate-flux2-edit`.
+- Backend is Gemini Nano Banana, defaulting to `gemini-3-pro-image`; chain and anchor send inline reference images.
 - One render at a time, globally serialized.
 - The filesystem is the store — no database.
 
@@ -52,7 +52,7 @@ Known model behavior the product must stay honest about:
 
 - Chain mode drifts around frame 3+; the model may add or drop background elements.
 - Re-rendering a middle frame in chain mode leaves later frames conditioned on the old version.
-- Hands are `flux2-klein-4b`'s consistent weak point.
+- Gemini-generated images carry Google's SynthID watermark metadata.
 
 ## Brand Commitments
 
@@ -69,7 +69,7 @@ No testimonials, users, benchmarks against other tools, pricing, or licensing ex
 
 1. **The papercut world is the subject.** Assume cutout paper, layered construction paper, visible cut edges. Do not generalize the product into a style-agnostic image tool.
 2. **Timing is the unit of judgment.** Duration, hold, and fps are the numbers the user decides on. Anything that obscures the timeline works against the product.
-3. **Local is a promise, not a default.** Nothing leaves the machine — no cloud inference, no telemetry, no upload of scenes or references. Any feature that would send data off-machine is out of scope.
+3. **The local UI stays in control.** Generation is explicit, and the app keeps scene files locally while clearly routing image prompts and references through Gemini.
 4. **Waiting is designed, not hidden.** Renders take tens of seconds and serialize. Progress, queue position, and honest estimates are core surface, not decoration.
 5. **Partial work is the normal state.** Re-rolling one frame, editing one beat, returning to a half-rendered scene — these are the main path, not recovery cases.
 

@@ -146,7 +146,7 @@ export function StoryPanel() {
               disabled={studio.stillsBackend !== "papercut"}
               title={
                 studio.stillsBackend === "papercut"
-                  ? "rendered by mflux on this machine, then checked against the reel's cast " +
+                  ? "rendered by Gemini, then checked against the reel's cast " +
                     "reference — free and unlimited, ~10–18 s each"
                   : "the image server is not running — start it with `make images`, or upload " +
                     "the stills yourself"

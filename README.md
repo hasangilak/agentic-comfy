@@ -3,16 +3,16 @@
 Turn a one-line concept into a vertical 1080×1920 Instagram Reel in handcrafted
 paper-cutout stop-motion, using MiniMax-H3 on a single GPU on Modal.
 
-Everything except the video is local and unmetered. Scripts come from **qwen3.6 on Ollama**
+Scripts come from **qwen3.6 on Ollama**
 on this machine — the same model then carries out board edits, writes the caption, and *looks
 at* every still with its vision head to check it belongs in the reel. Opening stills come from
-**Papercut Studio** in `image/`, `flux2-klein-4b` through mflux, also local. Only rendering
-costs money, so the stages are deliberately separable: iterate for free, pay once. A script you
+**Papercut Studio** in `image/`, using Gemini Nano Banana through Google's API. Image generation
+and video rendering are explicit stages, so the stages are deliberately separable. A script you
 wrote yourself is imported as it stands, with no planning turn at all.
 
 ```
 concept ──qwen──▶ ┐
-                  ├──▶ storyboard.json ──mflux──▶ opening still  (image/, local, free)
+                  ├──▶ storyboard.json ──Gemini──▶ opening still  (image/, API)
   your own script ┘                                  │
                                        qwen looks at it: same cast? ──reject──▶ rewrite, again
                                                     │
@@ -75,18 +75,16 @@ alias for it). On a session that is only editing a script, `make backend` and `m
 are the same thing without the image server.
 `make serve` builds the frontend instead and serves everything from :8787; `make backend`,
 `make frontend` and `make images` run one at a time; `make stop` kills every server either
-project has running, whichever target started it (an in-flight mflux render survives it —
-`make stop-mflux` ends that one, losing the frame).
+project has running, whichever target started it.
 `make help` lists the rest. Nothing in the Makefile can start a paid render.
 
 ### Where stills come from, and how they are checked
 
-**Papercut Studio** (`image/`, mflux `flux2-klein-4b`) is the only generator: ~11 s a still,
-~19 s anchored, no quota, and it renders straight onto H3's 768×1344 generation grid so the
+**Papercut Studio** (`image/`, Gemini Nano Banana) is the only still generator. It renders
+straight onto H3's 768×1344 generation grid so the
 frame reaches the video model exactly as it was approved rather than centre-cropped on the way
 in. With that server not listening there is nothing to fall back to — a beat's still is an
-upload, which is what the **my own** switch below is for. That is also the case on a machine
-without Apple Silicon, where mflux cannot run at all.
+upload, which is what the **my own** switch below is for.
 
 Papercut is shown the reel's cast reference in **anchor** mode, so a cut changes the setting
 rather than the characters. A board with no still at all renders its first beat alone,
@@ -94,10 +92,8 @@ unconditioned — that image becomes the reference the rest are anchored to.
 
 **And the beat's own reference pictures, if it has any.** The pictures dropped on a scene's
 reference tray go to the still renderer as well as to the video model — the first
-`config.MAX_STILL_REFS` of them (4, the cast reference counting as one), because mflux encodes
-every conditioning image through every sampling step. That is a time cap rather than a model
-limit, and it was measured: same prompt and seed at 768×1344, **18.6 s with one picture, 31.4 s
-with two**, so each extra costs about as much again as the first. Still free. The image server
+`config.MAX_STILL_REFS` of them (4, the cast reference counting as one), because the Gemini
+request should stay bounded. The image server
 reports its own cap in `limits.maxReferences` and the smaller number wins.
 The reason to send them at all is that the still is what the clip's first sampling steps are
 anchored to: a prop the *clip* is held to and the frame it opens on never saw is two answers to
@@ -123,7 +119,7 @@ misses gets its `asset_prompt` rewritten against the specific mismatch and is re
 [stills] beats [4]: rendering again from the rewritten prompts
 ```
 
-One retry, not five (`PAPERREEL_STILL_ATTEMPTS`): mflux is free but not instant, and a still
+One retry, not five (`PAPERREEL_STILL_ATTEMPTS`): Gemini is metered and not instant, and a still
 rejected twice is usually telling you the style bible is the problem. The rewritten prompt is
 saved to the board, so the node shows what changed and the next render starts from the
 corrected wording. `PAPERREEL_STILL_REVIEW=0` turns the whole pass off.
@@ -398,7 +394,7 @@ is how a background quietly becomes a different place halfway through a clip.
 Every beat has its own persistent **upload** and **generate** controls, so all scene assets
 can be prepared before any video rendering starts. Dragging an image onto a frame works too,
 and the script node fills a whole reel's stills from one multi-file selection. Uploading needs
-no image server, which matters on a machine where mflux cannot run — and generation can be
+no image server — and generation can be
 switched off entirely, per reel. Supplying or generating a still makes
 that beat a new shot, so its wire switches to a cut — unless it is already a bridge, where the
 still is the frame it lands on and the continuation is left alone. Anything far from 9:16 gets
@@ -499,13 +495,14 @@ Other measurements worth keeping:
   load. Chaining is serial by construction anyway. Parallelism is a latency tool, not a
   cost tool.
 
-### No quota, no key, no per-token charge
+### Gemini image generation
 
-Nothing outside the GPU render is metered. The language model is `qwen3.6` under Ollama on
-this machine — 36B MoE, 23 GiB of weights, with `vision`, `tools` and `thinking` all reported
+The language model is `qwen3.6` under Ollama on this machine — 36B MoE, 23 GiB of weights, with
+`vision`, `tools` and `thinking` all reported
 by `ollama show`, which is what lets one model write the script, drive the board through tool
-calls and look at the stills. The stills come from mflux, also local. No API key exists to
-leak and no request leaves the laptop.
+calls and look at the stills. The stills come from Gemini Nano Banana. Set `X-GOOG-API-KEY` in
+`.env`; prompts and reference images are sent to Google's image API, while generated files and
+scene history stay on disk.
 
 This replaced the Antigravity CLI, and one number is why it mattered: `agy`'s image tool
 allowed roughly **five generations per five-hour window**, and its agent turns came out of the
@@ -546,7 +543,7 @@ comfyui_minimax_h3.py   the Modal GPU app
 studio.py               the studio server
 studio/                 React + TypeScript + React Flow canvas
 prompts/                the authoring prompt for writing a script elsewhere
-image/                  Papercut Studio: the local mflux stills renderer (own README)
+image/                  Papercut Studio: the Gemini Nano Banana stills renderer (own README)
 Makefile                install, run, and the one-time Modal steps
 storyboard.py           CLI: full reel
 reel.py                 CLI: single clip
@@ -584,7 +581,7 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   beat moved off the reference join is ignored — and a two-reference frame renders in 31.4 s
   against 18.6 s for one, same prompt and seed. What nobody has *looked at* is whether it is
   better: whether four pictures hold the cast harder than one or average them into something
-  blander, and whether the *reference images show: …* clause helps or gives `flux2-klein-4b` one
+  blander, and whether the *reference images show: …* clause helps or gives Gemini one
   more thing to draw into the frame. `PAPERREEL_MAX_STILL_REFS` is how to explore it, and it
   costs nothing but wall clock.
 - **The still review is shown the cast reference, not the beat's uploads.** So a still that

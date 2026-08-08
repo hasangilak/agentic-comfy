@@ -55,7 +55,7 @@ export interface Beat {
    */
   ref_prompts: string[];
   /**
-   * What each picture was last DRAWN from — the mflux prompt, the analogue of `asset_prompt`
+   * What each picture was last DRAWN from — the Gemini prompt, the analogue of `asset_prompt`
    * for a still. "" on one that was uploaded rather than drawn. Same order, same length.
    *
    * A different field from `ref_prompts` on purpose: that says what the picture is FOR and

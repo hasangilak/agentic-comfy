@@ -149,7 +149,7 @@ def main() -> None:
             if (workdir / f"beat{beat['n']}_asset.png").exists():
                 print(f"[asset] beat {beat['n']}: already present, skipping")
 
-        # The local mflux renderer next door is the only generator: free, unmetered, and it
+        # The Gemini renderer next door is the only generator, and it
         # renders straight onto the H3 grid so nothing is cropped on the way to the video
         # model. Every still it produces is then looked at by the same local model that wrote
         # the script -- see paperreel/stills.py. With the server down there is nothing to fall

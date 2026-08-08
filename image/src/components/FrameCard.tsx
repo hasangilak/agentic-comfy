@@ -72,7 +72,7 @@ export function FrameCard({ frame, scene, onBeatChange, onRender, onOpen, disabl
 
       <footer>
         <small>
-          seed {frame.seed}
+          frame {number}
           {frame.elapsed !== undefined && ` · ${frame.elapsed}s`}
         </small>
         <div className="frame-actions">

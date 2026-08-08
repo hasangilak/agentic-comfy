@@ -14,7 +14,7 @@ import {
   type Scene,
   type SceneSettings,
 } from '../shared/types.ts'
-import { render, type RenderHandle } from './mflux.ts'
+import { render, type RenderHandle } from './gemini.ts'
 
 export const OUT_ROOT = path.resolve(process.cwd(), 'out')
 export const SCENES_ROOT = path.join(OUT_ROOT, 'scenes')
@@ -43,7 +43,7 @@ const scenes = new Map<string, Scene>()
 export const bus = new EventEmitter()
 bus.setMaxListeners(0)
 
-/** mflux holds ~18 GB of weights, so only one render may be in flight at a time. */
+/** Keep one remote image request in flight at a time so the existing scene ordering is stable. */
 let renderLock: Promise<void> = Promise.resolve()
 const active = new Map<string, RenderHandle>()
 
@@ -229,6 +229,8 @@ async function renderFrame(scene: Scene, index: number) {
       height: scene.height,
       steps: scene.steps,
       seed: frame.seed,
+      model: scene.geminiModel,
+      imageSize: scene.geminiImageSize,
       referencePaths: references,
     },
     (fraction) => {
@@ -256,7 +258,7 @@ async function renderFrame(scene: Scene, index: number) {
   }
 }
 
-/** Serialises every render through one global lock so MLX never holds two model copies. */
+/** Serialises every render through one global lock so cloud requests stay ordered and cancellable. */
 function queue<T>(job: () => Promise<T>): Promise<T> {
   const result = renderLock.then(job, job)
   renderLock = result.then(

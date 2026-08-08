@@ -28,7 +28,8 @@ export function useSceneStream(id: string | null) {
       if (payload.type === 'log' && payload.line) pending.current.push(payload.line)
     }
 
-    // mflux emits a tqdm line per tick; flush on a timer so React is not re-rendered per line.
+    // The renderer emits progress and status lines; flush them so React is not re-rendered
+    // for every line.
     const flush = setInterval(() => {
       if (!pending.current.length) return
       const batch = pending.current

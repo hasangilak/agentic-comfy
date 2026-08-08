@@ -22,7 +22,7 @@ import { ReferenceNote } from "./SequenceNode";
  * stored either way; this is only about when it is on screen.
  */
 /**
- * A picture that does not exist yet: describe it, and mflux draws it.
+ * A picture that does not exist yet: describe it, and Gemini draws it.
  *
  * Nothing is written to the board until the file lands. `Board.ref_paths` is file-existence
  * based, so a slot holding a prompt and no image is not a state the server can represent -- and
@@ -140,7 +140,7 @@ export function PicturePanel({
       {open ? (
         <div className="space-y-1.5 rounded border border-[#26262e] p-2">
           <span className="text-[10px] uppercase tracking-wide text-zinc-500">drawn from</span>
-          {/* `stillPictures`, because this text goes to mflux — the same prose vocabulary the
+          {/* `stillPictures`, because this text goes to Gemini — the same prose vocabulary the
               still's prompt uses, not the video model's `<Picture N>` tags. */}
           <PromptField
             className={`${inputClass} thin h-24 leading-relaxed`}
@@ -149,7 +149,7 @@ export function PicturePanel({
             onBlur={draw.flush}
             options={stillPictures(beat)}
             placeholder="what this picture shows — the prop, the costume, the set, on a plain ground"
-            title="the prompt mflux draws this picture from. Not what the picture is FOR — that is
+            title="the prompt Gemini draws this picture from. Not what the picture is FOR — that is
               the note below, and it is what the video model is told. Type @ to name another of
               this scene's pictures"
           />

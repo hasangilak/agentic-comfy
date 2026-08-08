@@ -137,7 +137,7 @@ export const api = {
    * Say things about one reference picture. `index` is 1-based, the number the prompt uses.
    *
    * `prompt` is what the model should take FROM the picture, and it marks the beat stale
-   * because those words go into the render. `draw` is what mflux is asked for when the picture
+   * because those words go into the render. `draw` is what Gemini is asked for when the picture
    * is drawn again, and it does not — it produces a picture, and the picture's own content hash
    * is already in the fingerprint, exactly as `asset_prompt` is left out because the still it
    * made is hashed.

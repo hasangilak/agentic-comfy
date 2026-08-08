@@ -7,9 +7,13 @@ import cors from 'cors'
 import express from 'express'
 import multer from 'multer'
 
+import { configured as geminiConfigured, model as geminiModel } from './gemini.ts'
+
 import {
   ASPECT_PRESETS,
   CONSISTENCY_MODES,
+  GEMINI_IMAGE_MODELS,
+  GEMINI_IMAGE_SIZES,
   DEFAULT_NEGATIVE,
   DEFAULT_STYLE,
   MAX_FRAMES,
@@ -64,6 +68,16 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'papercut-studio',
+    provider: 'google-gemini',
+    gemini: { models: GEMINI_IMAGE_MODELS, imageSizes: GEMINI_IMAGE_SIZES },
+    model: (() => {
+      try {
+        return geminiModel()
+      } catch {
+        return null
+      }
+    })(),
+    configured: geminiConfigured(),
     aspects: ASPECT_PRESETS,
     // Advertised so a caller can tell a build that knows `edit` from one that does not. An
     // older server handed `consistency: "edit"` stores the string and then matches none of the

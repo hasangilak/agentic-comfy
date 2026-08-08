@@ -151,7 +151,7 @@ TOOLS = [
     qwen.tool(
         "generate_stills",
         "Ask the local image server to render the opening stills for these beats, then look "
-        "at what came back. Free and unmetered, but roughly 10-18 seconds per still, so ask "
+        "at what came back. Gemini is metered and roughly tens of seconds per still, so ask "
         "for the beats that need one rather than for all of them. Works on every join except a "
         "'chain' beat, which opens on the previous clip and has nowhere to put one, and a "
         "'reference' beat set to carry the previous clip, which opens on that instead.",

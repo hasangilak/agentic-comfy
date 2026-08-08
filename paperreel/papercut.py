@@ -1,4 +1,4 @@
-"""Opening stills from Papercut Studio -- the local mflux renderer in `image/`.
+"""Opening stills from Papercut Studio -- the Gemini renderer in `image/`.
 
 The transport, and only the transport. `stills.py` owns the judgement around it: which beats
 may get a still at all, and what happens to one that comes back looking like a different
@@ -36,7 +36,7 @@ import httpx
 from . import board as board_mod
 from . import config
 
-# Long enough to survive a machine busy with an mflux render, short enough that a studio with
+# Long enough to survive a Gemini request, short enough that a studio with
 # no image server answers "not running" promptly instead of stalling on every asset click.
 PROBE_TIMEOUT = 2.0
 # No read timeout on the event stream: a frame takes tens of seconds and the server's only
@@ -54,7 +54,7 @@ def health(url: str | None = None) -> dict | None:
     """What the image server says about itself, or None if it is not there.
 
     Deliberately swallows every transport error: "not running" is an ordinary state on a
-    machine that supplies its own stills, or one where mflux cannot run at all, not a fault to
+    machine that supplies its own stills, or one where the Gemini server cannot run at all, not a fault to
     report. `stills.py` turns it into a refusal with words when a still is actually wanted.
     """
     try:
@@ -263,7 +263,7 @@ def _download(client: httpx.Client, url: str, out_path: Path) -> Path:
 
     The image server's output directory is relative to whatever directory it was started
     in, so guessing at `image/out/...` from here would break the moment someone runs it from
-    somewhere else. Re-encoding through PIL normalises the file, which is a no-op on mflux's
+    somewhere else. Re-encoding through PIL normalises the file, which is a no-op on Gemini's
     real PNGs and cheap enough not to special-case an uploaded one.
     """
     from PIL import Image
@@ -308,7 +308,7 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
     seen: set[int] = set()
     for event in _events(client, scene_id):
         if cancelled is not None and cancelled():
-            # Papercut's cancel is a SIGTERM to mflux plus a flag, so the frame in flight is
+            # Papercut's cancel aborts the Gemini request plus a flag, so the frame in flight is
             # lost and the ones already on disk are kept. Collect those before leaving.
             client.post(f"/api/scenes/{scene_id}/cancel")
             log("[stills] cancelled")
@@ -351,7 +351,7 @@ def generate(board: board_mod.Board, beats: list[int], *,
              cancelled: Callable[[], bool] | None = None,
              url: str | None = None,
              seed: int | None = None) -> list[int]:
-    """Render the opening stills for these beats, locally. Returns the ones that landed.
+    """Render the opening stills for these beats through Gemini. Returns the ones that landed.
 
     Beats are rendered in the order given, in runs that share their conditioning images. A beat
     with no cast reference yet is rendered on its own first, because its still becomes the
@@ -373,7 +373,7 @@ def generate(board: board_mod.Board, beats: list[int], *,
         for pictures, run in _runs(board, beats, cap, refs_cap):
             if cancelled is not None and cancelled():
                 break
-            log(f"[stills] beats {run}: rendering locally"
+            log(f"[stills] beats {run}: rendering through Gemini"
                 + (f", drawn from {', '.join(path.name for path, _note in pictures)}"
                    if pictures else " (nothing to match yet -- this defines the look)"))
             made.extend(_render_scene(client, board, run, pictures, log=log,

@@ -22,7 +22,7 @@ STAMP := .make/uv.stamp
 QWEN_MODEL ?= qwen3.6
 
 .DEFAULT_GOAL := help
-.PHONY: help install build run backend frontend serve stop stop-mflux images studio qwen \
+.PHONY: help install build run backend frontend serve stop images studio qwen \
         login models deploy stop-app clean
 
 help:
@@ -34,8 +34,7 @@ help:
 	@echo "make images    Papercut Studio's render server on :$(IMAGE_PORT) -- where stills come from"
 	@echo "make studio    an alias for make run"
 	@echo "make qwen      pull $(QWEN_MODEL) into Ollama -- the script writer and still reviewer"
-	@echo "make stop      kill every server either project has running (an mflux render survives)"
-	@echo "make stop-mflux  end an in-flight mflux render -- that frame is lost"
+	@echo "make stop      kill every server either project has running"
 	@echo
 	@echo "one-time, touches Modal:"
 	@echo "make login     uvx modal setup"
@@ -62,7 +61,7 @@ build: $(STUDIO)/node_modules
 # All three servers, the two background ones first. `kill 0` on the way out takes the whole
 # process group with it -- without it, Ctrl-C leaves uv's python child holding port
 # $(BACKEND_PORT) and the next `make run` fails with an address already in use, and the image
-# server holding :$(IMAGE_PORT) with an mflux render attached to it.
+# server holding :$(IMAGE_PORT).
 #
 # npm directly rather than a recursive `$(MAKE) -C $(IMAGE)`: a recipe line containing
 # $(MAKE) is executed even under `make -n`, and this whole trap is one continued line -- so
@@ -99,10 +98,9 @@ $(IMAGE)/node_modules: $(IMAGE)/package.json $(IMAGE)/package-lock.json
 	npm --prefix $(IMAGE) install
 	@touch $@
 
-# Where opening stills come from, and the only place they come from: mflux on this machine, so
-# it spends no money. With this not listening a beat's still has to be an upload, which the
-# studio says on the node rather than failing a click. Separate target because it holds ~18 GB
-# of weights while rendering and is not wanted on a session that is only editing a script.
+# Where opening stills come from: the Gemini Nano Banana image model, reached by the local
+# render server. With this not listening a beat's still has to be an upload, which the studio
+# says on the node rather than failing a click.
 images: $(IMAGE)/node_modules
 	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server
 
@@ -130,9 +128,7 @@ studio: run
 # pgrep -f sees this recipe's shell too, and an unsplit pattern matches the shell that is
 # running it.
 #
-# An in-flight mflux render survives this on purpose -- it holds ~18 GB and killing it loses
-# the frame. `make stop-mflux` is the one that ends it, and the note below fires only when
-# there is one to end.
+# The image server is included here so one command still starts the complete local workflow.
 stop:
 	@pids=$$( { pgrep -f "studio""\.py"; \
 	            pgrep -f "$(CURDIR)/$(STUDIO)/node_""modules/"; \
@@ -140,17 +136,7 @@ stop:
 	if [ -z "$$pids" ]; then echo "nothing running"; else \
 		kill $$pids 2>/dev/null || true; \
 		echo "stopped: $$(echo $$pids | tr '\n' ' ')"; \
-	fi; \
-	m=$$(pgrep -f "mflux-generate-""flux2" || true); \
-	if [ -n "$$m" ]; then \
-		echo "note: an mflux render is still running (pid $$(echo $$m | tr '\n' ' ')) and holds ~18 GB"; \
-		echo "      'make stop-mflux' ends it -- the frame is lost, the scene on disk is not"; \
 	fi
-
-# Plain `make` rather than $(MAKE): a recipe line containing $(MAKE) runs even under
-# `make -n`, and a dry run must not kill a render.
-stop-mflux:
-	@make -C $(IMAGE) stop-mflux
 
 login:
 	uvx modal setup

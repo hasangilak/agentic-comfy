@@ -164,7 +164,7 @@ function assetsOf(beat: Beat): Asset[] {
       kind: "new",
       url: null,
       label: "draw one",
-      note: "describe a prop, a costume, a set — mflux draws it and it becomes a reference",
+      note: "describe a prop, a costume, a set — Gemini draws it and it becomes a reference",
     });
   }
   return found;
@@ -500,7 +500,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     <span className="text-[10px] uppercase tracking-wide text-zinc-500">
                       drawn from
                     </span>
-                    {/* `stillPictures`, not `videoPictures`: this text reaches mflux, whose
+                    {/* `stillPictures`, not `videoPictures`: this text reaches Gemini, whose
                         picture list is cast-first and capped — so the same picture is a
                         different number here than it is in the action field below. */}
                     <PromptField

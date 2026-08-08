@@ -2,9 +2,15 @@ import { useRef, useState } from 'react'
 
 import {
   ASPECT_PRESETS,
+  DEFAULT_GEMINI_IMAGE_MODEL,
+  DEFAULT_GEMINI_IMAGE_SIZE,
+  GEMINI_IMAGE_MODELS,
+  GEMINI_IMAGE_SIZES,
   MAX_FRAMES,
   MIN_FRAMES,
   type ConsistencyMode,
+  type GeminiImageModel,
+  type GeminiImageSize,
   type SceneSettings,
 } from '../../shared/types.ts'
 import { api } from '../api.ts'
@@ -37,6 +43,9 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
   const fps = value.frameCount / value.duration
   const hold = value.duration / value.frameCount
   const estimate = estimateSceneSeconds(value)
+  const selectedModel = value.geminiModel ?? DEFAULT_GEMINI_IMAGE_MODEL
+  const selectedSize = value.geminiImageSize ?? DEFAULT_GEMINI_IMAGE_SIZE
+  const liteModel = selectedModel === 'gemini-3.1-flash-lite-image'
 
   async function handleFile(file: File | undefined) {
     if (!file) return
@@ -199,7 +208,7 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
           <input
             value={value.negativePrompt}
             onChange={(e) => set('negativePrompt', e.target.value)}
-            placeholder="leave empty — it doubles render time"
+            placeholder="optional things Gemini should avoid"
           />
         </label>
 
@@ -216,41 +225,54 @@ export function SceneForm({ value, onChange, onSubmit, submitLabel, busy, dirty 
           </label>
 
           <label className="field">
-            <span>
-              Steps <b>{value.steps}</b>
-            </span>
-            <input
-              type="range"
-              min={2}
-              max={12}
-              step={1}
-              value={value.steps}
-              onChange={(e) => set('steps', Number(e.target.value))}
-            />
+            <span>Gemini model</span>
+            <select
+              value={selectedModel}
+              onChange={(e) => {
+                const model = e.target.value as GeminiImageModel
+                onChange({
+                  ...value,
+                  geminiModel: model,
+                  geminiImageSize: model === 'gemini-3.1-flash-lite-image' ? '1K' : selectedSize,
+                })
+              }}
+            >
+              {GEMINI_IMAGE_MODELS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 
         <div className="field-row">
           <label className="field">
-            <span>Seed</span>
-            <input
-              type="number"
-              value={value.seed}
-              onChange={(e) => set('seed', Number(e.target.value))}
-              min={0}
-            />
+            <span>Image size</span>
+            <select
+              value={liteModel ? '1K' : selectedSize}
+              onChange={(e) => set('geminiImageSize', e.target.value as GeminiImageSize)}
+              disabled={liteModel}
+            >
+              {GEMINI_IMAGE_SIZES.map((size) => (
+                <option key={size} value={size} disabled={liteModel && size !== '1K'}>
+                  {size}
+                </option>
+              ))}
+            </select>
           </label>
-          <label className="field checkbox">
-            <input
-              type="checkbox"
-              checked={value.varySeeds}
-              onChange={(e) => set('varySeeds', e.target.checked)}
-            />
-            <span>Vary seed per frame</span>
-          </label>
+          <div className="field">
+            <span>Model note</span>
+            <p className="hint">
+              {GEMINI_IMAGE_MODELS.find((option) => option.id === selectedModel)?.blurb}
+              {liteModel && ' Output is fixed at 1K.'}
+            </p>
+          </div>
         </div>
+
         <small className="hint">
-          A shared seed keeps frames closer together; varying it gives each frame more independent motion.
+          Gemini chooses its own inference steps and randomness. Distinct beat prompts and
+          references keep frames coherent while allowing the motion to change.
         </small>
       </details>
 

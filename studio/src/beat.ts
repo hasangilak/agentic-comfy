@@ -102,7 +102,7 @@ export function videoPictures(beat: Beat): PictureRef[] {
  * What the STILL model is given. Mirrors `Board.still_pictures`, including its asymmetry.
  *
  * The cast reference is in **unconditionally**; the director's uploads are in **only** on a
- * reference join. Getting that backwards would have the @-menu naming pictures mflux is never
+ * reference join. Getting that backwards would have the @-menu naming pictures Gemini is never
  * handed. Everything past `still_refs` stays in the list but is marked unavailable — hiding it
  * would make the menu disagree with the tray you are looking at.
  */

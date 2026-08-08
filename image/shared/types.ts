@@ -60,14 +60,23 @@ export const MAX_FRAMES = 9
 /**
  * How many conditioning images one frame may be rendered from.
  *
- * `mflux-generate-flux2-edit` takes any number of `--image-paths`, and every one of them is
- * encoded and carried through every sampling step — so this is a time cap, not a model limit.
- * Measured: the same prompt, seed and steps at 768x1344 took 18.6 s with one reference and
- * 31.4 s with two, so each extra picture costs about as much again as the first. Four is
- * therefore a frame of roughly a minute. Raise it if a scene stops improving before it stops
- * slowing down — what more pictures buy in fidelity has not been compared.
+ * Gemini image models accept multiple inline reference images. Four stays conservative across
+ * the supported Nano Banana models and leaves room for the prompt without creating oversized
+ * API payloads. Raise it only after comparing consistency and request latency.
  */
 export const MAX_REFERENCES = 4
+
+export const GEMINI_IMAGE_MODELS = [
+  { id: 'gemini-3-pro-image', label: 'Nano Banana Pro', blurb: 'Highest quality and creative control.' },
+  { id: 'gemini-3.1-flash-image', label: 'Nano Banana 2', blurb: 'Best balance of quality, speed, and references.' },
+  { id: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite', blurb: 'Fastest and cheapest; 1K output only.' },
+] as const
+
+export type GeminiImageModel = typeof GEMINI_IMAGE_MODELS[number]['id']
+export const GEMINI_IMAGE_SIZES = ['1K', '2K', '4K'] as const
+export type GeminiImageSize = typeof GEMINI_IMAGE_SIZES[number]
+export const DEFAULT_GEMINI_IMAGE_MODEL: GeminiImageModel = 'gemini-3-pro-image'
+export const DEFAULT_GEMINI_IMAGE_SIZE: GeminiImageSize = '2K'
 
 export interface Frame {
   index: number
@@ -101,6 +110,10 @@ export interface SceneSettings {
   /** Give every frame its own seed instead of reusing the scene seed. */
   varySeeds: boolean
   consistency: ConsistencyMode
+  /** Gemini image model for this scene; omitted by older/API-created scenes. */
+  geminiModel?: GeminiImageModel
+  /** Gemini output size for this scene; Lite is forced to 1K by the server. */
+  geminiImageSize?: GeminiImageSize
   /** Server-side path of an uploaded reference image, if any. */
   referencePath?: string
   referenceUrl?: string

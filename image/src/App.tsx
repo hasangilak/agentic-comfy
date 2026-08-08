@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   DEFAULT_NEGATIVE,
+  DEFAULT_GEMINI_IMAGE_MODEL,
+  DEFAULT_GEMINI_IMAGE_SIZE,
   DEFAULT_STYLE,
   defaultBeat,
   type Scene,
@@ -33,6 +35,8 @@ function makeDefaults(): SceneSettings {
     seed: Math.floor(Math.random() * 1_000_000),
     varySeeds: false,
     consistency: 'chain',
+    geminiModel: DEFAULT_GEMINI_IMAGE_MODEL,
+    geminiImageSize: DEFAULT_GEMINI_IMAGE_SIZE,
   }
 }
 
@@ -49,6 +53,8 @@ function settingsOf(scene: Scene): SceneSettings {
     seed: scene.seed,
     varySeeds: scene.varySeeds,
     consistency: scene.consistency,
+    geminiModel: scene.geminiModel ?? DEFAULT_GEMINI_IMAGE_MODEL,
+    geminiImageSize: scene.geminiImageSize ?? DEFAULT_GEMINI_IMAGE_SIZE,
     referencePath: scene.referencePath,
     referenceUrl: scene.referenceUrl,
     // Carried even though nothing here can add a second picture: a scene created over the API
@@ -176,7 +182,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <h1>Papercut Studio</h1>
-        <p className="topbar-sub">Stop-motion keyframes on flux2-klein-4b, local.</p>
+        <p className="topbar-sub">Stop-motion keyframes on Gemini Nano Banana.</p>
         <p className="conn" role="status">
           <span className="dot" data-connected={connected} />
           {connected ? 'Render server connected' : 'Render server not connected'}
@@ -344,7 +350,7 @@ export default function App() {
                   open={showLog}
                   onToggle={(e) => setShowLog(e.currentTarget.open)}
                 >
-                  <summary>mflux output ({logs.length})</summary>
+                  <summary>Gemini output ({logs.length})</summary>
                   <pre ref={logRef} tabIndex={0}>
                     {logs.length ? logs.join('\n') : 'No output yet — nothing has rendered this session.'}
                   </pre>
