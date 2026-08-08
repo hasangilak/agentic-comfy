@@ -132,8 +132,8 @@ CHAT_SYSTEM = (
     "ask you to change -- the setting, the framing, the scale, the moment, and the style "
     "bible's own words for the cast. Every other still in this reel is held to those words, so "
     "paraphrasing them here is how one shot quietly stops matching the rest.\n\n"
-    "Rendering the still again is free and takes about 10 to 18 seconds, so ask for it whenever "
-    "the picture itself should change. Rendering the VIDEO is not something you can do; it "
+    "Rendering the still again sends the current image and its beat references through Gemini, "
+    "so ask for it whenever the picture itself should change. Rendering the VIDEO is not something you can do; it "
     "costs real money and only the director starts it.\n\n"
     + config.MENTION_NOTE
 )
@@ -214,7 +214,9 @@ def generate(board: board_mod.Board, beats: list[int], *,
              log: Callable[[str], None] = print,
              progress: Callable[[int, float], None] | None = None,
              announce: Callable[[], None] | None = None,
-             cancelled: Callable[[], bool] | None = None) -> list[int]:
+             cancelled: Callable[[], bool] | None = None,
+             gemini_model: str | None = None,
+             gemini_image_size: str | None = None) -> list[int]:
     """Render these beats' opening stills and review them. Returns the ones that landed.
 
     The beat that has no cast reference yet is rendered and reviewed entirely on its own
@@ -236,10 +238,12 @@ def generate(board: board_mod.Board, beats: list[int], *,
             head = remaining.pop(0)
             log(f"[stills] beat {head} defines the look, so it is settled before the rest")
             made += _attempts(board, [head], log=log, progress=progress,
-                              announce=announce, cancelled=cancelled)
+                              announce=announce, cancelled=cancelled,
+                              gemini_model=gemini_model, gemini_image_size=gemini_image_size)
             continue
         made += _attempts(board, remaining, log=log, progress=progress,
-                          announce=announce, cancelled=cancelled)
+                          announce=announce, cancelled=cancelled,
+                          gemini_model=gemini_model, gemini_image_size=gemini_image_size)
         remaining = []
     return sorted(set(made))
 
@@ -248,7 +252,9 @@ def _attempts(board: board_mod.Board, beats: list[int], *,
               log: Callable[[str], None],
               progress: Callable[[int, float], None] | None,
               announce: Callable[[], None] | None,
-              cancelled: Callable[[], bool] | None) -> list[int]:
+              cancelled: Callable[[], bool] | None,
+              gemini_model: str | None = None,
+              gemini_image_size: str | None = None) -> list[int]:
     """Render, review, rewrite the rejects' prompts, render those again."""
     made: set[int] = set()
     pending = list(beats)
@@ -259,6 +265,7 @@ def _attempts(board: board_mod.Board, beats: list[int], *,
             log(f"[stills] beats {pending}: rendering again from the rewritten prompts")
         landed = papercut.generate(
             board, pending, log=log, progress=progress,
+            gemini_model=gemini_model, gemini_image_size=gemini_image_size,
             # The board is republished per still rather than per batch: a nine-beat run is
             # minutes long, and the canvas filling in one node at a time is the whole reason
             # the image server streams its progress at all.
@@ -415,13 +422,20 @@ def remember(board: board_mod.Board, n: int, role: str, text: str, **extra) -> d
 def discussable(board: board_mod.Board, n: int) -> None:
     """May this beat's still be talked about at all? Raises with the reason if not.
 
-    The same three refusals a generation gets, because a conversation about a still normally
-    ends in one -- a board whose stills are the user's own work, a beat that opens on the
-    previous clip, a beat number that is not on this board. Plus the one this adds: there has
-    to be a picture. The model is being asked what is wrong with something it can see, and
-    "generate one first" is a better answer than a turn spent imagining it.
+    Batch generation still refuses a manual-stills reel, but an uploaded still may be refined:
+    that is an edit of a supplied image, not filling the reel's stills automatically. The other
+    guards are a beat that opens on the previous clip, a beat number that is not on this board,
+    and the requirement that there be a picture to look at.
     """
-    wanted(board, [n])
+    if board.data.get("manual_stills"):
+        if not any(b["n"] == n for b in board.beats):
+            raise StillsError(f"no such beat: {n}", status=404)
+        if board.carries_motion(board.beat(n)):
+            raise StillsError(
+                f"beat {n} opens on the previous clip's tail, so it has no still to refine.",
+            )
+    else:
+        wanted(board, [n])
     if not board.asset_path(n).is_file():
         raise StillsError(
             f"beat {n} has no still yet. Generate or upload one, then say what to change "
@@ -510,6 +524,8 @@ def converse(board: board_mod.Board, n: int, message: str, *,
     try:
         made = papercut.generate(
             board, [n], log=log, progress=progress,
+            gemini_model=board.beat(n).get("gemini_model"),
+            gemini_image_size=board.beat(n).get("gemini_image_size"),
             on_still=None if announce is None else (lambda _n: announce()),
             cancelled=cancelled,
             seed=None if changed else _retry_seed(board, n),

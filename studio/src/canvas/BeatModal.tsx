@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { api, clock, money } from "../api";
 import { slotsLeft, stillPictures } from "../beat";
-import type { Beat, Board } from "../types";
+import {
+  DEFAULT_GEMINI_IMAGE_MODEL,
+  DEFAULT_GEMINI_IMAGE_SIZE,
+  GEMINI_IMAGE_MODELS,
+  GEMINI_IMAGE_SIZES,
+  type Beat,
+  type Board,
+  type GeminiImageModel,
+  type GeminiImageSize,
+} from "../types";
 import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Badge, Button, inputClass } from "../ui";
 import { AddPicture, type AddPictureHandle } from "./AddPicture";
@@ -71,7 +80,7 @@ type Asset = {
   index?: number;
 };
 
-function assetsOf(beat: Beat): Asset[] {
+function assetsOf(beat: Beat, allowNewPicture = true): Asset[] {
   const isBridge = beat.source === "bridge";
   const carrying = beat.source === "reference" && beat.carry;
   const found: Asset[] = [];
@@ -158,7 +167,7 @@ function assetsOf(beat: Beat): Asset[] {
   // Last, because it is the affordance rather than a thing the scene owns -- and because
   // appending is what `uploadRefs` does, so a slot offered anywhere else would promise a
   // position the API cannot give.
-  if (slotsLeft(beat) > 0) {
+  if (allowNewPicture && slotsLeft(beat) > 0) {
     found.push({
       id: "new",
       kind: "new",
@@ -178,7 +187,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
   const picker = useRef<HTMLInputElement>(null);
   const tray = useRef<AddPictureHandle>(null);
 
-  const assets = assetsOf(beat);
+  const assets = assetsOf(beat, !board.manual_stills);
   const current = assets.find((asset) => asset.id === picked) ?? assets[0] ?? null;
 
   /**
@@ -200,6 +209,29 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
   };
   const isBridge = beat.source === "bridge";
   const carrying = beat.source === "reference" && beat.carry;
+  const [geminiModel, setGeminiModel] = useState<GeminiImageModel>(
+    beat.gemini_model ?? DEFAULT_GEMINI_IMAGE_MODEL,
+  );
+  const [geminiImageSize, setGeminiImageSize] = useState<GeminiImageSize>(
+    beat.gemini_image_size ?? DEFAULT_GEMINI_IMAGE_SIZE,
+  );
+  const liteModel = geminiModel === "gemini-3.1-flash-lite-image";
+
+  useEffect(() => {
+    setGeminiModel(beat.gemini_model ?? DEFAULT_GEMINI_IMAGE_MODEL);
+    setGeminiImageSize(beat.gemini_image_size ?? DEFAULT_GEMINI_IMAGE_SIZE);
+  }, [beat.n, beat.gemini_model, beat.gemini_image_size]);
+
+  const saveGeminiSettings = (model: GeminiImageModel, imageSize: GeminiImageSize) => {
+    setGeminiModel(model);
+    setGeminiImageSize(imageSize);
+    void studio.guard(() =>
+      api.patchBeat(board.slug, beat.n, {
+        gemini_model: model,
+        gemini_image_size: imageSize,
+      }),
+    );
+  };
 
   const generating = useBusy(
     "asset",
@@ -402,6 +434,57 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
           {/* What can be done to the thing on the left, then the words that get rendered. */}
           <div className="thin flex w-[26rem] shrink-0 flex-col gap-3 overflow-y-auto border-l
             border-[#26262e] p-3">
+            <div className="space-y-2 rounded border border-[#26262e] bg-[#0d0d10] p-2">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-500">
+                Gemini image settings for this beat
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px] text-zinc-400">
+                  <span className="mb-1 block">model</span>
+                  <select
+                    className={`${inputClass} h-8 py-1 text-[11px]`}
+                    value={geminiModel}
+                    onChange={(event) => {
+                      const model = event.target.value as GeminiImageModel;
+                      saveGeminiSettings(
+                        model,
+                        model === "gemini-3.1-flash-lite-image" ? "1K" : geminiImageSize,
+                      );
+                    }}
+                  >
+                    {GEMINI_IMAGE_MODELS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-[10px] text-zinc-400">
+                  <span className="mb-1 block">image size</span>
+                  <select
+                    className={`${inputClass} h-8 py-1 text-[11px]`}
+                    value={liteModel ? "1K" : geminiImageSize}
+                    disabled={liteModel}
+                    onChange={(event) =>
+                      saveGeminiSettings(geminiModel, event.target.value as GeminiImageSize)
+                    }
+                  >
+                    {GEMINI_IMAGE_SIZES.map((size) => (
+                      <option key={size} value={size} disabled={liteModel && size !== "1K"}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="text-[10px] leading-snug text-zinc-600">
+                {GEMINI_IMAGE_MODELS.find((option) => option.id === geminiModel)?.blurb}
+                {liteModel
+                  ? " Output is fixed at 1K."
+                  : " Used for this beat's stills and drawn pictures."}
+              </p>
+            </div>
+
             {current ? (
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-1.5">
@@ -428,7 +511,12 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                           tone="ghost"
                           disabled={generating}
                           onClick={() =>
-                            void studio.guard(() => api.assets(board.slug, [beat.n]))
+                            void studio.guard(() =>
+                              api.assets(board.slug, [beat.n], {
+                                model: geminiModel,
+                                imageSize: geminiImageSize,
+                              }),
+                            )
                           }
                           title={
                             board.reference
@@ -490,10 +578,18 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     index={current.index}
                     note={current.note}
                     label={beat.ref_offset + current.index}
+                    geminiModel={geminiModel}
+                    geminiImageSize={geminiImageSize}
                   />
                 ) : null}
 
-                {current.kind === "new" ? <NewPicture beat={beat} /> : null}
+                {current.kind === "new" ? (
+                  <NewPicture
+                    beat={beat}
+                    geminiModel={geminiModel}
+                    geminiImageSize={geminiImageSize}
+                  />
+                ) : null}
 
                 {current.kind === "still" ? (
                   <>
@@ -517,11 +613,9 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                         below rewrites it; editing it here does the same thing by hand. Type @ to
                         name one of this scene's pictures"
                     />
-                    {board.manual_stills || !beat.asset ? (
+                    {!beat.asset ? (
                       <p className="text-[10px] leading-snug text-zinc-600">
-                        {board.manual_stills
-                          ? "This reel supplies its own stills, so nothing here may redraw one."
-                          : "Generate or upload the still and you can talk about it here."}
+                        "Generate or upload the still and you can talk about it here."
                       </p>
                     ) : (
                       <StillChat beat={beat} expanded />

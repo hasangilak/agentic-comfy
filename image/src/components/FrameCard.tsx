@@ -77,7 +77,7 @@ export function FrameCard({ frame, scene, onBeatChange, onRender, onOpen, disabl
         </small>
         <div className="frame-actions">
           {frame.url && (
-            <a className="button ghost" href={frame.url} download={`frame-${number}.png`}>
+            <a className="button ghost" href={frame.url} download={`frame-${number}.jpg`}>
               Save
             </a>
           )}

@@ -52,11 +52,20 @@ function sceneDir(id: string) {
 }
 
 function framePath(id: string, index: number) {
+  return path.join(sceneDir(id), `frame-${String(index + 1).padStart(2, '0')}.jpg`)
+}
+
+function legacyFramePath(id: string, index: number) {
   return path.join(sceneDir(id), `frame-${String(index + 1).padStart(2, '0')}.png`)
 }
 
+function existingFramePath(id: string, index: number) {
+  const current = framePath(id, index)
+  return fs.existsSync(current) ? current : legacyFramePath(id, index)
+}
+
 function frameUrl(id: string, index: number) {
-  const name = `frame-${String(index + 1).padStart(2, '0')}.png`
+  const name = `frame-${String(index + 1).padStart(2, '0')}.jpg`
   return `/files/scenes/${id}/${name}`
 }
 
@@ -176,7 +185,7 @@ function referenceFor(scene: Scene, index: number): string[] | undefined {
 
   if (scene.consistency === 'anchor') {
     if (uploaded.length) return uploaded
-    const first = framePath(scene.id, 0)
+    const first = existingFramePath(scene.id, 0)
     if (index > 0 && fs.existsSync(first)) return [first]
     return undefined
   }
@@ -185,7 +194,7 @@ function referenceFor(scene: Scene, index: number): string[] | undefined {
   // the mode is that each frame continues the one before it, and a second picture beside it
   // pulls the look back towards something that is not where the motion had got to.
   for (let i = index - 1; i >= 0; i--) {
-    const prev = framePath(scene.id, i)
+    const prev = existingFramePath(scene.id, i)
     if (fs.existsSync(prev)) return [prev]
   }
   return uploaded.length ? uploaded : undefined

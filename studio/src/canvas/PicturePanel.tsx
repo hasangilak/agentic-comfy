@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { joinWarning, stillPictures } from "../beat";
-import type { Beat } from "../types";
+import type { Beat, GeminiImageModel, GeminiImageSize } from "../types";
 import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 import { AssetChat } from "./AssetChat";
@@ -29,7 +29,15 @@ import { ReferenceNote } from "./SequenceNode";
  * a placeholder image would sit in `pictures_for` where a render could pay for it. The cost is
  * that a failed draw loses what you typed; it is in the job's log, and the alternative is worse.
  */
-export function NewPicture({ beat }: { beat: Beat }) {
+export function NewPicture({
+  beat,
+  geminiModel,
+  geminiImageSize,
+}: {
+  beat: Beat;
+  geminiModel: GeminiImageModel;
+  geminiImageSize: GeminiImageSize;
+}) {
   const studio = useStudio();
   const board = studio.board!;
   const [prompt, setPrompt] = useState("");
@@ -40,7 +48,12 @@ export function NewPicture({ beat }: { beat: Beat }) {
     const trimmed = prompt.trim();
     if (!trimmed || drawing) return;
     setPrompt("");
-    void studio.guard(() => api.createRef(board.slug, beat.n, trimmed));
+    void studio.guard(() =>
+      api.createRef(board.slug, beat.n, trimmed, {
+        model: geminiModel,
+        imageSize: geminiImageSize,
+      }),
+    );
   };
 
   return (
@@ -51,14 +64,14 @@ export function NewPicture({ beat }: { beat: Beat }) {
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
         placeholder="a close-up of an iron-grey club, layered cardstock, side on"
-        title="a design sheet, not a shot: the subject whole and centred on a plain ground. It is
-          drawn matched to the reel's cast reference, and becomes a picture you can then iterate on"
+          title="a design sheet, not a shot: the subject whole and centred on a plain ground. It is
+            drawn with the beat's available cast, opening-still, and reference images as context"
       />
       <div className="flex flex-wrap items-center gap-1.5">
         <Button tone="primary" onClick={send} disabled={drawing || !prompt.trim()}>
           {drawing ? "drawing…" : "✦ draw it"}
         </Button>
-        <span className="text-[10px] text-zinc-600">free, ~10–18 s</span>
+        <span className="text-[10px] text-zinc-600">Gemini image generation · beat references included</span>
       </div>
       {warning ? (
         <p className="text-[10px] leading-snug text-[#f59e0b]">⚠ drawing one means {warning}</p>
@@ -81,6 +94,8 @@ export function PicturePanel({
   index,
   note,
   label,
+  geminiModel,
+  geminiImageSize,
 }: {
   beat: Beat;
   /** 1-based, the number the API addresses this picture by — not the number the prompt uses. */
@@ -88,6 +103,8 @@ export function PicturePanel({
   note: string;
   /** What the prompt calls it: `ref_offset + index`. */
   label: number;
+  geminiModel: GeminiImageModel;
+  geminiImageSize: GeminiImageSize;
 }) {
   const studio = useStudio();
   const board = studio.board!;
@@ -113,7 +130,13 @@ export function PicturePanel({
     // Flushed first, so ✦ never renders the prompt that was on screen a debounce ago. Same
     // ordering `ReviseField.send` uses, and for the same reason.
     draw.flush();
-    void studio.guard(() => api.drawRef(board.slug, beat.n, index));
+    void studio.guard(() =>
+      api.drawRef(board.slug, beat.n, index, {
+        prompt: draw.draft.trim(),
+        model: geminiModel,
+        imageSize: geminiImageSize,
+      }),
+    );
   };
 
   return (
@@ -127,8 +150,9 @@ export function PicturePanel({
           onClick={() => setOpen((current) => !current)}
           title={
             stored
-              ? "draw this picture again — free, ~10–18 s. It is edited rather than restarted: " +
-                "the image server is told to hold what is there and change only what you ask for"
+              ? "draw this picture again with the current picture first and the beat's other " +
+                "references available. It is edited rather than restarted: the image server is " +
+                "told to hold what is there and change only what you ask for"
               : "this picture was uploaded, so there is no prompt to draw it from yet. Say what " +
                 "it should be and it becomes something you can iterate on"
           }
@@ -159,8 +183,8 @@ export function PicturePanel({
             </Button>
             <p className="text-[10px] leading-snug text-zinc-600">
               A design sheet, not a shot: the subject whole and centred on a plain ground, nothing
-              cropped. It is drawn from the reel's cast reference and from this picture itself, so
-              a redraw edits rather than starts over.
+              cropped. The current picture is sent first for edits, followed by the beat's other
+              available references for context.
             </p>
           </div>
           {studio.stillsBackend === "papercut" ? null : (
@@ -197,7 +221,8 @@ export function PicturePanel({
           <>
             “make the club longer and more battered”, “drop the background to plain grey”, “same
             thing, a different draw”. The prompt is rewritten and the picture drawn again from
-            it — the clip is not touched until you render it.
+            it with the beat's other references available — the clip is not touched until you
+            render it.
           </>
         }
         offline={

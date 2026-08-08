@@ -104,7 +104,8 @@ class PicturesError(RuntimeError):
         self.status = status
 
 
-def drawable(board: board_mod.Board, n: int, index: int | None = None) -> None:
+def drawable(board: board_mod.Board, n: int, index: int | None = None,
+             draw_prompt: str | None = None) -> None:
     """May this picture be drawn at all? Raises with the reason if not.
 
     Mirrors `stills.discussable` in shape and in most of its refusals, because the reasons an
@@ -118,10 +119,10 @@ def drawable(board: board_mod.Board, n: int, index: int | None = None) -> None:
     from the one the director asked for. Adding a picture is where the join legitimately moves,
     and the route that does it says so first.
     """
-    if board.data.get("manual_stills"):
+    if board.data.get("manual_stills") and index is None:
         raise PicturesError(
-            "this reel supplies its own pictures, so image generation is off. Upload them, or "
-            "switch the stills back to generated on the script node.",
+            "this reel supplies its own pictures, so new image generation is off. Upload the "
+            "picture first, or switch the stills back to generated on the script node.",
         )
     if not any(b["n"] == n for b in board.beats):
         raise PicturesError(f"no such beat: {n}", status=404)
@@ -143,7 +144,7 @@ def drawable(board: board_mod.Board, n: int, index: int | None = None) -> None:
         return
     if not 1 <= index <= count:
         raise PicturesError(f"scene {n} has no reference picture {index}", status=404)
-    if not board.ref_draws(n)[index - 1].strip():
+    if not board.ref_draws(n)[index - 1].strip() and not (draw_prompt or "").strip():
         # Reached by a picture that was uploaded, or minted by a still-chat attachment: there is
         # a file but nobody ever said what it should be. Redrawing it from nothing would replace
         # the director's own image with an invention.
@@ -155,31 +156,26 @@ def drawable(board: board_mod.Board, n: int, index: int | None = None) -> None:
 
 
 def conditioning(board: board_mod.Board, n: int, index: int | None) -> papercut.Pictures:
-    """What a picture is drawn FROM: itself, and deliberately nothing else.
+    """What a picture is drawn FROM: itself first, then the beat's visual context.
 
-    **The reel's cast reference is not in here, and that is a measured decision rather than an
-    oversight.** The obvious design conditions every draw on the cast so the picture is made of
-    the same paper as the rest of the film. Tried against a real board, it does something worse:
-    Gemini reproduces the subject it is shown, so "a single iron-grey club" drawn
-    against a fox-on-green-hills reference came back as the fox on green hills with a grey post
-    in it -- under `anchor`, whose continuity clause explicitly demands "the same background,
-    lighting and camera angle as the reference image", and under `edit` for the plainer reason
-    that holding a picture and holding its subject are the same act. It is the lesson already in
-    `Board.ref_prompts` -- a model shown a picture renders that picture -- one level further out.
-
-    So the medium travels as WORDS instead: `draw_text` appends the board's style bible and
-    `config.REF_DRAW_STYLE_SUFFIX`, which is what asks for layered paper, visible grain and
-    contact shadows. That is enough to make a prop sheet belong to the film without making it a
-    frame from it.
-
-    A redraw conditions on the picture itself, which is what makes "make the club longer" an edit
-    of the club. That is the only conditioning image there is, so it is also `referencePaths[0]`
-    and reaches an older single-reference build unchanged.
+    New drawings use the existing cast, opening still and beat uploads as visual context. A
+    redraw puts the picture being edited first, then the same context with that file removed.
+    This gives Nano Banana the thing to preserve and the other images that explain the paper,
+    palette, cast or prop, without requiring the director to upload the same context again.
     """
+    context: papercut.Pictures = []
+    asset = board.asset_path(n)
+    if asset.is_file():
+        context.append((asset, ""))
+    context.extend(board.still_pictures(n, config.MAX_REF_IMAGES))
     if index is None:
-        return []
+        return context[:config.MAX_REF_IMAGES]
     current = board.ref_path(n, index)
-    return [(current, "")] if current.is_file() else []
+    if not current.is_file():
+        return context[:config.MAX_REF_IMAGES]
+    return [(current, "")] + [picture for picture in context if picture[0] != current][
+        :max(0, config.MAX_REF_IMAGES - 1)
+    ]
 
 
 def draw_text(board: board_mod.Board, n: int, index: int | None, prompt: str) -> str:
@@ -226,6 +222,8 @@ def remember(board: board_mod.Board, n: int, index: int, role: str, text: str, *
 
 def draw(board: board_mod.Board, n: int, index: int | None = None, *,
          prompt: str | None = None,
+         gemini_model: str | None = None,
+         gemini_image_size: str | None = None,
          log: Callable[[str], None] = print,
          progress: Callable[[int, float], None] | None = None,
          announce: Callable[[], None] | None = None,
@@ -246,7 +244,7 @@ def draw(board: board_mod.Board, n: int, index: int | None = None, *,
     the log, and the alternative -- creating the slot with a placeholder image -- would put a
     blank picture where `pictures_for` could pick it up and a render could pay for it.
     """
-    drawable(board, n, index)
+    drawable(board, n, index, prompt)
     slot = index if index is not None else board.next_ref_index(n)
     if slot is None:
         raise PicturesError(
@@ -257,9 +255,9 @@ def draw(board: board_mod.Board, n: int, index: int | None = None, *,
     if not (text or "").strip():
         raise PicturesError(f"say what picture {slot} of scene {n} should be first", status=422)
 
-    # There is only ever something to edit when the picture already exists; a fresh one has no
-    # conditioning at all and renders from the words. `papercut.draw` turns that into
-    # `consistency: "none"`, which is the honest mode for it.
+    # An existing picture is an edit; a new picture may still have contextual references, but it
+    # has no subject to hold. Papercut uses edit mode for that context-only case so the continuity
+    # clause does not turn a prop sheet into a copy of the cast reference.
     editing = index is not None and board.ref_path(n, index).is_file()
     made = papercut.draw(
         board, n,
@@ -267,6 +265,8 @@ def draw(board: board_mod.Board, n: int, index: int | None = None, *,
         text=draw_text(board, n, index, text),
         out_path=board.ref_path(n, slot),
         editing=editing,
+        gemini_model=gemini_model or board.beat(n).get("gemini_model"),
+        gemini_image_size=gemini_image_size or board.beat(n).get("gemini_image_size"),
         log=log,
         # `_render_scene` already calls this with the beat number, since the run is [n].
         progress=progress,

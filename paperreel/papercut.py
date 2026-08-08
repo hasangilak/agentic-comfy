@@ -107,8 +107,30 @@ def style_for(board: board_mod.Board) -> str:
 Pictures = list[tuple[Path, str]]
 
 
+def _gemini_settings(board: board_mod.Board, n: int) -> tuple[str | None, str | None]:
+    """The image settings stored on one beat, used to keep unlike frames separate."""
+    beat = board.beat(n)
+    return beat.get("gemini_model"), beat.get("gemini_image_size")
+
+
+def _still_sources(board: board_mod.Board, n: int, refs_cap: int,
+                   include_current: bool) -> Pictures:
+    """The still's context, optionally led by the image currently on the beat.
+
+    A first draw has no current image. A regeneration does: putting that image first makes the
+    request an edit, while the cast and beat references remain available to explain what should
+    stay consistent. The current image is not part of ``Board.still_pictures`` because that
+    method is also used for the first draw, so the distinction belongs at this seam.
+    """
+    pictures = board.still_pictures(n, refs_cap)
+    current = board.asset_path(n)
+    if not include_current or not current.is_file():
+        return pictures
+    return [(current, "")] + [picture for picture in pictures if picture[0] != current][:max(0, refs_cap - 1)]
+
+
 def _runs(board: board_mod.Board, beats: list[int], cap: int,
-          refs_cap: int) -> Iterator[tuple[Pictures, list[int]]]:
+          refs_cap: int, include_current: bool) -> Iterator[tuple[Pictures, list[int]]]:
     """Group beats into scenes that share the same conditioning images.
 
     Two things force the grouping to be lazy rather than computed up front:
@@ -130,15 +152,17 @@ def _runs(board: board_mod.Board, beats: list[int], cap: int,
     remaining = list(beats)
     while remaining:
         n = remaining[0]
-        pictures = board.still_pictures(n, refs_cap)
+        pictures = _still_sources(board, n, refs_cap, include_current)
         if board.reference_for(n) is None:
             yield pictures, [n]
             remaining.pop(0)
             continue
         run = [n]
+        settings = _gemini_settings(board, n)
         remaining.pop(0)
         while (remaining and len(run) < cap
-               and board.still_pictures(remaining[0], refs_cap) == pictures):
+               and _still_sources(board, remaining[0], refs_cap, include_current) == pictures
+               and _gemini_settings(board, remaining[0]) == settings):
             run.append(remaining.pop(0))
         yield pictures, run
 
@@ -180,7 +204,8 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
 def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
                 seed: int | None = None, texts: list[str] | None = None,
                 aspect: str | None = None, consistency: str | None = None,
-                style: str | None = None) -> dict:
+                style: str | None = None, gemini_model: str | None = None,
+                gemini_image_size: str | None = None) -> dict:
     """One Papercut scene describing a run of stills.
 
     Papercut composes `continuity clause (when conditioned) + frame beat + scene style`. The
@@ -227,9 +252,23 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
         # drifts by frame three and renders strictly in order for no gain. Chain would also
         # throw the uploads away: Papercut conditions a chained frame on the frame before it
         # alone.
-        "consistency": (consistency or "anchor") if pictures else "none",
+        "consistency": (
+            consistency
+            or ("edit" if beats and any(path == board.asset_path(beats[0]) for path, _ in pictures)
+                else "anchor")
+        ) if pictures else "none",
         "beats": texts if texts is not None else [_beat_text(board, n, pictures) for n in beats],
     }
+    selected_model = gemini_model
+    selected_size = gemini_image_size
+    if beats:
+        beat_model, beat_size = _gemini_settings(board, beats[0])
+        selected_model = selected_model or beat_model
+        selected_size = selected_size or beat_size
+    if selected_model:
+        body["geminiModel"] = selected_model
+    if selected_size:
+        body["geminiImageSize"] = selected_size
     if pictures:
         body["referencePaths"] = [str(path.resolve()) for path, _note in pictures]
         # And the first of them in the single-image field as well, which is what an image server
@@ -285,7 +324,9 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
                   out_paths: list[Path] | None = None,
                   aspect: str | None = None,
                   consistency: str | None = None,
-                  style: str | None = None) -> list[int]:
+                  style: str | None = None,
+                  gemini_model: str | None = None,
+                  gemini_image_size: str | None = None) -> list[int]:
     """Create, render and collect one scene. Returns the beats whose frames landed.
 
     `out_paths` says where each frame goes, positionally. Without it every frame lands on its
@@ -294,7 +335,7 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
     """
     created = client.post("/api/scenes", json=_scene_body(
         board, beats, pictures, seed, texts=texts, aspect=aspect, consistency=consistency,
-        style=style))
+        style=style, gemini_model=gemini_model, gemini_image_size=gemini_image_size))
     created.raise_for_status()
     scene_id = created.json()["id"]
     # Explicit frame indices, because Papercut clamps a scene to a minimum of two frames --
@@ -350,7 +391,10 @@ def generate(board: board_mod.Board, beats: list[int], *,
              on_still: Callable[[int], None] | None = None,
              cancelled: Callable[[], bool] | None = None,
              url: str | None = None,
-             seed: int | None = None) -> list[int]:
+             seed: int | None = None,
+             gemini_model: str | None = None,
+             gemini_image_size: str | None = None,
+             include_current: bool = True) -> list[int]:
     """Render the opening stills for these beats through Gemini. Returns the ones that landed.
 
     Beats are rendered in the order given, in runs that share their conditioning images. A beat
@@ -370,7 +414,7 @@ def generate(board: board_mod.Board, beats: list[int], *,
     refs_cap = max_references(reported)
     made: list[int] = []
     with httpx.Client(base_url=url or config.PAPERCUT_URL, timeout=30.0) as client:
-        for pictures, run in _runs(board, beats, cap, refs_cap):
+        for pictures, run in _runs(board, beats, cap, refs_cap, include_current):
             if cancelled is not None and cancelled():
                 break
             log(f"[stills] beats {run}: rendering through Gemini"
@@ -378,7 +422,9 @@ def generate(board: board_mod.Board, beats: list[int], *,
                    if pictures else " (nothing to match yet -- this defines the look)"))
             made.extend(_render_scene(client, board, run, pictures, log=log,
                                       progress=progress, on_still=on_still,
-                                      cancelled=cancelled, seed=seed))
+                                      cancelled=cancelled, seed=seed,
+                                      gemini_model=gemini_model,
+                                      gemini_image_size=gemini_image_size))
     return made
 
 
@@ -400,7 +446,9 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
          log: Callable[[str], None] = print,
          progress: Callable[[int, float], None] | None = None,
          cancelled: Callable[[], bool] | None = None,
-         seed: int | None = None, url: str | None = None) -> bool:
+         seed: int | None = None, url: str | None = None,
+         gemini_model: str | None = None,
+         gemini_image_size: str | None = None) -> bool:
     """Render one picture that is not a beat's still, straight into `out_path`.
 
     Deliberately not routed through `generate`: `_runs` groups beats by `still_pictures` and
@@ -431,7 +479,7 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
             f"no image server at {url or config.PAPERCUT_URL}. Start it with `make images` "
             "(or `make run`, which starts all three), or upload the picture by hand."
         )
-    mode = "edit" if editing and edits(reported) else "anchor"
+    mode = "edit" if pictures and edits(reported) else ("anchor" if pictures else "none")
     if editing and mode != "edit":
         log("[picture] this image server predates the `edit` mode, so the redraw is anchored "
             "instead -- it keeps the reference and may re-pose the subject")
@@ -444,6 +492,8 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
             client, board, [n], refs, log=log, progress=progress, on_still=None,
             cancelled=cancelled, seed=seed, texts=[text], out_paths=[out_path],
             aspect=config.PAPERCUT_REF_ASPECT, consistency=mode,
+            gemini_model=gemini_model or board.beat(n).get("gemini_model"),
+            gemini_image_size=gemini_image_size or board.beat(n).get("gemini_image_size"),
             # The medium, and NOT the board's style bible -- see `_scene_body`. A prop sheet
             # shares the paper with the film, not the cast.
             style=config.REF_DRAW_STYLE_SUFFIX,

@@ -163,7 +163,13 @@ app.get('/api/scenes/:id/download', (req, res) => {
   const dir = path.join(OUT_ROOT, 'scenes', scene.id)
   const files = scene.frames
     .filter((f) => f.status === 'done')
-    .map((f) => `frame-${String(f.index + 1).padStart(2, '0')}.png`)
+    .map((f) => {
+      const current = path.join(dir, `frame-${String(f.index + 1).padStart(2, '0')}.jpg`)
+      const legacy = path.join(dir, `frame-${String(f.index + 1).padStart(2, '0')}.png`)
+      return fs.existsSync(current)
+        ? path.basename(current)
+        : path.basename(legacy)
+    })
     .filter((name) => fs.existsSync(path.join(dir, name)))
 
   if (!files.length) return fail(res, new Error('no rendered frames yet'))

@@ -349,6 +349,15 @@ ASSET_STYLE_SUFFIX = (
 # is ~0.8x the wall clock.
 PAPERCUT_REF_ASPECT = "1:1"
 
+# Per-beat controls exposed by the canvas. The image server validates them again; keeping the
+# allow-list here lets the canvas API reject a typo before a paid request is queued.
+GEMINI_IMAGE_MODELS = (
+    "gemini-3-pro-image",
+    "gemini-3.1-flash-image",
+    "gemini-3.1-flash-lite-image",
+)
+GEMINI_IMAGE_SIZES = ("1K", "2K", "4K")
+
 # The still's suffix asks for a vertical 9:16 SHOT. A design reference is the opposite of a shot:
 # no framing to speak of, nothing implied off the edges, the subject whole and centred so it can
 # be read rather than staged. Sharing ASSET_STYLE_SUFFIX would ask every prop sheet to be a

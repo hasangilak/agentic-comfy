@@ -173,6 +173,8 @@ def handle_asset(job: Job, run: Runner) -> dict:
     board = load(job.slug)
     return {"beats": stills_mod.generate(
         board, job.detail["beats"],
+        gemini_model=job.detail.get("gemini_model"),
+        gemini_image_size=job.detail.get("gemini_image_size"),
         log=lambda line: run.log(job, line),
         progress=still_progress(job, run),
         announce=lambda: run.publish_board(board.slug),
@@ -215,6 +217,8 @@ def handle_ref_draw(job: Job, run: Runner) -> dict:
     slot = pictures.draw(
         board, n, None if index is None else int(index),
         prompt=job.detail.get("prompt"),
+        gemini_model=job.detail.get("gemini_model"),
+        gemini_image_size=job.detail.get("gemini_image_size"),
         log=lambda line: run.log(job, line),
         progress=still_progress(job, run, label="picture"),
         announce=lambda: run.publish_board(board.slug),
@@ -378,6 +382,19 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
     for key in ("scene", "action", "asset_prompt"):
         if key in body:
             beat[key] = str(body[key])
+    if "gemini_model" in body:
+        model = str(body["gemini_model"] or "")
+        if model not in config.GEMINI_IMAGE_MODELS:
+            raise HTTPException(422, "unsupported Gemini image model")
+        beat["gemini_model"] = model
+    if "gemini_image_size" in body:
+        image_size = str(body["gemini_image_size"] or "")
+        if image_size not in config.GEMINI_IMAGE_SIZES:
+            raise HTTPException(422, "unsupported Gemini image size")
+        beat["gemini_image_size"] = image_size
+    if (beat.get("gemini_model") == "gemini-3.1-flash-lite-image"
+            and beat.get("gemini_image_size") not in (None, "1K")):
+        raise HTTPException(422, "Nano Banana 2 Lite only supports 1K output")
     if "seconds" in body:
         beat["seconds"] = config.snap_seconds(body["seconds"])
     if "source" in body:
@@ -457,6 +474,20 @@ def chat(slug: str, body: dict = Body(...)) -> dict:
     return {"job": job.to_json()}
 
 
+def gemini_options(body: dict) -> tuple[str | None, str | None]:
+    """Validate optional per-request Gemini overrides from the canvas."""
+    model = body.get("model") or body.get("gemini_model")
+    image_size = body.get("imageSize") or body.get("gemini_image_size")
+    if model is not None and model not in config.GEMINI_IMAGE_MODELS:
+        raise HTTPException(422, "unsupported Gemini image model")
+    if image_size is not None and image_size not in config.GEMINI_IMAGE_SIZES:
+        raise HTTPException(422, "unsupported Gemini image size")
+    if model == "gemini-3.1-flash-lite-image" and image_size not in (None, "1K"):
+        raise HTTPException(422, "Nano Banana 2 Lite only supports 1K output")
+    return (str(model) if model is not None else None,
+            str(image_size) if image_size is not None else None)
+
+
 @app.post("/api/reels/{slug}/assets")
 def assets(slug: str, body: dict = Body(default={})) -> dict:
     """Queue the opening stills for these beats, or for every beat that needs one.
@@ -468,6 +499,7 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
     so moving the rule did not cost the API its precision.
     """
     board = load(slug)
+    model, image_size = gemini_options(body)
     requested = body.get("beats")
     try:
         beats = stills_mod.wanted(board, requested)
@@ -480,7 +512,11 @@ def assets(slug: str, body: dict = Body(default={})) -> dict:
     except stills_mod.StillsError as refused:
         raise HTTPException(refused.status, str(refused))
 
-    job = runner.submit("asset", slug, {"beats": beats})
+    job = runner.submit("asset", slug, {
+        "beats": beats,
+        "gemini_model": model,
+        "gemini_image_size": image_size,
+    })
     return {"job": job.to_json()}
 
 
@@ -689,6 +725,7 @@ def draw_new_ref(slug: str, n: int, body: dict = Body(...)) -> dict:
     slot exists because the file does.
     """
     board = load(slug)
+    model, image_size = gemini_options(body)
     if not any(b["n"] == n for b in board.beats):
         raise HTTPException(404, f"beat {n} not in {slug}")
     prompt = " ".join(str(body.get("prompt") or "").split()).strip()
@@ -701,7 +738,13 @@ def draw_new_ref(slug: str, n: int, body: dict = Body(...)) -> dict:
     except pictures.PicturesError as refused:
         raise HTTPException(refused.status, str(refused))
     runner.publish_board(slug)
-    job = runner.submit("ref_draw", slug, {"beat": n, "index": None, "prompt": prompt})
+    job = runner.submit("ref_draw", slug, {
+        "beat": n,
+        "index": None,
+        "prompt": prompt,
+        "gemini_model": model,
+        "gemini_image_size": image_size,
+    })
     return {"job": job.to_json()}
 
 
@@ -742,19 +785,26 @@ def describe_ref(slug: str, n: int, index: int, body: dict = Body(...)) -> dict:
 
 
 @app.post("/api/reels/{slug}/beats/{n}/refs/{index}/draw")
-def redraw_ref(slug: str, n: int, index: int) -> dict:
+def redraw_ref(slug: str, n: int, index: int, body: dict = Body(default={})) -> dict:
     """Draw an existing reference picture again, from the prompt already stored on it.
 
-    Bodyless, matching how a still is regenerated: PATCH the prompt, then POST the job. That
-    keeps "what it should be" and "make it now" as two decisions, which is what lets the node
-    show a rewritten prompt while the picture it produced is still the old one.
+    The prompt may be sent with the draw request, which lets an uploaded picture be edited in
+    one action. A stored prompt remains the fallback for pictures that have already been drawn.
     """
     board = load(slug)
+    model, image_size = gemini_options(body)
+    draw_prompt = " ".join(str(body.get("prompt") or "").split()).strip() or None
     try:
-        pictures.drawable(board, n, index)
+        pictures.drawable(board, n, index, draw_prompt)
     except pictures.PicturesError as refused:
         raise HTTPException(refused.status, str(refused))
-    job = runner.submit("ref_draw", slug, {"beat": n, "index": index, "prompt": None})
+    job = runner.submit("ref_draw", slug, {
+        "beat": n,
+        "index": index,
+        "prompt": draw_prompt,
+        "gemini_model": model,
+        "gemini_image_size": image_size,
+    })
     return {"job": job.to_json()}
 
 

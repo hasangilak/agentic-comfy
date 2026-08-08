@@ -1090,6 +1090,8 @@ class Board:
                 "scene": beat.get("scene", ""),
                 "action": beat.get("action", ""),
                 "asset_prompt": beat.get("asset_prompt", ""),
+                "gemini_model": beat.get("gemini_model"),
+                "gemini_image_size": beat.get("gemini_image_size"),
                 "seconds": seconds,
                 # The snapped truth, so the canvas can show 10.2s when 10 was asked for.
                 "frames": frames,

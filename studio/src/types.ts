@@ -14,6 +14,17 @@
  */
 export type Source = "reference" | "chain" | "bridge" | "asset";
 
+export const GEMINI_IMAGE_MODELS = [
+  { id: "gemini-3-pro-image", label: "Nano Banana Pro", blurb: "Highest quality and creative control." },
+  { id: "gemini-3.1-flash-image", label: "Nano Banana 2", blurb: "Best balance of quality, speed, and references." },
+  { id: "gemini-3.1-flash-lite-image", label: "Nano Banana 2 Lite", blurb: "Fastest and cheapest; 1K output only." },
+] as const;
+export type GeminiImageModel = (typeof GEMINI_IMAGE_MODELS)[number]["id"];
+export const GEMINI_IMAGE_SIZES = ["1K", "2K", "4K"] as const;
+export type GeminiImageSize = (typeof GEMINI_IMAGE_SIZES)[number];
+export const DEFAULT_GEMINI_IMAGE_MODEL: GeminiImageModel = "gemini-3-pro-image";
+export const DEFAULT_GEMINI_IMAGE_SIZE: GeminiImageSize = "2K";
+
 export type BeatState =
   | "planned" // no action written yet
   | "needs_asset" // wants its own still, hasn't got one
@@ -28,6 +39,8 @@ export interface Beat {
   scene: string;
   action: string;
   asset_prompt: string;
+  gemini_model?: GeminiImageModel;
+  gemini_image_size?: GeminiImageSize;
   seconds: number;
   /** Snapped onto the model's frame grid -- the truth, which `seconds` only asks for. */
   frames: number;

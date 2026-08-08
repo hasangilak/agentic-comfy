@@ -46,8 +46,8 @@ export function StillChat({ beat, expanded = false }: { beat: Beat; expanded?: b
       empty={
         <>
           “her ears are too pointed”, “move the lamp to the left”, “same thing again, a different
-          draw”. Attach a picture and the still is drawn from that too. The picture is redrawn
-          from the corrected prompt; the video is not touched.
+          draw”. Attach a picture and the still is drawn from that too. The current still and all
+          available beat references are sent to Gemini; the video is not touched.
         </>
       }
       attach={{
@@ -83,7 +83,8 @@ export function StillChat({ beat, expanded = false }: { beat: Beat; expanded?: b
           text-[10px] text-zinc-400 hover:bg-[#26262e]"
         title={
           "say what is wrong with this still and have it redrawn — the model looks at the " +
-          "picture, rewrites this beat's prompt and renders it again. Free, ~10–18 s"
+          "picture, rewrites this beat's prompt and sends the current still plus beat references " +
+          "to Gemini"
         }
       >
         <span className="text-[#d99a4e]">✎</span>

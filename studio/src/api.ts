@@ -1,4 +1,16 @@
-import type { Board, ChatTurn, Estimate, Job, ReelSummary, Source } from "./types";
+import type {
+  Board,
+  ChatTurn,
+  Estimate,
+  GeminiImageModel,
+  GeminiImageSize,
+  Job,
+  ReelSummary,
+  Source,
+} from "./types";
+
+type GeminiOptions = { model?: GeminiImageModel; imageSize?: GeminiImageSize };
+type DrawOptions = GeminiOptions & { prompt?: string };
 
 const UNREACHABLE =
   "the studio server is not answering on 127.0.0.1:8787 — restart it with `uv run studio.py`";
@@ -69,13 +81,13 @@ export const api = {
   chat: (slug: string, message: string, selection: number[]) =>
     post<{ job: Job }>(`/api/reels/${slug}/chat`, { message, selection }).then((r) => r.job),
 
-  assets: (slug: string, beats?: number[]) =>
-    post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats }).then((r) => r.job),
+  assets: (slug: string, beats?: number[], gemini?: GeminiOptions) =>
+    post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats, ...gemini }).then((r) => r.job),
 
   /**
    * Talk about one beat's still. The model is shown the picture itself alongside everything it
-   * is drawn from, rewrites that beat's `asset_prompt`, and usually renders it again — free,
-   * and roughly 10–18 s. The automatic review deliberately does not run on what comes back:
+   * is drawn from, rewrites that beat's `asset_prompt`, and usually renders it again through
+   * Gemini. The automatic review deliberately does not run on what comes back:
    * half of what a director asks for here is a departure from the reference.
    *
    * `pictures` are attachments, and they are not context for one turn: they are stored on the
@@ -156,12 +168,12 @@ export const api = {
    * No empty slot is created on the way: the picture exists when its file does, so the tile
    * for one in flight comes from the job rather than from the board.
    */
-  createRef: (slug: string, n: number, prompt: string) =>
-    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/refs/draw`, { prompt }).then((r) => r.job),
+  createRef: (slug: string, n: number, prompt: string, gemini?: GeminiOptions) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/refs/draw`, { prompt, ...gemini }).then((r) => r.job),
 
-  /** Draw an existing picture again, from the prompt already stored on it. Free, ~10–18 s. */
-  drawRef: (slug: string, n: number, index: number) =>
-    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/refs/${index}/draw`, {}).then((r) => r.job),
+  /** Draw an existing picture again, from the prompt already stored on it. */
+  drawRef: (slug: string, n: number, index: number, options?: DrawOptions) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/refs/${index}/draw`, options ?? {}).then((r) => r.job),
 
   /**
    * Say what should be different about one reference picture.

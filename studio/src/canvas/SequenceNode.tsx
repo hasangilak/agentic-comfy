@@ -504,9 +504,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
 
         {/* Talking to the still it already has. Absent until there is a picture, because the
             model is being asked what is wrong with something it can see — before that, ✦ generate
-            is the whole conversation. Absent on a board that supplies its own stills for the same
-            reason the generate button is: nothing here may redraw the director's own work. */}
-        {carrying || board.manual_stills || !beat.asset ? null : <StillChat beat={beat} />}
+            is the whole conversation. Manual-stills reels can still refine an uploaded picture;
+            the manual switch only removes batch/new-image generation. */}
+        {carrying || !beat.asset ? null : <StillChat beat={beat} />}
 
         {/* The extra pictures. Its own row rather than sharing the one above, because a still and
             a reference answer different questions -- one is where this shot opens, the others are
