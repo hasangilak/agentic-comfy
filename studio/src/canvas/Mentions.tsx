@@ -120,29 +120,29 @@ export function useMentions({
       // Without this, clicking a row blurs the textarea first, `onBlur={flush}` fires, and the
       // menu unmounts before the click ever lands.
       onMouseDown={(event) => event.preventDefault()}
-      className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded
-        border border-[#26262e] bg-[#16161b] shadow-2xl"
+      className="lift-lg absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto
+        rounded-xl border border-edge bg-panel p-1"
     >
       {matches.map((option, at) => (
         <button
           key={option.token}
           disabled={Boolean(option.unavailable)}
           onClick={() => accept(option)}
-          className={`flex w-full items-center gap-2 px-1.5 py-1 text-left ${
+          className={`flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left ${
             option.unavailable
               ? "cursor-not-allowed opacity-40"
               : at === active
-                ? "bg-[#26262e]"
-                : "hover:bg-[#26262e]"
+                ? "bg-soft"
+                : "hover:bg-soft"
           }`}
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden
-            rounded bg-black">
+            rounded-md bg-ink">
             {option.url ? (
               <img src={option.url} alt="" className="h-full w-full object-cover" />
             ) : null}
           </span>
-          <span className="truncate text-[10px] text-zinc-300">{option.label}</span>
+          <span className="truncate text-[10px] text-zinc-700">{option.label}</span>
           {/* The number THIS field uses, which is the whole point: the same picture reads as
               <Picture 4> in the action and as an ordinal in the draw prompt. */}
           <span className="ml-auto shrink-0 text-[10px] text-zinc-500">
@@ -219,8 +219,8 @@ export function PromptField({
                     ? `${found.label} — this field calls it ${found.unavailable ?? found.tag}`
                     : "this picture is no longer on the scene, so the render drops the token"
                 }
-                className={`rounded bg-[#26262e] px-1 py-0.5 text-[9px] ${
-                  found ? "text-zinc-400 hover:text-[#d99a4e]" : "text-[#f59e0b]"
+                className={`rounded bg-soft px-1 py-0.5 text-[9px] ${
+                  found ? "text-zinc-600 hover:text-warm" : "text-stale"
                 }`}
               >
                 {found ? `${found.label} → ${found.unavailable ?? found.tag}` : "unknown picture"}

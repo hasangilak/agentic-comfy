@@ -59,7 +59,11 @@ Three things in `store.ts` are load-bearing and easy to break:
 
 ### Gemini renderer: `server/gemini.ts`
 
-POSTs to Google's `/v1beta/interactions` endpoint with `x-goog-api-key`. Text and each `referencePaths` file become inline inputs; the response's `output_image.data` is decoded to the requested PNG path. The scene's `geminiModel` and `geminiImageSize` are selected in the UI; `.env` values remain fallbacks for API-created or older scenes. Lite is forced to 1K. Progress is coarse because the API is request/response rather than a local sampling loop. Cancellation aborts the request and preserves the existing scene status behavior.
+POSTs to Google's `/v1beta/interactions` endpoint with `x-goog-api-key`. Text and each `referencePaths` file become inline inputs.
+
+**The image comes back in `steps`, not `output_image`.** A completed interaction answers with a `thought` step and a `model_output` step whose `content[]` carries `{type: "image", data}`; `imageData()` scans every step's content and only then falls back to `output_image`, which is an older shape of this endpoint. Reading `output_image` alone made every render fail with "returned no output_image" while the response plainly contained a picture. When there genuinely is no image the model has usually said why in a text part, so `noImageError()` puts that sentence in the error rather than naming a missing field.
+
+`response_format.mime_type` can only be `image/jpeg` — `image/png` is rejected as an invalid request — which is why frames are `frame-NN.jpg` and `legacyFramePath()` still resolves the `.png` ones rendered before that. The scene's `geminiModel` and `geminiImageSize` are selected in the UI; `.env` values remain fallbacks for API-created or older scenes. Lite is forced to 1K. Progress is coarse because the API is request/response rather than a local sampling loop. Cancellation aborts the request and preserves the existing scene status behavior.
 
 ### Realtime: EventEmitter → SSE
 

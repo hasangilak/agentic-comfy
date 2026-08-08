@@ -39,9 +39,57 @@ interface GeminiImageOutput {
   data?: string
 }
 
+/**
+ * An interaction answers in `steps`: one `thought` step, then a `model_output` step whose
+ * `content` carries the image. `output_image` is read as well because an earlier shape of this
+ * endpoint returned one — a build that still gets it should keep working rather than fail on a
+ * response that plainly contains a picture.
+ */
+interface GeminiContent {
+  type?: string
+  mime_type?: string
+  data?: string
+  text?: string
+}
+
+interface GeminiStep {
+  type?: string
+  content?: GeminiContent[]
+}
+
 interface GeminiResponse {
   output_image?: GeminiImageOutput
+  steps?: GeminiStep[]
+  status?: string
   error?: { message?: string }
+}
+
+/** Every content part of every step, in order — the image may not be in the last one. */
+function contents(body: GeminiResponse): GeminiContent[] {
+  return (body.steps || []).flatMap((step) => step.content || [])
+}
+
+function imageData(body: GeminiResponse): string | undefined {
+  const inline = contents(body).find((part) => part.type === 'image' && part.data)
+  return inline?.data || body.output_image?.data
+}
+
+/**
+ * What to say when a completed interaction carried no image.
+ *
+ * Almost always a refusal or a safety stop, and the model says why in a text part — so the text
+ * is the error. "returned no output_image" named a field instead of the reason, which sent the
+ * reader to the network tab for something the response had already spelled out.
+ */
+function noImageError(body: GeminiResponse, raw: string): Error {
+  const said = contents(body)
+    .map((part) => part.text?.trim())
+    .filter((text): text is string => !!text)
+    .join(' ')
+  const detail = said || body.error?.message || raw.slice(0, 300) || 'no reason given'
+  return new Error(
+    `Gemini returned no image (status ${body.status || 'unknown'}): ${detail}`,
+  )
 }
 
 function envFileValue(name: string): string | undefined {
@@ -177,6 +225,9 @@ export function render(
       input,
       response_format: {
         type: 'image',
+        // JPEG is the only value this endpoint accepts: `image/png` comes back as
+        // "not supported for 'response_format.mime_type'". That is why frames are written as
+        // .jpg, with `legacyFramePath` in store.ts still finding the .png ones rendered before.
         mime_type: 'image/jpeg',
         aspect_ratio: aspectRatio(req.width, req.height),
         image_size: imageSize(selectedModel, req.imageSize),
@@ -218,8 +269,8 @@ export function render(
     }
     if (!response.ok) throw responseError(payload, response.status, raw)
 
-    const encoded = payload.output_image?.data
-    if (!encoded) throw new Error('Gemini image request returned no output_image')
+    const encoded = imageData(payload)
+    if (!encoded) throw noImageError(payload, raw)
 
     fs.mkdirSync(path.dirname(req.outputPath), { recursive: true })
     fs.writeFileSync(req.outputPath, Buffer.from(encoded, 'base64'))

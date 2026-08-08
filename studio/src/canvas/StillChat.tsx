@@ -72,24 +72,24 @@ export function StillChat({ beat, expanded = false }: { beat: Beat; expanded?: b
   );
 
   if (expanded) {
-    return <div className="rounded border border-[#26262e]">{panel}</div>;
+    return <div className="rounded border border-edge">{panel}</div>;
   }
 
   return (
-    <div className="rounded border border-[#26262e]">
+    <div className="rounded border border-edge">
       <button
         onClick={() => setOpen((current) => !current)}
         className="nodrag flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left
-          text-[10px] text-zinc-400 hover:bg-[#26262e]"
+          text-[10px] text-zinc-600 hover:bg-soft"
         title={
           "say what is wrong with this still and have it redrawn — the model looks at the " +
           "picture, rewrites this beat's prompt and sends the current still plus beat references " +
           "to Gemini"
         }
       >
-        <span className="text-[#d99a4e]">✎</span>
+        <span className="text-warm">✎</span>
         {busy ? "looking at this still…" : "talk about this still"}
-        {turns.length ? <span className="ml-auto text-zinc-600">{turns.length}</span> : null}
+        {turns.length ? <span className="ml-auto text-zinc-400">{turns.length}</span> : null}
       </button>
       {open ? panel : null}
     </div>

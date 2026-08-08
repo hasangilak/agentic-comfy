@@ -190,17 +190,17 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
     void studio.guard(() => api.patchBeat(board.slug, beat.n, { source: nextSource }));
 
   return (
-    <div className={`w-60 rounded-lg border bg-[#16161b] shadow-lg ${look.ring}`}>
+    <div className={`lift w-64 overflow-hidden rounded-2xl border bg-panel ${look.ring}`}>
       <Handle type="target" position={Position.Left} />
 
-      <div className="flex items-center gap-2 border-b border-[#26262e] px-2.5 py-1.5">
-        <span className="text-xs font-medium text-zinc-300">{beat.n}</span>
+      <div className="flex items-center gap-2 border-b border-edge px-2.5 py-1.5">
+        <span className="text-xs font-medium text-zinc-700">{beat.n}</span>
         <Badge state={beat.state} />
         <label
           className={`nodrag nopan flex items-center gap-1 text-[10px] ${
             canSelectForRender
-              ? "cursor-pointer text-zinc-400 hover:text-zinc-200"
-              : "cursor-not-allowed text-zinc-700"
+              ? "cursor-pointer text-zinc-600 hover:text-zinc-800"
+              : "cursor-not-allowed text-zinc-300"
           }`}
           title={
             canSelectForRender
@@ -224,7 +224,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                   : [...current, beat.n].sort((a, b) => a - b),
               )
             }
-            className="h-3 w-3 accent-[#d99a4e]"
+            className="h-3 w-3 accent-warm"
           />
           render
         </label>
@@ -233,7 +233,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             drawn from, the conversation about them -- is unusable at that size. */}
         <button
           onClick={() => studio.setExpanded(beat.n)}
-          className="nodrag ml-auto text-[10px] text-zinc-600 hover:text-[#d99a4e]"
+          className="nodrag ml-auto text-[10px] text-zinc-400 hover:text-warm"
           title="open this scene full screen — its stills, the pictures they are drawn from, and
             the conversation about them"
         >
@@ -242,7 +242,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         <button
           onClick={() => void studio.guard(() => api.addBeat(board.slug, { n: beat.n }))}
           disabled={structureBusy}
-          className="text-[10px] text-zinc-600 hover:text-[#d99a4e]
+          className="text-[10px] text-zinc-400 hover:text-warm
             disabled:cursor-not-allowed disabled:opacity-30"
           title={
             structureBusy
@@ -255,7 +255,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         <button
           onClick={() => void studio.guard(() => api.addBeat(board.slug, { n: beat.n + 1 }))}
           disabled={structureBusy}
-          className="text-[10px] text-zinc-600 hover:text-[#d99a4e]
+          className="text-[10px] text-zinc-400 hover:text-warm
             disabled:cursor-not-allowed disabled:opacity-30"
           title={
             structureBusy
@@ -268,7 +268,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         <button
           onClick={() => void studio.guard(() => api.removeBeat(board.slug, beat.n))}
           disabled={structureBusy}
-          className="text-zinc-600 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
+          className="text-zinc-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
           title={structureBusy ? "wait for the current job to finish" : "delete this scene"}
         >
           ×
@@ -279,7 +279,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           otherwise would misrepresent the framing. Also the drop target for your own
           stills, for a scene you would rather draw than describe. */}
       <div
-        className="relative h-36 bg-black"
+        className="relative h-40 bg-ink"
         onDragOver={(event) => {
           event.preventDefault();
           setDropping(true);
@@ -321,13 +321,13 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           <div className="nodrag nowheel grid h-full auto-rows-[2.85rem] grid-cols-3 gap-0.5
             overflow-y-auto p-0.5">
             {(pictures.length ? pictures : stranded).map((picture, index) => (
-              <div key={picture.url ?? index} className="group relative bg-[#0d0d10]">
+              <div key={picture.url ?? index} className="group relative bg-ink">
                 {picture.url ? (
                   <img src={picture.url} alt="" className="h-full w-full object-cover opacity-90" />
                 ) : null}
                 <span
                   className="absolute left-0.5 top-0.5 rounded bg-black/70 px-1 text-[9px]
-                    text-zinc-300"
+                    text-zinc-700"
                   title={`the prompt calls this <Picture ${index + 1}>`}
                 >
                   {index + 1}
@@ -337,7 +337,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                     onClick={() => removeRef(picture.index!)}
                     title={`remove <Picture ${index + 1}> — the rest are renumbered`}
                     className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1
-                      text-[10px] text-zinc-300 hover:text-red-400 group-hover:block"
+                      text-[10px] text-zinc-700 hover:text-red-600 group-hover:block"
                   >
                     ×
                   </button>
@@ -347,7 +347,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-3
-            text-center text-[10px] text-zinc-600">
+            text-center text-[10px] text-zinc-400">
             <span>
               {beat.source === "chain"
                 ? `continues from beat ${beat.n - 1}`
@@ -363,7 +363,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         {dropping || uploading ? (
           <div
             className="absolute inset-0 flex items-center justify-center border-2 border-dashed
-              border-[#d99a4e] bg-black/70 text-[11px] text-[#d99a4e]"
+              border-warm bg-black/70 text-[11px] text-warm"
           >
             {uploading
               ? "uploading…"
@@ -381,13 +381,13 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
 
         {isRendering ? (
           <div className="absolute inset-x-0 bottom-0 bg-black/80 px-2 py-1.5">
-            <div className="mb-1 h-1 overflow-hidden rounded bg-[#26262e]">
+            <div className="mb-1 h-1 overflow-hidden rounded bg-soft">
               <div
-                className="h-full bg-[#4ade80] transition-[width] duration-500"
+                className="h-full bg-live transition-[width] duration-500"
                 style={{ width: `${Math.round(fraction * 100)}%` }}
               />
             </div>
-            <div className="flex justify-between text-[10px] text-zinc-400">
+            <div className="flex justify-between text-[10px] text-zinc-600">
               <span>
                 {job && job.step_max > 0 ? `step ${job.step}/${job.step_max}` : "sampling"}
               </span>
@@ -400,15 +400,15 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       </div>
 
       {beat.video ? (
-        <div className="border-t border-[#26262e] bg-[#0d0d10]">
+        <div className="border-t border-edge bg-ink">
           <div className="flex items-center gap-2 px-2.5 py-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-[#4ade80]">
+            <span className="text-[10px] uppercase tracking-wide text-live">
               rendered output
             </span>
             <a
               href={beat.video}
               download
-              className="nodrag ml-auto text-[10px] text-[#4ade80] hover:text-green-300"
+              className="nodrag ml-auto text-[10px] text-live hover:text-green-700"
               title="download this scene's rendered clip"
             >
               ↓ clip
@@ -428,7 +428,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               }}
               disabled={isRendering}
               className={`nodrag text-[10px] disabled:cursor-not-allowed disabled:opacity-30 ${
-                confirming ? "text-red-400" : "text-zinc-600 hover:text-red-400"
+                confirming ? "text-red-600" : "text-zinc-400 hover:text-red-600"
               }`}
               title={
                 isRendering
@@ -443,7 +443,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           </div>
           <video
             src={beat.video}
-            className="nodrag nowheel h-36 w-full border-t border-[#26262e] bg-black object-contain"
+            className="nodrag nowheel h-36 w-full border-t border-edge bg-black object-contain"
             controls
             preload="metadata"
             loop
@@ -525,7 +525,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                   server, from the first upload down. */}
               {beat.still_refs ? (
                 <span
-                  className="text-zinc-600"
+                  className="text-zinc-400"
                   title={
                     `the first ${beat.still_refs} also condition this scene's own still, not ` +
                     "just the clip — so the frame it opens on is drawn from the same pictures"
@@ -537,7 +537,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               ) : null}
               {stranded.length ? (
                 <span
-                  className="text-[#d99a4e]"
+                  className="text-warm"
                   title={
                     `this scene is on the ${beat.source} join, where reference pictures reach ` +
                     "neither the still nor the clip. Move it back to the reference join, or " +
@@ -561,7 +561,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         {isReference && beat.n > 1 ? (
           <label
             className="nodrag flex cursor-pointer items-start gap-1.5 rounded px-1 py-0.5
-              text-[10px] leading-snug text-zinc-400 hover:bg-[#26262e]"
+              text-[10px] leading-snug text-zinc-600 hover:bg-soft"
             title={
               "sends the last few seconds of the previous clip as <Video 1>, and tells the " +
               "model to open where it ends and carry the movement on. Makes this scene " +
@@ -577,13 +577,13 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                   api.patchBeat(board.slug, beat.n, { carry: event.target.checked }),
                 )
               }
-              className="mt-0.5 h-3 w-3 accent-[#4ade80]"
+              className="mt-0.5 h-3 w-3 accent-live"
             />
             <span>
               carry the last seconds of beat {beat.n - 1} as{" "}
               <code>&lt;Video 1&gt;</code>
               {beat.carry ? (
-                <span className="text-[#4ade80]"> · continues that take</span>
+                <span className="text-live"> · continues that take</span>
               ) : null}
             </span>
           </label>
@@ -609,7 +609,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                   >
                     {index + 1}
                   </span>
-                  <span className="text-[10px] leading-snug text-zinc-600">{picture.note}</span>
+                  <span className="text-[10px] leading-snug text-zinc-400">{picture.note}</span>
                 </div>
               ) : (
                 <ReferenceNote
@@ -622,7 +622,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                 />
               ),
             )}
-            <p className="text-[10px] leading-snug text-zinc-600">
+            <p className="text-[10px] leading-snug text-zinc-400">
               The prompt calls these <code>&lt;Picture 1&gt;</code>…
               <code>&lt;Picture {pictures.length}&gt;</code>. Say what each one you added is FOR —
               “the same single Moth that performs the action”, “the set only, no puppet”.
@@ -651,7 +651,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         <button
           onClick={cycleSource}
           className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[10px]
-            leading-snug text-zinc-400 hover:bg-[#26262e] disabled:opacity-40
+            leading-snug text-zinc-600 hover:bg-soft disabled:opacity-40
             disabled:hover:bg-transparent"
           title={
             beat.n === 1
@@ -665,7 +665,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         >
           {isReference ? (
             <>
-              <span className="text-[#d99a4e]">◈</span>{" "}
+              <span className="text-warm">◈</span>{" "}
               {beat.carry
                 ? `carries beat ${beat.n - 1}`
                 : beat.opens_on
@@ -675,24 +675,24 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             </>
           ) : beat.source === "chain" ? (
             <>
-              <span className="text-[#4ade80]">↳</span> continues from beat {beat.n - 1}
+              <span className="text-live">↳</span> continues from beat {beat.n - 1}
             </>
           ) : beat.source === "bridge" ? (
             <>
-              <span className="text-[#4ade80]">↳</span>
-              <span className="text-[#d99a4e]">⇥</span> continues from beat {beat.n - 1} · lands
+              <span className="text-live">↳</span>
+              <span className="text-warm">⇥</span> continues from beat {beat.n - 1} · lands
               on this still
             </>
           ) : (
             <>
-              <span className="text-[#d99a4e]">✂</span> cut · opens on this still exactly
+              <span className="text-warm">✂</span> cut · opens on this still exactly
             </>
           )}
         </button>
 
         {/* Two lengths, no stepper. 10s is 243 frames -- exactly the longest render that
             has ever completed on this card -- so there is nothing above it worth offering. */}
-        <div className="flex items-center justify-between border-t border-[#26262e] pt-2">
+        <div className="flex items-center justify-between border-t border-edge pt-2">
           <div className="flex items-center gap-1">
             {board.lengths.map((option) => {
               const active = Math.round(beat.seconds) === Math.round(option);
@@ -702,8 +702,8 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                   onClick={() => setSeconds(option)}
                   className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
                     active
-                      ? "bg-[#d99a4e] font-medium text-[#1a1208]"
-                      : "bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
+                      ? "bg-solid font-medium text-white"
+                      : "bg-soft text-zinc-600 hover:bg-softer"
                   }`}
                   title={
                     active
@@ -724,7 +724,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         {/* Only keyframes are cropped onto the 9:16 grid. A reference picture is scaled by
             the model itself, aspect preserved, so warning about it would be a lie. */}
         {cropped && !isReference ? (
-          <p className="text-[10px] leading-snug text-[#f59e0b]">
+          <p className="text-[10px] leading-snug text-stale">
             This still is not 9:16 — its sides will be cropped away to fit the vertical frame.
           </p>
         ) : null}

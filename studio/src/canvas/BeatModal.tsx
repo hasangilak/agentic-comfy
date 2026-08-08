@@ -267,16 +267,16 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 p-6 backdrop-blur-sm"
       onClick={() => studio.setExpanded(null)}
     >
       <div
-        className="flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-lg border
-          border-[#26262e] bg-[#16161b] shadow-2xl"
+        className="lift-lg flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-2xl
+          border border-edge bg-panel"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center gap-3 border-b border-[#26262e] px-3 py-2">
-          <span className="text-sm font-medium text-zinc-200">scene {beat.n}</span>
+        <div className="flex shrink-0 items-center gap-3 border-b border-edge px-3 py-2">
+          <span className="text-sm font-medium text-zinc-800">scene {beat.n}</span>
           <Badge state={beat.state} />
           <span className="text-[11px] text-zinc-500">
             {beat.source === "chain"
@@ -302,8 +302,8 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                   }
                   className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
                     active
-                      ? "bg-[#d99a4e] font-medium text-[#1a1208]"
-                      : "bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
+                      ? "bg-solid font-medium text-white"
+                      : "bg-soft text-zinc-600 hover:bg-softer"
                   }`}
                   title={
                     active
@@ -321,7 +321,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
           </span>
           <button
             onClick={() => studio.setExpanded(null)}
-            className="text-zinc-500 hover:text-zinc-200"
+            className="text-zinc-500 hover:text-zinc-800"
             title="close — Esc"
           >
             ×
@@ -330,8 +330,8 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
 
         <div className="flex min-h-0 flex-1">
           {/* The picture, at the size the decision about it is actually made at. */}
-          <div className="flex min-w-0 flex-1 flex-col bg-[#0d0d10]">
-            <div className="flex min-h-0 flex-1 items-center justify-center bg-black p-2">
+          <div className="flex min-w-0 flex-1 flex-col bg-ink">
+            <div className="flex min-h-0 flex-1 items-center justify-center bg-ink p-2">
               {current?.kind === "video" && current.url ? (
                 <video
                   src={current.url}
@@ -343,7 +343,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
               ) : current?.url ? (
                 <img src={current.url} alt="" className="max-h-full max-w-full object-contain" />
               ) : (
-                <div className="px-6 text-center text-[11px] leading-relaxed text-zinc-600">
+                <div className="px-6 text-center text-[11px] leading-relaxed text-zinc-400">
                   {carrying
                     ? `this scene opens where scene ${beat.n - 1} ends, so it has no still of its own`
                     : "no still yet — generate it, or upload your own, on the right"}
@@ -356,7 +356,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                 the gesture people try before they find the button. */}
             <div
               className={`thin flex shrink-0 items-start gap-1.5 overflow-x-auto border-t p-2 ${
-                dropping ? "border-[#d99a4e] bg-[#d99a4e]/5" : "border-[#26262e]"
+                dropping ? "border-warm bg-warm/5" : "border-edge"
               }`}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -378,15 +378,15 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     title={asset.note}
                     className={`rounded border p-1 text-left transition-colors ${
                       current?.id === asset.id
-                        ? "border-[#d99a4e] bg-[#26262e]"
-                        : "border-[#26262e] hover:border-[#3f3f46]"
+                        ? "border-warm bg-soft"
+                        : "border-edge hover:border-softer"
                     }`}
                   >
                     <div
                       className={`flex h-14 w-14 items-center justify-center overflow-hidden ${
                         asset.kind === "new"
-                          ? "rounded border border-dashed border-[#3a3a44] text-[#d99a4e]"
-                          : "bg-black"
+                          ? "rounded border border-dashed border-edge text-warm"
+                          : "bg-ink"
                       }`}
                     >
                       {asset.url ? (
@@ -398,10 +398,10 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                       ) : asset.kind === "new" ? (
                         <span className="text-sm">{drawingNew ? "…" : "✦"}</span>
                       ) : (
-                        <span className="text-[9px] text-zinc-600">empty</span>
+                        <span className="text-[9px] text-zinc-400">empty</span>
                       )}
                     </div>
-                    <div className="mt-1 w-14 truncate text-[9px] text-zinc-400">{asset.label}</div>
+                    <div className="mt-1 w-14 truncate text-[9px] text-zinc-600">{asset.label}</div>
                   </button>
                   {asset.kind === "picture" && asset.index !== undefined ? (
                     /* Unconfirmed, matching the node's. The arm-then-confirm on a rendered clip
@@ -411,7 +411,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                       onClick={() => removePicture(asset)}
                       title={`remove ${asset.label} — the pictures after it are renumbered`}
                       className="absolute right-1 top-1 hidden rounded bg-black/80 px-1 text-[10px]
-                        text-zinc-300 hover:text-red-400 group-hover:block"
+                        text-zinc-700 hover:text-red-600 group-hover:block"
                     >
                       ×
                     </button>
@@ -433,13 +433,13 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
 
           {/* What can be done to the thing on the left, then the words that get rendered. */}
           <div className="thin flex w-[26rem] shrink-0 flex-col gap-3 overflow-y-auto border-l
-            border-[#26262e] p-3">
-            <div className="space-y-2 rounded border border-[#26262e] bg-[#0d0d10] p-2">
+            border-edge p-3">
+            <div className="space-y-2 rounded border border-edge bg-ink p-2">
               <div className="text-[10px] uppercase tracking-wide text-zinc-500">
                 Gemini image settings for this beat
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[10px] text-zinc-400">
+                <label className="text-[10px] text-zinc-600">
                   <span className="mb-1 block">model</span>
                   <select
                     className={`${inputClass} h-8 py-1 text-[11px]`}
@@ -459,7 +459,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     ))}
                   </select>
                 </label>
-                <label className="text-[10px] text-zinc-400">
+                <label className="text-[10px] text-zinc-600">
                   <span className="mb-1 block">image size</span>
                   <select
                     className={`${inputClass} h-8 py-1 text-[11px]`}
@@ -477,7 +477,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                   </select>
                 </label>
               </div>
-              <p className="text-[10px] leading-snug text-zinc-600">
+              <p className="text-[10px] leading-snug text-zinc-400">
                 {GEMINI_IMAGE_MODELS.find((option) => option.id === geminiModel)?.blurb}
                 {liteModel
                   ? " Output is fixed at 1K."
@@ -550,7 +550,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     <a
                       href={current.url ?? undefined}
                       download
-                      className="ml-auto text-[10px] text-[#4ade80] hover:text-green-300"
+                      className="ml-auto text-[10px] text-live hover:text-green-700"
                     >
                       ↓ clip
                     </a>
@@ -614,7 +614,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                         name one of this scene's pictures"
                     />
                     {!beat.asset ? (
-                      <p className="text-[10px] leading-snug text-zinc-600">
+                      <p className="text-[10px] leading-snug text-zinc-400">
                         "Generate or upload the still and you can talk about it here."
                       </p>
                     ) : (
@@ -625,7 +625,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
               </div>
             ) : null}
 
-            <div className="space-y-3 border-t border-[#26262e] pt-3">
+            <div className="space-y-3 border-t border-edge pt-3">
               <ReviseField
                 beat={beat}
                 field="scene"

@@ -77,13 +77,13 @@ export function ReviseField({
         <span className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</span>
         <button
           onClick={() => setOpen((current) => !current)}
-          className="ml-auto text-[10px] text-zinc-500 hover:text-[#d99a4e]"
+          className="ml-auto text-[10px] text-zinc-500 hover:text-warm"
           title={
             `say what should be different about the ${field} and the model rewrites it. Free, ` +
             "a few seconds, and it marks the scene for re-rendering exactly like typing would"
           }
         >
-          <span className="text-[#d99a4e]">✎</span> {busy ? "rewriting…" : "revise"}
+          <span className="text-warm">✎</span> {busy ? "rewriting…" : "revise"}
         </button>
       </div>
 
@@ -101,7 +101,7 @@ export function ReviseField({
       />
 
       {open ? (
-        <div className="space-y-1 rounded border border-[#26262e] p-1.5">
+        <div className="space-y-1 rounded border border-edge p-1.5">
           <textarea
             className={`${inputClass} thin h-12`}
             value={note}
@@ -119,7 +119,7 @@ export function ReviseField({
               {busy ? "…" : "rewrite"}
             </Button>
             {studio.model.ready ? null : (
-              <span className="text-[10px] leading-snug text-[#f59e0b]">
+              <span className="text-[10px] leading-snug text-stale">
                 {studio.model.model || "the model"} is not running — nothing to rewrite with
               </span>
             )}

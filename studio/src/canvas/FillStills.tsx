@@ -79,7 +79,7 @@ export function FillStills() {
 
   return (
     <div
-      className="nodrag nopan space-y-1.5 rounded border border-[#26262e] bg-[#0d0d10] p-2"
+      className="nodrag nopan space-y-1.5 rounded border border-edge bg-ink p-2"
       onDragOver={(event) => {
         event.preventDefault();
         setDropping(true);
@@ -97,10 +97,10 @@ export function FillStills() {
             <button
               key={String(manual)}
               onClick={() => setManual(manual)}
-              className={`rounded px-1.5 py-0.5 text-[10px] ${
+              className={`rounded-full px-2 py-0.5 text-[10px] ${
                 board.manual_stills === manual
-                  ? "bg-[#d99a4e] font-medium text-[#1a1208]"
-                  : "bg-[#26262e] text-zinc-400 hover:bg-[#32323c]"
+                  ? "bg-solid font-medium text-white"
+                  : "bg-soft text-zinc-600 hover:bg-softer"
               }`}
               title={
                 manual
@@ -166,13 +166,13 @@ export function FillStills() {
       {placed.length ? (
         <div className="space-y-0.5">
           {placed.map((line) => (
-            <p key={line} className="truncate text-[10px] text-[#4ade80]/80" title={line}>
+            <p key={line} className="truncate text-[10px] text-live/80" title={line}>
               {line}
             </p>
           ))}
         </div>
       ) : (
-        <p className="text-[10px] leading-snug text-zinc-600">
+        <p className="text-[10px] leading-snug text-zinc-400">
           Files fill the beats that need a still, in name order. Name one{" "}
           <code>beat3.png</code> to place it on that beat exactly.
         </p>

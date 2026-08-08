@@ -71,7 +71,7 @@ export function AssetChat({
   };
 
   return (
-    <div className={`space-y-1.5 p-1.5 ${expanded ? "" : "border-t border-[#26262e]"}`}>
+    <div className={`space-y-1.5 p-1.5 ${expanded ? "" : "border-t border-edge"}`}>
       {turns.length ? (
         <div
           ref={scroller}
@@ -87,26 +87,26 @@ export function AssetChat({
               <div
                 className={
                   turn.role === "user"
-                    ? "ml-4 rounded rounded-br-sm bg-[#26262e] px-1.5 py-1 text-[10px] " +
-                      "leading-snug text-zinc-200"
-                    : "text-[10px] leading-snug text-zinc-400"
+                    ? "ml-4 rounded rounded-br-sm bg-soft px-1.5 py-1 text-[10px] " +
+                      "leading-snug text-zinc-800"
+                    : "text-[10px] leading-snug text-zinc-600"
                 }
               >
                 {turn.text}
               </div>
               {turn.regenerated ? (
-                <div className="text-[10px] text-[#4ade80]/80">✦ rendered again</div>
+                <div className="text-[10px] text-live/80">✦ rendered again</div>
               ) : null}
               {turn.error ? (
-                <div className="text-[10px] leading-snug text-[#f59e0b]">{turn.error}</div>
+                <div className="text-[10px] leading-snug text-stale">{turn.error}</div>
               ) : null}
               {/* The prompt the picture is drawn from, on the turn that changed it. Shown in
                   full rather than truncated: it is the one thing on this panel you may need to
                   copy, and reading half of it says nothing. */}
               {turn.prompt ? (
                 <details className="mt-0.5">
-                  <summary className="cursor-pointer text-[10px] text-zinc-600
-                    hover:text-zinc-400">
+                  <summary className="cursor-pointer text-[10px] text-zinc-400
+                    hover:text-zinc-600">
                     prompt rewritten
                   </summary>
                   <p className="mt-0.5 leading-snug text-[10px] text-zinc-500">{turn.prompt}</p>
@@ -116,7 +116,7 @@ export function AssetChat({
           ))}
         </div>
       ) : (
-        <p className="text-[10px] leading-snug text-zinc-600">{empty}</p>
+        <p className="text-[10px] leading-snug text-zinc-400">{empty}</p>
       )}
 
       {attach ? (
@@ -140,14 +140,14 @@ export function AssetChat({
           {files.map((file, index) => (
             <span
               key={`${file.name}-${index}`}
-              className="flex items-center gap-1 rounded bg-[#26262e] px-1 py-0.5 text-[10px]
-                text-zinc-300"
+              className="flex items-center gap-1 rounded bg-soft px-1 py-0.5 text-[10px]
+                text-zinc-700"
               title={`${file.name} — sent with this note and kept on the beat as a reference picture`}
             >
               <span className="max-w-24 truncate">{file.name}</span>
               <button
                 onClick={() => setFiles((current) => current.filter((_, at) => at !== index))}
-                className="text-zinc-500 hover:text-red-400"
+                className="text-zinc-500 hover:text-red-600"
               >
                 ×
               </button>
@@ -183,12 +183,12 @@ export function AssetChat({
           </Button>
         ) : null}
         {files.length && attach?.warning ? (
-          <span className="text-[10px] leading-snug text-[#f59e0b]">
+          <span className="text-[10px] leading-snug text-stale">
             sending this {attach.warning}
           </span>
         ) : null}
         {offline ? (
-          <span className="text-[10px] leading-snug text-[#f59e0b]">{offline}</span>
+          <span className="text-[10px] leading-snug text-stale">{offline}</span>
         ) : null}
       </div>
     </div>

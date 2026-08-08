@@ -21,7 +21,7 @@ import { SequenceNode } from "./SequenceNode";
 const NODE_TYPES = { script: ScriptNode, sequence: SequenceNode, reel: ReelNode };
 
 // Auto-layout when a board has no saved positions: script above, beats in a row, reel last.
-const COLUMN = 330;  // node is 240 wide; the gap is where the wire reads
+const COLUMN = 350;  // node is 256 wide; the gap is where the wire reads
 const ROW_Y = 260;
 
 /**
@@ -82,11 +82,11 @@ function buildEdges(board: Board): Edge[] {
       type: index === 0 ? "smoothstep" : "default",
       animated: beat.state === "rendering",
       style: chained
-        ? { stroke: "#4ade80", strokeWidth: 1.5 }
-        : { stroke: "#d99a4e", strokeWidth: 1.5, strokeDasharray: "5 4" },
+        ? { stroke: "#16a34a", strokeWidth: 1.5 }
+        : { stroke: "#b5761c", strokeWidth: 1.5, strokeDasharray: "5 4" },
       label: beat.source === "bridge" ? "→ still" : chained ? undefined : "cut",
-      labelStyle: { fill: "#d99a4e", fontSize: 9 },
-      labelBgStyle: { fill: "#16161b" },
+      labelStyle: { fill: "#b5761c", fontSize: 9 },
+      labelBgStyle: { fill: "#ffffff" },
     });
   });
   if (board.beats.length) {
@@ -94,7 +94,7 @@ function buildEdges(board: Board): Edge[] {
       id: "wire-reel",
       source: `beat-${board.beats[board.beats.length - 1].n}`,
       target: "reel",
-      style: { stroke: "#3f3f46", strokeWidth: 1.5 },
+      style: { stroke: "#d4d4d8", strokeWidth: 1.5 },
     });
   }
   return list;
@@ -178,13 +178,15 @@ export function Canvas() {
       edgesFocusable={false}
       elementsSelectable
       fitView
-      fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+      // The toolbar floats over the top of the card, so the fit leaves room for it rather
+      // than tucking the script node underneath.
+      fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
       minZoom={0.25}
       maxZoom={1.5}
       proOptions={{ hideAttribution: true }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#26262e" />
-      <Controls showInteractive={false} />
+      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#dcdce3" />
+      <Controls showInteractive={false} position="bottom-right" />
     </ReactFlow>
   );
 }

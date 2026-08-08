@@ -1,16 +1,25 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
-/* A dark room for looking at video. Paper-warm accents, because that is the medium. */
+/*
+ * Paper, lit. The studio used to be a dark room for looking at video; it is now a bright
+ * sheet of paper with the film laid out on it, which is what the medium actually is -- and
+ * what the reference design does. Every surface below is a token rather than a hex at the
+ * call site, so the two grounds (page and card) can never drift apart file by file.
+ */
 @theme {
-  --color-ink: #0d0d10;
-  --color-panel: #16161b;
-  --color-edge: #26262e;
+  --color-ink: #f4f4f6; /* the page, and the ground a text field sits on */
+  --color-panel: #ffffff; /* every card, rail and panel */
+  --color-edge: #e6e6ec; /* hairlines: the only border weight in the app */
+  --color-soft: #f1f1f4; /* quiet button and chip fill */
+  --color-softer: #e4e4ea; /* its hover, and a dropped-in placeholder */
+  --color-hover: #f7f7f9; /* a row under the cursor */
+  --color-solid: #18181b; /* the primary action, black like the reference */
   --color-paper: #e8dcc8;
-  --color-warm: #d99a4e;
-  --color-live: #4ade80;
-  --color-stale: #f59e0b;
-  --color-danger: #ef4444;
+  --color-warm: #b5761c; /* a cut, a still that is missing: the amber family */
+  --color-live: #16a34a; /* rendering, rendered, money already spent */
+  --color-stale: #c2760b;
+  --color-danger: #dc2626;
 }
 
 html,
@@ -22,30 +31,40 @@ body,
 
 body {
   background: var(--color-ink);
-  color: #d4d4d8;
+  color: #3f3f46;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* React Flow's own chrome, tinted to match. */
+/* The canvas is a card now, so its ground is the card's, not the page's. */
 .react-flow__background {
-  background: var(--color-ink);
+  background: var(--color-panel);
+}
+.react-flow__controls {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 8px 24px rgb(0 0 0 / 0.06);
+  border-radius: 10px;
+  overflow: hidden;
 }
 .react-flow__controls-button {
   background: var(--color-panel);
   border-bottom: 1px solid var(--color-edge);
-  fill: #a1a1aa;
+  fill: #71717a;
+}
+.react-flow__controls-button:hover {
+  background: var(--color-hover);
 }
 .react-flow__handle {
-  width: 9px;
-  height: 9px;
-  background: var(--color-edge);
-  border: 1px solid #3f3f46;
+  width: 8px;
+  height: 8px;
+  background: var(--color-panel);
+  border: 1.5px solid var(--color-softer);
 }
 .react-flow__node.selected > div {
-  outline: 2px solid var(--color-warm);
-  outline-offset: 1px;
+  outline: 2px solid var(--color-solid);
+  outline-offset: 2px;
 }
 .react-flow__attribution {
   display: none;
@@ -63,8 +82,20 @@ textarea::-webkit-scrollbar,
 }
 textarea::-webkit-scrollbar-thumb,
 .thin::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #d4d4d8;
   border-radius: 3px;
+}
+
+/* One elevation, used by every card so the canvas reads as one plane of paper. */
+.lift {
+  box-shadow:
+    0 1px 2px rgb(24 24 27 / 0.05),
+    0 8px 24px rgb(24 24 27 / 0.06);
+}
+.lift-lg {
+  box-shadow:
+    0 2px 4px rgb(24 24 27 / 0.06),
+    0 18px 48px rgb(24 24 27 / 0.12);
 }
 
 @keyframes pulse-ring {

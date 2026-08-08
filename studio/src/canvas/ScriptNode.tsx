@@ -33,8 +33,8 @@ export function ScriptNode() {
   const seconds = board.beats.reduce((sum, beat) => sum + beat.actual_seconds, 0);
 
   return (
-    <div className="w-72 rounded-lg border border-[#26262e] bg-[#16161b] shadow-lg">
-      <div className="flex items-center gap-2 border-b border-[#26262e] px-3 py-2">
+    <div className="lift w-72 rounded-2xl border border-edge bg-panel">
+      <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
         <span className="text-sm">📄</span>
         <span className="text-[10px] uppercase tracking-wide text-zinc-500">script</span>
         <span className="ml-auto text-[10px] text-zinc-500">
@@ -54,7 +54,7 @@ export function ScriptNode() {
         <button
           onClick={() => setOpen((value) => !value)}
           className="flex w-full items-center justify-between text-[10px] uppercase
-            tracking-wide text-zinc-500 hover:text-zinc-300"
+            tracking-wide text-zinc-500 hover:text-zinc-700"
         >
           <span>style bible</span>
           <span>{open ? "hide" : "show"}</span>
@@ -79,7 +79,7 @@ export function ScriptNode() {
             one selection here -- and this is also where generation is switched off entirely. */}
         <FillStills />
 
-        <div className="flex items-start gap-2 rounded border border-[#26262e] bg-[#0d0d10] p-2">
+        <div className="flex items-start gap-2 rounded border border-edge bg-ink p-2">
           {board.reference ? (
             <img
               src={board.reference}
@@ -89,7 +89,7 @@ export function ScriptNode() {
           ) : (
             <div
               className="flex h-14 w-8 shrink-0 items-center justify-center rounded
-                border border-dashed border-[#33333d] text-[9px] text-zinc-600"
+                border border-dashed border-edge text-[9px] text-zinc-400"
             >
               none
             </div>
@@ -108,7 +108,7 @@ export function ScriptNode() {
             <div className="mt-1 flex gap-2 text-[10px]">
               <button
                 onClick={() => pickReference.current?.click()}
-                className="text-zinc-400 hover:text-[#d99a4e]"
+                className="text-zinc-600 hover:text-warm"
                 title="pin the cast with your own image, for every still generated from here on"
               >
                 {board.reference_explicit ? "replace" : "use my own"}
@@ -116,7 +116,7 @@ export function ScriptNode() {
               {board.reference_explicit ? (
                 <button
                   onClick={() => void studio.guard(() => api.clearReference(board.slug))}
-                  className="text-zinc-500 hover:text-red-300"
+                  className="text-zinc-500 hover:text-red-600"
                   title="go back to using scene 1’s still"
                 >
                   clear
@@ -139,7 +139,7 @@ export function ScriptNode() {
           />
         </div>
 
-        <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-600">
+        <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-400">
           <span>
             {totalFrames} frames @ {board.steps} steps
           </span>
@@ -151,8 +151,8 @@ export function ScriptNode() {
         <button
           onClick={() => void studio.guard(() => api.addBeat(board.slug, {}))}
           disabled={structureBusy}
-          className="w-full rounded bg-[#26262e] py-1 text-[11px] text-zinc-300
-            hover:bg-[#32323c] disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full rounded bg-soft py-1 text-[11px] text-zinc-700
+            hover:bg-softer disabled:cursor-not-allowed disabled:opacity-40"
           title={
             structureBusy
               ? "wait for the current job to finish"

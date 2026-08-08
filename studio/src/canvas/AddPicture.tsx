@@ -111,8 +111,8 @@ export function AddPicture({
           disabled={busy || full}
           title={title}
           className="flex h-14 w-14 flex-col items-center justify-center rounded border
-            border-dashed border-[#3a3a44] text-zinc-500 hover:border-[#d99a4e]
-            hover:text-[#d99a4e] disabled:cursor-not-allowed disabled:opacity-30"
+            border-dashed border-edge text-zinc-500 hover:border-warm
+            hover:text-warm disabled:cursor-not-allowed disabled:opacity-30"
         >
           <span className="text-sm leading-none">＋</span>
           <span className="mt-0.5 text-[9px] leading-none">{busy ? "…" : `${left} left`}</span>
@@ -153,19 +153,19 @@ function Confirm({
   const [staged, setStaged] = useState(files);
   const warning = joinWarning(beat);
   return (
-    <div className="mt-2 space-y-2 rounded border border-[#d99a4e]/40 bg-[#d99a4e]/5 p-2">
-      <p className="text-[10px] leading-snug text-[#d99a4e]">⚠ {warning}</p>
+    <div className="mt-2 space-y-2 rounded border border-warm/40 bg-warm/5 p-2">
+      <p className="text-[10px] leading-snug text-warm">⚠ {warning}</p>
       <div className="flex flex-wrap gap-1">
         {staged.map((file, at) => (
           <span
             key={`${file.name}-${at}`}
-            className="flex items-center gap-1 rounded bg-[#26262e] px-1.5 py-0.5 text-[10px]
-              text-zinc-400"
+            className="flex items-center gap-1 rounded bg-soft px-1.5 py-0.5 text-[10px]
+              text-zinc-600"
           >
             <span className="max-w-24 truncate">{file.name}</span>
             <button
               onClick={() => setStaged((current) => current.filter((_, i) => i !== at))}
-              className="text-zinc-600 hover:text-red-400"
+              className="text-zinc-400 hover:text-red-600"
               title="do not send this one"
             >
               ×

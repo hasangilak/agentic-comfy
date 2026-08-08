@@ -71,17 +71,17 @@ export function NewPicture({
         <Button tone="primary" onClick={send} disabled={drawing || !prompt.trim()}>
           {drawing ? "drawing…" : "✦ draw it"}
         </Button>
-        <span className="text-[10px] text-zinc-600">Gemini image generation · beat references included</span>
+        <span className="text-[10px] text-zinc-400">Gemini image generation · beat references included</span>
       </div>
       {warning ? (
-        <p className="text-[10px] leading-snug text-[#f59e0b]">⚠ drawing one means {warning}</p>
+        <p className="text-[10px] leading-snug text-stale">⚠ drawing one means {warning}</p>
       ) : null}
       {studio.stillsBackend === "papercut" ? null : (
-        <p className="text-[10px] leading-snug text-[#f59e0b]">
+        <p className="text-[10px] leading-snug text-stale">
           the image server is down — start it with <code>make images</code>
         </p>
       )}
-      <p className="text-[10px] leading-snug text-zinc-600">
+      <p className="text-[10px] leading-snug text-zinc-400">
         Or upload one with the ＋ tile. Either way it becomes a reference the video model is shown
         and the still is drawn from, and either way you can talk to it afterwards.
       </p>
@@ -162,7 +162,7 @@ export function PicturePanel({
       </div>
 
       {open ? (
-        <div className="space-y-1.5 rounded border border-[#26262e] p-2">
+        <div className="space-y-1.5 rounded border border-edge p-2">
           <span className="text-[10px] uppercase tracking-wide text-zinc-500">drawn from</span>
           {/* `stillPictures`, because this text goes to Gemini — the same prose vocabulary the
               still's prompt uses, not the video model's `<Picture N>` tags. */}
@@ -181,14 +181,14 @@ export function PicturePanel({
             <Button tone="primary" onClick={redraw} disabled={drawing || !draw.draft.trim()}>
               {drawing ? "drawing…" : "draw it"}
             </Button>
-            <p className="text-[10px] leading-snug text-zinc-600">
+            <p className="text-[10px] leading-snug text-zinc-400">
               A design sheet, not a shot: the subject whole and centred on a plain ground, nothing
               cropped. The current picture is sent first for edits, followed by the beat's other
               available references for context.
             </p>
           </div>
           {studio.stillsBackend === "papercut" ? null : (
-            <p className="text-[10px] leading-snug text-[#f59e0b]">
+            <p className="text-[10px] leading-snug text-stale">
               the image server is down — start it with <code>make images</code>
             </p>
           )}
@@ -198,7 +198,7 @@ export function PicturePanel({
       {/* What the picture is FOR, in the model's own words. The same field and the same endpoint
           the node's list edits — imported rather than re-typed for exactly that reason. */}
       <ReferenceNote slug={board.slug} n={beat.n} index={index} label={label} value={note} />
-      <p className="text-[10px] leading-snug text-zinc-600">
+      <p className="text-[10px] leading-snug text-zinc-400">
         Say what this picture is FOR — “the same single Moth that performs the action”, “the set
         only, no puppet”. Shown a picture with no explanation the model assumes the picture IS the
         scene.

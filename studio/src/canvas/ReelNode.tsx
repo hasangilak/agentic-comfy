@@ -20,10 +20,10 @@ export function ReelNode() {
   );
 
   return (
-    <div className="w-64 rounded-lg border border-[#26262e] bg-[#16161b] shadow-lg">
+    <div className="lift w-64 rounded-2xl border border-edge bg-panel">
       <Handle type="target" position={Position.Left} />
 
-      <div className="flex items-center gap-2 border-b border-[#26262e] px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
         <span className="text-sm">🎬</span>
         <span className="text-[10px] uppercase tracking-wide text-zinc-500">reel</span>
         <span className="ml-auto text-[10px] text-zinc-500">
@@ -35,14 +35,14 @@ export function ReelNode() {
         {board.reel ? (
           <video
             src={board.reel}
-            className="h-52 w-full rounded bg-black object-contain"
+            className="h-52 w-full rounded-xl bg-zinc-900 object-contain"
             controls
             loop
           />
         ) : (
           <div
-            className="flex h-52 items-center justify-center rounded bg-black
-              text-center text-[10px] leading-relaxed text-zinc-600"
+            className="flex h-52 items-center justify-center rounded-xl bg-ink
+              text-center text-[10px] leading-relaxed text-zinc-400"
           >
             {complete
               ? "render again to stitch"
@@ -74,8 +74,8 @@ export function ReelNode() {
           <a
             href={board.reel}
             download
-            className="block rounded bg-[#26262e] py-1.5 text-center text-xs
-              text-zinc-200 hover:bg-[#32323c]"
+            className="block rounded bg-soft py-1.5 text-center text-xs
+              text-zinc-800 hover:bg-softer"
           >
             ↓ download 1080×1920
           </a>
