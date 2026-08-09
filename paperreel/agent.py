@@ -15,6 +15,15 @@ Deliberately absent: any tool that spends real money. Words and stills are both 
 now, but a still is cents and a reel is dollars: the model can write, rewrite, reorder and
 re-time every beat, and it can ask the image server for stills, but rendering video on a GPU
 stays a button a human presses.
+
+There is a second tool loop in this package, `runtime.run`, and the difference is worth
+knowing before editing either. This one is the studio's chat panel: one system prompt, one
+toolbox, and a prompt order arrived at by watching it answer wrong. That one is the same loop
+with those three lifted out, so a `SKILL.md` plus a named set of tools makes an agent -- which
+is what `crew.py` runs three of. It borrows this module's code (`TOOLS`, `apply_ops`,
+`board_digest`, `generate_stills`, `revise`, `caption`) rather than reimplementing any of it,
+and this loop was deliberately NOT moved onto it: doing so would buy nothing a user can see
+and would put the most-exercised path in the product through untested code.
 """
 
 from __future__ import annotations
@@ -410,7 +419,7 @@ def _run_tool(board: board_mod.Board, name: str, arguments: dict, *,
         return board_digest(board), []
 
     if name == "generate_stills":
-        return _generate_stills(
+        return generate_stills(
             board, arguments, log=log, progress=progress,
             announce=announce, cancelled=cancelled,
         ), []
@@ -429,7 +438,7 @@ def _run_tool(board: board_mod.Board, name: str, arguments: dict, *,
     return "; ".join(summary["summary"] for summary in summaries), summaries
 
 
-def _generate_stills(board: board_mod.Board, arguments: dict, *,
+def generate_stills(board: board_mod.Board, arguments: dict, *,
                      log: Callable[[str], None],
                      progress: Callable[[int, float], None] | None,
                      announce: Callable[[], None] | None,

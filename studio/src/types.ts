@@ -338,8 +338,21 @@ export interface ChatTurn {
    * "agy" and "qwen" are only ever read, never written: they are what the model was called
    * before this studio moved to Gemini, and boards written back then still carry them in
    * their transcript.
+   *
+   * The three skill names are the crew (`paperreel/crew.py`), which writes into this same
+   * transcript rather than a log of its own -- an agent that rewrote five beats and left no
+   * trace here is exactly the drift `agent.revise` refuses to create. They are the names of
+   * the skill directories, so a fourth agent adds a fourth name.
    */
-  role: "user" | "gemini" | "qwen" | "agy" | "studio";
+  role:
+    | "user"
+    | "gemini"
+    | "qwen"
+    | "agy"
+    | "studio"
+    | "script-writer"
+    | "storyboarder"
+    | "asset-maker";
   text: string;
   selection?: number[];
   ops?: { op: string; n?: number; summary: string }[];

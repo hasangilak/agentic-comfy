@@ -12,6 +12,8 @@ cents, stills are cents, a reel is dollars: iterate cheaply, then pay once.
     print(result.reel, result.cost)
 """
 
-from . import comfy, config, gemini, media, pipeline, planner, script, stills
+from . import (comfy, config, crew, gemini, llm, media, pipeline, planner, runtime, script,
+               skills, stills)
 
-__all__ = ["comfy", "config", "gemini", "media", "pipeline", "planner", "script", "stills"]
+__all__ = ["comfy", "config", "crew", "gemini", "llm", "media", "pipeline", "planner",
+           "runtime", "script", "skills", "stills"]

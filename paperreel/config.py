@@ -7,6 +7,12 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# The agent skills, as `<name>/SKILL.md`. Package-relative rather than under ROOT because a
+# SKILL.md is one agent's system prompt and the code cannot run without it -- the same
+# relationship `agent.SYSTEM` has to `agent.py`. `prompts/40s-paper-cutout-script.md` is
+# top-level for the opposite reason: it is a document a human pastes into an outside AI.
+SKILLS_DIR = Path(os.environ.get("PAPERREEL_SKILLS")
+                  or Path(__file__).resolve().parent / "skills")
 
 
 def load_env_file(path: Path | None = None) -> list[str]:
@@ -277,6 +283,16 @@ LLM_PROBE_CACHE = 60.0
 # did, and a model that has started calling `read_board` in circles is not going to stop on
 # its own. Eight is far more than any observed turn needs.
 AGENT_MAX_ROUNDS = int(os.environ.get("PAPERREEL_AGENT_MAX_ROUNDS", "8"))
+# Which transport `llm.provider()` hands back. One is registered, and the point of the name
+# being a setting rather than an import is that adding a second is a file rather than a
+# search-and-replace through every module that writes a prompt.
+LLM_PROVIDER = os.environ.get("PAPERREEL_LLM_PROVIDER", "gemini")
+# How many stills one crew run may render before the tool starts refusing. AGENT_MAX_ROUNDS
+# bounds turns, not money, and `generate_stills` is the one tool in the crew's toolbox that
+# spends any: an agent that keeps rejecting its own stills would otherwise be capped only by
+# how many rounds it has left. Twenty-four is a guess sized to a long reel re-rendered a couple
+# of times, not a measurement -- the first real run is what should replace this number.
+CREW_STILL_BUDGET = int(os.environ.get("PAPERREEL_CREW_STILL_BUDGET", "24"))
 
 # ## Reviewing its own work
 #

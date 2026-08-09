@@ -22,8 +22,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (agent, board as board_mod, comfy, config, develop, gemini, panels, papercut,
-               pictures, planner, render, script, staging as staging_mod, stills as stills_mod)
+from . import (agent, board as board_mod, comfy, config, crew, develop, gemini, panels,
+               papercut, pictures, planner, render, runtime, script, skills,
+               staging as staging_mod, stills as stills_mod)
 from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
@@ -367,6 +368,50 @@ def handle_render(job: Job, run: Runner) -> dict:
                          seconds=job.detail.get("seconds"))
 
 
+def crew_hooks(job: Job, run: Runner, slug: str) -> runtime.Hooks:
+    """The four callbacks every other handler builds, as the one object the crew passes down.
+
+    `still_progress` gets the label "picture" rather than "still" because a crew run makes
+    three different kinds -- an opening still, a design sheet, a storyboard panel -- and the
+    progress strip should not claim all three are stills.
+    """
+    return runtime.Hooks(
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run, label="picture"),
+        announce=lambda: run.publish_board(slug),
+        cancelled=lambda: job.cancelling,
+    )
+
+
+def handle_crew(job: Job, run: Runner) -> dict:
+    """Walk the board forward until only the stage that costs GPU money is left.
+
+    One job rather than one per stage, because the stage boundaries are where the orchestrator
+    decides and a job per stage would make the queue the thing deciding. Cancellation still
+    lands between rounds and between stages -- `Hooks.cancelled` reads `job.cancelling`, which
+    is the same cooperative flag every other long handler uses.
+    """
+    board = load(job.slug)
+    hooks = crew_hooks(job, run, board.slug)
+    turns = crew.run(board, note=job.detail.get("note") or "",
+                     stop_after=job.detail.get("stage"), hooks=hooks)
+    run.publish_board(board.slug)
+    return {"turns": [{"agent": turn.agent, "reply": turn.reply, "stopped": turn.stopped,
+                       "rounds": turn.rounds, "ops": turn.ops} for turn in turns],
+            "stage": crew.next_stage(load(job.slug))}
+
+
+def handle_agent(job: Job, run: Runner) -> dict:
+    """One named agent, one message. Same hooks, same queue as everything else."""
+    board = load(job.slug)
+    turn = crew.one(job.detail["agent"], board, job.detail["message"],
+                    hooks=crew_hooks(job, run, board.slug))
+    run.publish_board(board.slug)
+    return {"agent": turn.agent, "reply": turn.reply, "stopped": turn.stopped,
+            "rounds": turn.rounds, "ops": turn.ops,
+            "stage": crew.next_stage(load(job.slug))}
+
+
 for kind, handler in (
     ("plan", handle_plan), ("develop", handle_develop),
     ("chat", handle_chat), ("asset", handle_asset),
@@ -375,6 +420,7 @@ for kind, handler in (
     ("stage_draw", handle_stage_draw), ("stage_chat", handle_stage_chat),
     ("panel_write", handle_panel_write), ("panel_draw", handle_panel_draw),
     ("caption", handle_caption), ("render", handle_render),
+    ("crew", handle_crew), ("agent", handle_agent),
 ):
     runner.register(kind, handler)
 
@@ -1393,6 +1439,57 @@ def start_render(slug: str, body: dict = Body(default={})) -> dict:
         board.cost_of_at(beats, config.DRAFT_SECONDS) if draft else board.cost_of(beats)
     )
     return {"job": job.to_json(), "estimate": estimate}
+
+
+# ## The crew
+#
+# Three agents and the rule that says which is next (`crew.py`). Deliberately not four: there
+# is no agent for the render stage and no route here that could start one, which is the same
+# boundary `crew.STAGES` draws and `tools.py` enforces by not importing the render modules.
+
+
+@app.get("/api/agents")
+def list_agents() -> dict:
+    """Every agent, with its settings and its tools. Synchronous and free -- loads no model."""
+    return {"agents": crew.catalogue(), "stages": list(crew.STAGES),
+            "agent_for": dict(crew.AGENT_FOR)}
+
+
+@app.post("/api/reels/{slug}/crew")
+def run_crew(slug: str, body: dict = Body(default={})) -> dict:
+    """Run the crew from wherever this board is, up to the stage a human pays for.
+
+    `require_structure_idle` first, and not only out of politeness: the script agent adds and
+    removes beats, and beat positions are how every queued job names its work.
+    """
+    board = load(slug)
+    require_structure_idle(slug)
+    stage = body.get("stage")
+    if stage is not None and stage not in crew.STAGES:
+        raise HTTPException(422, f"stage has to be one of {', '.join(crew.STAGES)}")
+    job = runner.submit("crew", slug,
+                        {"note": str(body.get("note") or ""), "stage": stage})
+    return {"job": job.to_json(), "stage": crew.next_stage(board)}
+
+
+@app.post("/api/reels/{slug}/agents/{name}")
+def run_agent(slug: str, name: str, body: dict = Body(...)) -> dict:
+    """One agent, one message.
+
+    The skill is loaded here rather than in the handler so an unknown name is a 404 with a
+    sentence, instead of a job that sits in the queue and then fails a minute later -- the same
+    reason `draw_panel` calls `panels.drawable` before submitting.
+    """
+    load(slug)
+    message = str(body.get("message") or "").strip()
+    if not message:
+        raise HTTPException(422, "say something for the agent to do")
+    try:
+        skills.load(name)
+    except skills.SkillError as refused:
+        raise HTTPException(refused.status, str(refused))
+    job = runner.submit("agent", slug, {"agent": name, "message": message})
+    return {"job": job.to_json()}
 
 
 @app.get("/api/jobs")

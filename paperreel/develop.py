@@ -81,7 +81,7 @@ def brief(concept: str) -> str:
     return planner.template().replace("<<<CONCEPT>>>", concept.strip())
 
 
-def _write_tool() -> dict:
+def write_tool() -> dict:
     """`write_script`, from `PLAN_SCHEMA` rather than beside it.
 
     Derived, never copied: a second literal of the script's shape is a second thing to update
@@ -191,7 +191,7 @@ def turn(board: board_mod.Board, message: str, *,
             f"===== THIS STUDIO =====\n{history(board)}DIRECTOR: {message}"
         )},
     ]
-    assistant = gemini.chat(messages, tools=[_write_tool()])
+    assistant = gemini.chat(messages, tools=[write_tool()])
     reply = str(assistant.get("content") or "").strip()
     calls = [args for name, args in gemini.calls_of(assistant) if name == "write_script"]
 
@@ -200,7 +200,7 @@ def turn(board: board_mod.Board, message: str, *,
         if announce:
             announce()
         log("[develop] the interview is over; marking the draft against the brief")
-        draft = _reviewed(calls[0], concept, log=log)
+        draft = reviewed(calls[0], concept, log=log)
         adopt(board, draft)
         written = True
         total = sum(b["seconds"] for b in board.ordered_beats())
@@ -221,7 +221,7 @@ def turn(board: board_mod.Board, message: str, *,
     return {"reply": reply, "written": written}
 
 
-def _reviewed(draft: dict, concept: str, *, log: Callable[[str], None]) -> dict:
+def reviewed(draft: dict, concept: str, *, log: Callable[[str], None]) -> dict:
     """The draft, marked against the brief's own section 11.
 
     `planner.review` is shown only the fields it may touch (`planner._as_json`), and `seconds`

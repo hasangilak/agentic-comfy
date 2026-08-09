@@ -39,14 +39,20 @@ from typing import Any
 
 import httpx
 
-from . import config
+from . import config, llm
 
 
-class GeminiError(RuntimeError):
-    """The model was reached but could not answer. The message is user-facing."""
+class GeminiError(llm.LLMError):
+    """The model was reached but could not answer. The message is user-facing.
+
+    The base class is `llm.LLMError` rather than `RuntimeError` so a caller written against the
+    protocol rather than against this module catches the same failures. `LLMError` is itself a
+    `RuntimeError`, so every `except gemini.GeminiError` written before `llm.py` existed still
+    catches exactly what it always did.
+    """
 
 
-class GeminiUnavailable(GeminiError):
+class GeminiUnavailable(GeminiError, llm.LLMUnavailable):
     """No API key, or nothing answering. Both are the user's to fix."""
 
 

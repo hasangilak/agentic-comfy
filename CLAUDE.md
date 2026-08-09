@@ -44,6 +44,12 @@ make stop-app     # stop the GPU app now
 There is no test suite and no linter config. `npm --prefix studio run build` is the only
 static check (TypeScript); Python has none. The image project has its own `make typecheck`.
 
+What passes for a Python check is `uv run crew.py --list`: it loads all three `SKILL.md`
+files, renders every placeholder off disk, resolves every tool name against the toolbox and
+builds every declaration. Frontmatter faults, unknown placeholders, missing tools and
+unresolvable schema paths all fail there, for nothing. `--dry-run` prints the exact prompt and
+tool declarations that would be sent; `--where` prints which stage a board is waiting on.
+
 Python is always run through `uv run` — `studio.py`, `storyboard.py` and `reel.py` each
 declare their dependencies inline (PEP 723). Modal is always `uvx modal ...`.
 
@@ -82,6 +88,12 @@ paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/develop.py    the same brief WITH its interview: a script talked into existence
 paperreel/script.py     adopting a script written outside the studio
 paperreel/agent.py      the tool loop -> board operations; `revise`, one line at a time
+paperreel/llm.py        the LLM Protocol + provider registry; gemini.py is the one impl
+paperreel/skills.py     SKILL.md -> a system prompt and its settings, read off disk
+paperreel/runtime.py    the SECOND tool loop: prompt and toolbox handed in, not written above
+paperreel/tools.py      what the three agents can do, over the modules that already do it
+paperreel/crew.py       three agents in order + `next_stage`; NO fourth stage, deliberately
+paperreel/skills/       one directory per agent, each holding its SKILL.md
 paperreel/jobs.py       one worker thread, one job queue, one event stream
 paperreel/api.py        FastAPI routes + SSE
 paperreel/media.py      ffmpeg: cutout, compose, fit, last-frame, tail, stitch
@@ -474,7 +486,85 @@ call — not "does it cost anything" but "is it worth less than the image it is 
 things a graph framework would bring are already owned: durable serial execution is
 `jobs.Runner`, and state is `storyboard.json`, which is the only database. A checkpointer would
 be a *second* store of the same state, which is exactly the drift the derived-state design
-exists to prevent.
+exists to prevent. `crew.run` is what that decision looks like in code: a `while` loop over
+four `if` statements.
+
+### The crew: three agents, one loop, one skill file each
+
+`crew.py` walks a reel from a concept to stills on disk and stops. Three entry points, one
+implementation: `uv run crew.py`, job kinds `crew` / `agent` on the studio's queue, and
+`from paperreel import crew`.
+
+```
+crew.py            --concept | --name | --stage | --through | --agent | --where | --list | --dry-run
+paperreel/crew.py  STAGES, AGENT_FOR, next_stage(board), run/start/one
+paperreel/runtime.py  Hooks, Context, Tool, Agent, Turn, build(), run(), preview()
+paperreel/skills.py   SKILL.md -> Skill; placeholders; mtime cache
+paperreel/tools.py    23 tools, every one a call into a module that already existed
+paperreel/llm.py      the Protocol; `gemini` is registered against it as a module
+```
+
+**The agents wrap; they never reimplement.** Every tool is a call into `agent.py`, `board.py`,
+`develop.py`, `panels.py`, `pictures.py`, `planner.py`, `staging.py` or `stills.py`, so the
+measured prompt scaffolding, the fingerprint rules, the still review, the join guards and the
+picture budget all keep one copy. Descriptions are borrowed too — `tools.borrowed` re-declares
+an entry of `agent.TOOLS` through the provider rather than retyping a second wording of it, and
+`narrowed`/`called` is how the asset stage gets a one-field `set_asset_prompt` off the same
+`set_beat` literal. The toolbox is one flat namespace, which is *why* it is renamed: two tools
+answering to `set_beat` silently overwrote each other the first time.
+
+**`next_stage` mirrors `resolveStage` (`studio/src/route.ts:93`) line for line, and answers
+`None` where that answers `"studio"`.** That is the whole money boundary: "the crew is
+finished" and "only the paid stage is left" are literally the same value, `STAGES` has three
+entries, and there is no key in `AGENT_FOR` a fourth could resolve through. It is two
+implementations of one rule in two languages — the drift `planner.py`'s docstring warns about —
+because the Python answer is not reachable from the browser without a route. `crew.py --where`
+is what makes a disagreement observable in one command; it agrees on all nine boards on disk.
+
+**Nothing in this layer can spend the GPU, structurally.** `tools.py` does not import `render`,
+`pipeline`, `comfy` or `modal`; there is no tool that could reach them; `runtime.build`
+validates every `tools:` name in a `SKILL.md` at load, so a skill file — which is data a user
+can edit — cannot name one either. `crew.py` has no `--render` and no `--all`, and its PEP-723
+block is `["pillow", "httpx"]`: the first entry point in this repo that cannot reach ffmpeg, and
+the dependency list is where that is visible. The invariant is one grep, written into
+`tools.py`'s docstring so it survives.
+
+The one guard this layer *adds* rather than inherits is `config.CREW_STILL_BUDGET` (24), counted
+in `Context.state` across every stage of a run. `max_rounds` bounds turns and not money, and
+`generate_stills` is the one metered tool in the toolbox. **That number is a guess, not a
+measurement** — the first real run should replace it.
+
+**A skill is `paperreel/skills/<name>/SKILL.md`** — flat frontmatter plus a markdown body, read
+per run and cached on `(path, mtime)` so a prompt can be edited against a running `studio.py`.
+The frontmatter reader is 40 lines and is *not* YAML: the schema is closed and flat, and PyYAML
+would be downloaded by four PEP-723 entry points to buy only the ability to write frontmatter
+this schema then rejects. `schema:` therefore names a dotted path (`planner:PLAN_SCHEMA`) rather
+than inlining one — those schemas carry a property-**order** lesson in their comments and a
+second copy in frontmatter is the drift. `{{MEDIUM}}`, `{{BRIEF}}`, `{{SHOT_GRAMMAR}}`,
+`{{MENTION_NOTE}}` splice in the one copy of each; an unknown placeholder is an error, because a
+model handed a literal `{{CAST}}` answers about a variable.
+
+**Nothing per-run is in a system prompt.** The board digest goes in the user turn through
+`crew.prelude`, which is `agent.turn`'s measured order (the model answered from whichever
+board-shaped text sat nearest the question) and is also what makes the mtime cache sound.
+
+**There are two tool loops now, and that was accepted rather than overlooked.** `agent.turn`
+stays frozen: moving the studio's chat panel onto `runtime.run` would buy nothing a user can see
+and would put the most-exercised path in the product through untested code. `runtime.run` adds
+two things `agent.turn` does not, both because a crew run is longer than a chat turn —
+cancellation checked *between rounds*, and a `Context.state` that survives the whole run.
+
+**`gemini.py` was not renamed, moved or wrapped.** A module satisfies a `Protocol` of plain
+functions, so `llm.LLM` is written to `gemini.py`'s existing surface and `gemini` itself is the
+implementation; the only edit was reparenting `GeminiError` onto `llm.LLMError` (still a
+`RuntimeError`, so all nine `except gemini.GeminiError` sites are untouched). `tool()` is on the
+Protocol on purpose: `_declarable` folding a numeric `enum` into the description is a
+per-provider dialect fix, so the declaration builder belongs to whoever knows the dialect.
+
+**Transcripts land in the board's own `chat` array under the skill name** — `ChatTurn.role` in
+`studio/src/types.ts` was widened for it. Same reason `agent.revise` writes there: an agent that
+rewrote five beats and left no trace is a board that changed for no reason the next
+conversational turn can see. Per-round tool chatter goes to the job log instead.
 
 ### Two ways the model writes a script, one specification
 
@@ -886,3 +976,30 @@ reasoned rather than seen:
 **The interview's per-turn latency is not the API's**, same caveat as everywhere else here: the
 one measured run took minutes for the writing turn on this machine's network path. Do not tune a
 timeout against it.
+
+**No agent in the crew has reached a live model.** What is exercised is everything around one,
+and it is exercised end to end: all three skills load, render and build; the 23-tool toolbox
+constructs; `next_stage` agrees with `resolveStage` on all nine boards on disk; the three new
+routes answer (`GET /api/agents` 200, unknown agent 404, empty message 422, bad stage 422,
+unknown reel 404); `import paperreel.api` still works after `GeminiError` was reparented; and
+the whole loop was driven against a stub provider — five rounds, a tool call that succeeded, an
+invented tool name that came back as text, a refusal that came back as a sentence, the
+transcript written under the skill name, and a cancel between rounds that stopped it at one.
+
+So what is NOT known is everything about the *conversation*: whether the script agent actually
+asks section 0's questions rather than writing straight away, whether the storyboarder designs
+what recurs rather than one design per beat, whether the asset agent reads the review's verdict
+before re-rendering or just renders again, and whether any of them stops at the stage boundary
+rather than talking about the next one. `CREW_STILL_BUDGET` is a guess and has never fired.
+`--dry-run` is where to look before spending anything; `--stage storyboard` on a board that
+already has a script is the cheapest first real run, because panels use `PANEL_MODEL` at 1K and
+reach no renderer.
+
+**The script-writer's system prompt is 35 KB**, nearly all of it the authoring brief, and a tool
+loop carries it through every round of history where `develop.turn` pays for it once. That is a
+real per-round input cost with no mitigation short of prompt caching. `max_rounds: 8` on that
+skill is the lever; measure it on the first run rather than guessing.
+
+**The frontmatter reader is not YAML.** A user who writes valid YAML it rejects gets an error on
+a file that looks correct. The errors name the file, the line and the supported shapes, and the
+schema is closed — but swapping in PyYAML later is one function if that trade turns out wrong.
