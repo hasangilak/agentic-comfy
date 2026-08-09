@@ -6,7 +6,7 @@ film is settled by those two numbers before the model is ever called: how the ti
 how many camera setups there are, who is in it, what the last frame leaves you with.
 
 Those four questions are not this module's invention. They are **section 0 of
-`prompts/40s-paper-cutout-script.md`**, which opens "STOP -- interview the director first",
+`prompts/40s-stop-motion-script.md`**, which opens "STOP -- interview the director first",
 lists them, and ends "Only after you have answers do you write the script." `planner.brief`
 splices that section out and replaces it with `planner.ANSWERS`, because the studio's form had
 already answered it. This path splices out nothing: the brief is handed over whole and the
@@ -76,9 +76,9 @@ class DevelopError(RuntimeError):
         self.status = status
 
 
-def brief(concept: str) -> str:
+def brief(concept: str, medium_key: str | None = None) -> str:
     """The authoring prompt exactly as a human would paste it, interview included."""
-    return planner.template().replace("<<<CONCEPT>>>", concept.strip())
+    return planner.template(medium_key).replace("<<<CONCEPT>>>", concept.strip())
 
 
 def write_tool() -> dict:
@@ -187,7 +187,7 @@ def turn(board: board_mod.Board, message: str, *,
     messages = [
         {"role": "system", "content": SYSTEM},
         {"role": "user", "content": (
-            f"===== THE BRIEF =====\n{brief(concept)}\n\n"
+            f"===== THE BRIEF =====\n{brief(concept, board.medium())}\n\n"
             f"===== THIS STUDIO =====\n{history(board)}DIRECTOR: {message}"
         )},
     ]
@@ -200,7 +200,7 @@ def turn(board: board_mod.Board, message: str, *,
         if announce:
             announce()
         log("[develop] the interview is over; marking the draft against the brief")
-        draft = reviewed(calls[0], concept, log=log)
+        draft = reviewed(calls[0], concept, log=log, medium_key=board.medium())
         adopt(board, draft)
         written = True
         total = sum(b["seconds"] for b in board.ordered_beats())
@@ -221,7 +221,8 @@ def turn(board: board_mod.Board, message: str, *,
     return {"reply": reply, "written": written}
 
 
-def reviewed(draft: dict, concept: str, *, log: Callable[[str], None]) -> dict:
+def reviewed(draft: dict, concept: str, *, log: Callable[[str], None],
+             medium_key: str | None = None) -> dict:
     """The draft, marked against the brief's own section 11.
 
     `planner.review` is shown only the fields it may touch (`planner._as_json`), and `seconds`
@@ -235,7 +236,7 @@ def reviewed(draft: dict, concept: str, *, log: Callable[[str], None]) -> dict:
         raise gemini.GeminiError("the model called write_script with no beats in it.")
     if not config.PLAN_REVIEW:
         return numbered
-    checked = planner.review(numbered, brief(concept), log=log,
+    checked = planner.review(numbered, brief(concept, medium_key), log=log,
                              settled=SETTLED_BY_INTERVIEW)
     for beat, seconds in zip(checked.get("beats") or [], lengths):
         beat["seconds"] = seconds

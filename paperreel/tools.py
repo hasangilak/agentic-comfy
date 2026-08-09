@@ -34,7 +34,8 @@ import copy
 
 from . import agent as agent_mod
 from . import board as board_mod
-from . import config, develop, llm as llm_mod, panels, pictures, planner, staging, stills
+from . import config, critique, develop, llm as llm_mod, panels, pictures
+from . import planner, staging, stills
 from .runtime import Context, Outcome, Tool, ToolRefused
 
 
@@ -46,7 +47,8 @@ def toolbox(llm: llm_mod.LLM | None = None) -> dict[str, Tool]:
     """
     speaker = llm or llm_mod.provider()
     found: dict[str, Tool] = {}
-    for make in (_shared, _script_tools, _storyboard_tools, _asset_tools):
+    for make in (_shared, _script_tools, _storyboard_tools, _asset_tools,
+                 _style_tools, _blocking_tools, _check_tools):
         for tool in make(speaker):
             found[tool.spec["name"]] = tool
     return found
@@ -593,4 +595,165 @@ def _asset_tools(llm: llm_mod.LLM) -> list[Tool]:
             },
             ["n", "index", "note"],
         ), run=revise_picture),
+    ]
+
+
+# ## The style artists
+#
+# Two skills, one tool set. What differs between `style-paper-cutout` and `style-claymation` is
+# the prompt, not what they can do -- both write the style bible, both set the medium, both
+# describe and redraw the designs the film is made of. `crew.style_artist(board)` picks which
+# one runs from `board.medium()`, so the skill and the render are asking for the same material
+# by construction rather than by the director remembering to set both.
+
+
+def _style_tools(llm: llm_mod.LLM) -> list[Tool]:
+    def set_medium(context: Context, arguments: dict) -> Outcome:
+        """Say what this film is physically made of.
+
+        It reaches nine places in a render and the vision review's reject criteria, so it is
+        validated here rather than stored as typed -- a typo would fall back to paper while the
+        board said something else, which is the one failure that is invisible until the stills
+        come back wrong.
+        """
+        board = context.need_board()
+        wanted = str(arguments.get("medium") or "").strip()
+        if wanted not in config.MEDIUMS:
+            raise ToolRefused(f"medium has to be one of {', '.join(config.MEDIUMS)}")
+        if wanted == board.medium():
+            return f"this reel is already {config.medium(wanted).name}", []
+        board.data["medium"] = wanted
+        board.save()
+        context.hooks.changed()
+        return (f"this reel is now {config.medium(wanted).name}",
+                [{"op": "set_medium", "summary": f"medium: {config.medium(wanted).name}"}])
+
+    def read_medium(context: Context, _arguments: dict) -> Outcome:
+        """What the render is actually asked for, in the words it is asked in.
+
+        A style artist writing a bible without this is guessing at what the pipeline already
+        says on every prompt -- and a bible that contradicts the suffix is two instructions
+        fighting inside one request.
+        """
+        look = context.need_board().look()
+        return ("\n".join([
+            f"medium: {look.key} ({look.name})",
+            f"every video prompt opens: {look.shot.strip()}",
+            f"every video prompt ends: {look.craft.strip()}",
+            f"every still is asked for as: {look.still}",
+            f"every design sheet is asked for as: {look.sheet}",
+            f"every set sheet is asked for as: {look.set}",
+            f"the review rejects a still that is not: {look.judge}",
+            f"the physics of this medium:\n{look.physics}",
+        ]), [])
+
+    return [
+        Tool(spec=llm.tool(
+            "set_medium",
+            "Say what this film is physically made of. This is not a description -- it changes "
+            "the words on every video prompt, every still, every design sheet and the review "
+            "that rejects a still for being the wrong material. Set it before writing the "
+            "style bible.",
+            {"medium": {"type": "string", "enum": list(config.MEDIUMS),
+                        "description": "which medium this reel is made in"}},
+            ["medium"],
+        ), run=set_medium),
+        Tool(spec=llm.tool(
+            "read_medium",
+            "Read back exactly what the pipeline already asks every render for in this medium: "
+            "the opening clause, the craft clause, the still and sheet suffixes, the physics, "
+            "and what the review rejects. Takes no arguments. Read it before writing the style "
+            "bible so the bible extends those words rather than contradicting them.",
+            {},
+        ), run=read_medium),
+    ]
+
+
+# ## The mise-en-scene artist
+
+
+def _blocking_tools(llm: llm_mod.LLM) -> list[Tool]:
+    def set_blocking(context: Context, arguments: dict) -> Outcome:
+        """Where things stand in one frame, and what the set holds.
+
+        Straight onto the beat rather than through `agent.apply_ops`, because it is not one of
+        the seven board ops -- `apply_one` is the single place those happen and adding an eighth
+        there would put a field the chat agent has no tool for into its dispatch table.
+        """
+        board = context.need_board()
+        n = _beat_number(board, arguments)
+        text = " ".join(_text(arguments, "blocking", "where things stand in this frame").split())
+        board.beat(n)["blocking"] = text
+        board.save()
+        context.hooks.changed()
+        return (f"beat {n} in frame: {text}",
+                [{"op": "set_blocking", "n": n, "summary": f"blocked beat {n}"}])
+
+    return [
+        Tool(spec=llm.tool(
+            "set_blocking",
+            "Say where things stand in ONE shot's frame and what the set holds: which third "
+            "each thing sits in, which way it faces, how much room is above it, what is in the "
+            "foreground and the background. This reaches the video prompt, so rewriting it "
+            "marks the beat as needing a re-render. It is not the shot size or the camera "
+            "angle -- those are the storyboard panel's job.",
+            {
+                "n": {"type": "integer", "description": "which beat, 1-based"},
+                "blocking": {
+                    "type": "string",
+                    "description": ("one or two sentences: where each thing stands in this "
+                                    "frame and what the set holds. Copy any @ref: or @cast "
+                                    "token in it exactly."),
+                },
+            },
+            ["n", "blocking"],
+        ), run=set_blocking),
+    ]
+
+
+# ## The cross-check
+#
+# One tool, given to the three agents that check the assets stage's work. It looks and it
+# reports; it renders nothing and it edits no prompt. See `inspect.py` for why that bound is
+# where it is -- three lenses that could each reject and re-render turn one disagreeing panel
+# into a run that spends its whole still budget on one beat.
+
+
+def _check_tools(llm: llm_mod.LLM) -> list[Tool]:
+    def inspect_still(context: Context, arguments: dict) -> Outcome:
+        board = context.need_board()
+        n = _beat_number(board, arguments)
+        lens = str(arguments.get("lens") or "").strip()
+        try:
+            verdict = critique.look(board, n, lens, llm=context.llm, log=context.hooks.log)
+        except critique.InspectError as refused:
+            raise ToolRefused(str(refused)) from None
+        critique.record(board, n, verdict)
+        board.save()
+        context.hooks.changed()
+        if verdict["passed"]:
+            return (f"beat {n} passes on {lens}",
+                    [{"op": "inspect_still", "n": n, "summary": f"beat {n}: {lens} passes"}])
+        return (f"beat {n} fails on {lens}: {verdict['problem']} "
+                f"Suggested fix: {verdict['fix']}",
+                [{"op": "inspect_still", "n": n,
+                  "summary": f"beat {n}: {lens} failed -- {verdict['problem']}"}])
+
+    return [
+        Tool(spec=llm.tool(
+            "inspect_still",
+            "Look at one beat's finished still through one lens and file a verdict with a "
+            "suggested fix. You are one of several checking this picture, each at a different "
+            "thing -- report only on yours. This renders nothing and changes no prompt: the "
+            "director reads the verdicts and decides.",
+            {
+                "n": {"type": "integer", "description": "which beat, 1-based"},
+                "lens": {"type": "string", "enum": critique.lenses(),
+                         "description": ("style = is it really made of this material. blocking "
+                                         "= is what is in frame what the beat said, standing "
+                                         "where it said. story = is it the moment the script "
+                                         "asked for.")},
+            },
+            ["n", "lens"],
+        ), run=inspect_still),
     ]

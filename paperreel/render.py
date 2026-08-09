@@ -202,6 +202,15 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # the very list being handed over, so a sheet is never both a
                                 # numbered picture and a sentence about a second one.
                                 staging=board.staging_text(n, pictures),
+                                # Where things stand in this frame. Fingerprinted (conditionally,
+                                # so a beat that has none keeps the hash it had), which is what
+                                # makes rewriting it mark the beat stale rather than silently
+                                # change what a re-render produces.
+                                blocking=beat.get("blocking", ""),
+                                # Which medium's words wrap all of the above. Absent on every
+                                # board written before the bundle, which resolves to paper cutout
+                                # and composes the byte-identical prompt it always did.
+                                medium_key=board.medium(),
                                 # Swaps "compose the opening frame yourself" for "open on the
                                 # moment <Video 1> ends and carry it on".
                                 ref_videos=1 if carry else 0,

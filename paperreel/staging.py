@@ -82,8 +82,8 @@ CHAT_SCHEMA = {
 # insistent about the two failures that were measured on reference pictures one level down: a
 # sheet that comes back as a composed shot, and a sheet whose subject has been replaced by
 # whatever else the model was shown.
-SYSTEM = (
-    "You are the design editor for a paper-cutout stop-motion Instagram Reel studio. You are "
+SYSTEM_TEMPLATE = (
+    "You are the design editor for a {name} Instagram Reel studio. You are "
     "looking at ONE design sheet with the director -- a character, a set, or a prop -- and your "
     "job is to turn what they say about it into the prompt it is drawn from next time.\n\n"
     "A design sheet is not a shot. It is the locked design of one thing, drawn so that every "
@@ -99,7 +99,7 @@ SYSTEM = (
     "palette and the light ONLY -- replacing this sheet's subject with something from one of "
     "them is the single mistake that makes it useless.\n\n"
     "The director is the authority on this design. What is not theirs to overrule is the medium "
-    "-- layered paper cutout, visible paper grain, soft contact shadows -- because every other "
+    "-- {essence} -- because every other "
     "image in the reel is made of it.\n\n"
     "Rewrite the WHOLE prompt every time, carrying over every part the director did not ask you "
     "to change. Drawing it again is a new Gemini request, so ask for it whenever the sheet "
@@ -132,8 +132,8 @@ def style_for(board: board_mod.Board, entry: dict) -> str:
     fox. Measured on a live render, one level down, in `pictures.draw_text`.
     """
     if board.stage_kind(entry) == config.STAGE_ENVIRONMENT:
-        return config.SET_DRAW_STYLE_SUFFIX
-    return config.REF_DRAW_STYLE_SUFFIX
+        return board.look().set
+    return board.look().sheet
 
 
 def aspect_for(board: board_mod.Board, entry: dict) -> str:
@@ -320,6 +320,17 @@ def _draw_seed(board: board_mod.Board, entry_id: str) -> int:
     return int(digest[:8], 16)
 
 
+def system_for(board: board_mod.Board) -> str:
+    """The system prompt, with this board's medium in it.
+
+    A function rather than a constant because the sentence it opens with names the film's
+    medium, and a clay reel told it is a paper-cutout studio would take that as the
+    instruction it is -- this prompt's whole job is to say which half of a director's note
+    the pipeline will not let them overrule."""
+    look = board.look()
+    return SYSTEM_TEMPLATE.format(name=look.name, essence=look.essence)
+
+
 def converse(board: board_mod.Board, entry_id: str, message: str, *,
              log: Callable[[str], None] = print,
              progress: Callable[[int, float], None] | None = None,
@@ -499,7 +510,7 @@ def _chat_messages(board: board_mod.Board, entry: dict, message: str) -> list[di
         "and what you did in `reply`. `reply` is for the director; never put the prompt in it."
     )
     return [
-        {"role": "system", "content": SYSTEM},
+        {"role": "system", "content": system_for(board)},
         {"role": "user", "content": "\n\n".join(parts),
          "images": [gemini.encode(board.stage_path(entry_id))]},
     ]

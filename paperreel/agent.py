@@ -230,7 +230,7 @@ the clip has to end on. Everything else about writing it is the same, and it mus
 the style bible word for word."""
 
 
-SYSTEM = f"""You are the story editor for a paper-cutout stop-motion Instagram Reel studio.
+SYSTEM_TEMPLATE = f"""You are the story editor for a {{name}} Instagram Reel studio.
 You edit a board of beats. Each beat is ONE continuous shot from a locked-off camera.
 
 {MEDIUM}
@@ -248,6 +248,17 @@ where it left things, call read_board; do not reason about it.
 {config.MENTION_NOTE}"""
 
 
+def system_for(board: board_mod.Board, template: str = "") -> str:
+    """A system prompt with this board's medium named in it.
+
+    Functions rather than constants for the reason `stills.chat_system` gives: the opening
+    sentence tells the model what the film is made of, and a clay reel told it is a paper-cutout
+    studio takes that as the instruction it is. Everything else in both prompts -- `MEDIUM`, the
+    joins, the mention note -- is pipeline and is identical in every medium.
+    """
+    return (template or SYSTEM_TEMPLATE).format(name=board.look().name)
+
+
 def board_digest(board: board_mod.Board) -> str:
     """A compact view of the board for the prompt -- cheaper and clearer than raw JSON.
 
@@ -263,6 +274,10 @@ def board_digest(board: board_mod.Board) -> str:
     treat them as different work.
     """
     lines = [f'TITLE: {board.data.get("title", "")}',
+             # Before the style bible rather than after it: the bible describes the film in the
+             # medium's own vocabulary, and a reader who does not yet know which medium reads
+             # "layers" and "edges" as figures of speech.
+             f'MEDIUM: {board.look().name}',
              f'STYLE BIBLE: {board.data.get("style_bible", "")}']
     # The design bible, when there is one, straight after the style bible it makes more precise.
     # Named and listed rather than summarised, because a beat line below says which designs that
@@ -301,6 +316,10 @@ def board_digest(board: board_mod.Board) -> str:
             # Only when there is one, so a board with no design bible composes the digest it
             # always did -- the same promise every other addition here has made.
             + (f'\n  staging: {", ".join(board.stage_name(e) for e in bound)}' if bound else "")
+            # Only when there is one, the same promise the staging line above makes: a board
+            # whose beats have no blocking composes the digest it always did.
+            + (f'\n  in frame: {beat["blocking"]}' if str(beat.get("blocking") or "").strip()
+               else "")
         )
     if board.data.get("caption"):
         lines.append(f'CAPTION: {board.data["caption"]}')
@@ -359,7 +378,7 @@ def turn(board: board_mod.Board, message: str, *, selection: list[int] | None = 
     # which put a stale line of the model's own transcript nearer to the question than the
     # truth was -- and the model answered from the nearer one.
     messages: list[dict] = [
-        {"role": "system", "content": SYSTEM},
+        {"role": "system", "content": system_for(board)},
         {"role": "user", "content": (
             f"{transcript(board)}"
             f"THE BOARD AS IT IS RIGHT NOW -- this is the only current state, and every answer "
@@ -637,8 +656,8 @@ REVISE_SCHEMA = {
     },
 }
 
-REVISE_SYSTEM = f"""You are the story editor for a paper-cutout stop-motion Instagram Reel
-studio. You are rewriting ONE line of ONE beat with the director, and nothing else on the board.
+REVISE_SYSTEM_TEMPLATE = f"""You are the story editor for a {{name}} Instagram Reel studio.
+You are rewriting ONE line of ONE beat with the director, and nothing else on the board.
 
 {MEDIUM}
 
@@ -732,7 +751,7 @@ def _revise_messages(board: board_mod.Board, beat: dict, field: str, message: st
         '"reply" is your own sentence to the director about what you changed.'
     )
     return [
-        {"role": "system", "content": REVISE_SYSTEM},
+        {"role": "system", "content": system_for(board, REVISE_SYSTEM_TEMPLATE)},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
 
@@ -744,6 +763,7 @@ def _revise_messages(board: board_mod.Board, beat: dict, field: str, message: st
 
 
 def create(concept: str, beats: int, seconds: float, *,
+           medium_key: str | None = None,
            log: Callable[[str], None] = print) -> board_mod.Board:
     """Plan a reel and put it on the canvas.
 
@@ -760,12 +780,16 @@ def create(concept: str, beats: int, seconds: float, *,
     matter how long it was. A still is now one ordinary API request, so the shape of the film can be
     decided by the shape of the story -- which is what section 2 of the brief is about.
     """
-    plan = planner.plan(concept, beats, seconds, log=log)
+    plan = planner.plan(concept, beats, seconds, medium_key=medium_key, log=log)
     plan.setdefault("concept", concept)
     # The board-wide default, which every beat inherits: the planner is told the length is
     # fixed and not its to choose, so nothing per-beat should be overriding this.
     plan["seconds"] = seconds
     document = script.normalise(plan)
+    # Written onto the board only when it is not the default, so a paper-cutout reel's document
+    # is byte-identical to what it always was and `Board.medium_digest` keeps hashing to nothing.
+    if config.medium(medium_key).key != config.DEFAULT_MEDIUM:
+        document["medium"] = config.medium(medium_key).key
     document["steps"] = config.DEFAULT_STEPS
     document["seed"] = 1101
 

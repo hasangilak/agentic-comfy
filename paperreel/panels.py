@@ -26,7 +26,7 @@ Two things about how a panel is drawn are `pictures.py`'s measured lessons, unch
 out, and both live in `config.py` next to the constants that act on them: **nothing conditions a
 panel** (a model shown the cast reference draws the cast, in the cast's medium -- so a sketch panel
 handed the cutout still comes back a cutout), and **the board's style bible never reaches this
-render** (`papercut.draw` puts `config.PANEL_STYLE_SUFFIX` in the scene `style` slot instead). The
+render** (`papercut.draw` puts `config.panel_style(...)` in the scene `style` slot instead). The
 subject travels as words, which `write` puts into the panel text.
 
 The consequence is worth stating rather than discovering: character consistency across panels is
@@ -96,12 +96,12 @@ SHOT_GRAMMAR = (
 )
 
 SYSTEM = (
-    "You are the storyboard artist for a paper-cutout stop-motion Instagram Reel studio. You are "
+    "You are the storyboard artist for a handcrafted stop-motion Instagram Reel studio. You are "
     "given a finished script and you write the panel description for each beat: what the rough "
     "sketch of that shot shows.\n\n"
     "A panel is not the shot and it is not a prompt for the shot. It is a cheap grey-pencil "
     "drawing whose whole job is to let a director check the sequence before anything is rendered: "
-    "framing, angle, where the subject sits, which way things move. Texture, colour, paper and "
+    "framing, angle, where the subject sits, which way things move. Texture, colour, material and "
     "lighting are somebody else's problem and belong in no panel description you write.\n\n"
     "What you add is the thing the script does not have. Every beat already says what happens and "
     "what it is made of; none of them say how far away the camera is or what it is looking up or "
@@ -116,7 +116,8 @@ SYSTEM = (
     "Vary the shot sizes across the shots that ARE new. A reel of five identical wide shots is the "
     "failure this pass exists to catch, and you are the one who can see all of them at once.\n\n"
     "Write plainly, present tense, no markdown, no headings, no numbered lists inside a panel. One "
-    "or two sentences each. Never mention paper, cutouts, grain, colour or lighting."
+    "or two sentences each. Never mention the film's materials, its texture, its colour or its "
+    "lighting -- whatever this reel is made of, a panel is graphite on paper."
 )
 
 
@@ -140,7 +141,7 @@ def _digest(board: board_mod.Board, beats: list[int]) -> str:
     piece of per-beat structured knowledge the board holds about who is in this shot, and prose
     often does not carry it -- "she turns" does not say the wolf is in frame, and a panel that
     names the wrong subject is the failure `_messages` opens by trying to prevent. Names, not
-    `role`, not `note`, not the sheet: `SYSTEM` ends "never mention paper, cutouts, grain, colour
+    `role`, not `note`, not the sheet: `SYSTEM` ends "never mention the film's materials, colour
     or lighting", and a name is neither a material nor a palette, so the ban holds.
 
     **This changes what a re-run produces and marks nothing stale**: a panel is excluded from
@@ -292,7 +293,11 @@ def draw(board: board_mod.Board, n: int, *,
         # Nothing is being held, because nothing is being conditioned on. `papercut.draw` only
         # reads this to warn about an older image server's missing `edit` mode.
         editing=False,
-        style=config.PANEL_STYLE_SUFFIX,
+        # The negation clause inside it names the FILM's medium, so a clay reel's panels
+        # negate clay. Negating paper on a clay board would be warning off something
+        # nobody was going to draw and leaving the real risk -- a sketch that comes back
+        # looking like a finished frame -- unaddressed.
+        style=config.panel_style(board.medium()),
         aspect=config.PANEL_ASPECT,
         label=f"panel {n}",
         gemini_model=config.PANEL_MODEL,

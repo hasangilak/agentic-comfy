@@ -2,7 +2,7 @@
 
 The other way in asks the model for a script from a one-line concept. That is one turn, but
 it is also the model's idea of the film. Someone who has already written the shot list elsewhere
--- by hand, or by walking an AI through `prompts/40s-paper-cutout-script.md` -- is holding
+-- by hand, or by walking an AI through `prompts/40s-stop-motion-script.md` -- is holding
 exactly what the planner would have produced, from exactly the same brief, and should not have
 to talk it back into existence one nudge at a time. So this takes the JSON straight in.
 
@@ -77,6 +77,10 @@ def normalise(data: dict) -> dict:
             "scene": str(raw.get("scene") or "").strip(),
             "action": action,
             "asset_prompt": str(raw.get("asset_prompt") or "").strip(),
+            # Where things stand in this frame. Read from an imported script rather than
+            # ignored, because a director who wrote one outside the studio wrote it for the
+            # render -- and unlike `panel`, this one reaches it.
+            "blocking": str(raw.get("blocking") or "").strip(),
             "seconds": config.snap_seconds(
                 raw.get("seconds") or data.get("seconds") or config.BEAT_LENGTHS[-1]
             ),

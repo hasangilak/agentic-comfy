@@ -91,8 +91,9 @@ paperreel/agent.py      the tool loop -> board operations; `revise`, one line at
 paperreel/llm.py        the LLM Protocol + provider registry; gemini.py is the one impl
 paperreel/skills.py     SKILL.md -> a system prompt and its settings, read off disk
 paperreel/runtime.py    the SECOND tool loop: prompt and toolbox handed in, not written above
-paperreel/tools.py      what the three agents can do, over the modules that already do it
-paperreel/crew.py       three agents in order + `next_stage`; NO fourth stage, deliberately
+paperreel/tools.py      what the agents can do, over the modules that already do it
+paperreel/critique.py   one still, one lens, one verdict + a suggested fix; renders NOTHING
+paperreel/crew.py       three stages, each a CAST; `next_stage`; NO fourth stage, deliberately
 paperreel/skills/       one directory per agent, each holding its SKILL.md
 paperreel/jobs.py       one worker thread, one job queue, one event stream
 paperreel/api.py        FastAPI routes + SSE
@@ -489,20 +490,110 @@ be a *second* store of the same state, which is exactly the drift the derived-st
 exists to prevent. `crew.run` is what that decision looks like in code: a `while` loop over
 four `if` statements.
 
-### The crew: three agents, one loop, one skill file each
+### The medium: what the film is physically made of
+
+`config.MEDIUMS` is a table of `Medium` bundles, one per material, and `board.data["medium"]`
+picks one. Before it, every string that named paper was a module-level global — nine of them
+reached a render and one of them, the vision review's, *rejected* a still for not being paper.
+So a board whose style bible said clay was fighting its own reviewer.
+
+A `Medium` carries thirteen fields, which is the honest count of how many places a medium is
+named: `shot` (every video prompt's opening clause), `surface` (the material words in the
+reference paragraph), `craft`, `audio`, `still` / `sheet` / `set` (the three image suffixes),
+`judge` (what the review holds a still to), `essence` (the parenthetical four chat prompts use
+for "not yours to overrule"), `negate` (what a storyboard panel must NOT look like), `name`,
+`opening`, `physics` and `construction` (the brief's two medium-bound sections).
+
+**Two media ship: `paper-cutout` and `claymation`, and they are not translations of each
+other.** Paper is rigid, flat and hinged, and its grammar is that a shape is *swapped* for
+another. Clay's grammar is that a shape *becomes* another — squash and stretch is what the
+medium is for. A clay film written under paper's physics comes out stiff, which reads as a
+cheap 3D render, which is the exact thing both media are trying not to look like. So
+`CLAYMATION.physics` inverts `PAPER_CUTOUT.physics` rather than substituting words into it.
+
+**Absent means the default, and the default is stored by being absent.** `Board.medium()` reads
+a missing key as paper cutout; `Board.medium_digest()` returns `""` for it; `PATCH` *deletes*
+the key when set back to paper. One representation, so "a board that never named a medium" and
+"a board set back to paper" are the same board — and every reel written before the bundle keeps
+the fingerprint it had. Verified: 9 boards on disk, 0 drift, and 384 prompt shapes byte-identical
+to what `build_prompt` produced before.
+
+`prompts/40s-stop-motion-script.md` (renamed from `40s-paper-cutout-script.md`) is forked at
+three seams — `<<<OPENING>>>`, `<<<PHYSICS>>>`, `<<<CONSTRUCTION>>>` — resolved by
+`planner.template(medium_key)`. The other ~88% is pipeline and is word-for-word correct in any
+medium. **`agent.MEDIUM` is misnamed and needs no changes at all**: read it and it is entirely
+the four joins, 5 s or 10 s, one thing moves, the camera never moves.
+
+### `blocking`: where things stand in the frame
+
+A new per-beat field, and the gap it fills was real. The style bible says what things look like;
+a design sheet says it again precisely for one named thing; the `scene` line says where the shot
+is and at what scale — and is deliberately *shared* by every beat of one continuous shot, so a
+shot where the subject crosses left to right has one scene line for both halves. The `panel`
+says shot size, angle and camera move, and reaches no renderer at all. **Nobody said what is
+standing where.**
+
+`BLOCKING_PREFIX` ("In frame: ") sits between the staging and the scene line in `build_prompt`.
+It is in both fingerprints, **conditionally** — the `staging_digest` rule, appended last, in the
+same order in both methods, because `fingerprint()` is positional and the two disagreeing is how
+a beat flips between `stale` and `invalidated`. Unlike `panel`, editing it marks the beat stale,
+which is correct: it changes what the beat renders.
+
+### The crew: three stages, each a cast
 
 `crew.py` walks a reel from a concept to stills on disk and stops. Three entry points, one
 implementation: `uv run crew.py`, job kinds `crew` / `agent` on the studio's queue, and
 `from paperreel import crew`.
 
 ```
-crew.py            --concept | --name | --stage | --through | --agent | --where | --list | --dry-run
-paperreel/crew.py  STAGES, AGENT_FOR, next_stage(board), run/start/one
+crew.py               --concept --medium | --name | --stage | --through | --agent
+                      | --where | --list | --dry-run
+paperreel/crew.py     STAGES, STAGE_CAST, CHECKERS, style_artist(), next_stage(), plan_of()
 paperreel/runtime.py  Hooks, Context, Tool, Agent, Turn, build(), run(), preview()
 paperreel/skills.py   SKILL.md -> Skill; placeholders; mtime cache
-paperreel/tools.py    23 tools, every one a call into a module that already existed
+paperreel/tools.py    27 tools, every one a call into a module that already existed
+paperreel/critique.py three lenses over one still; a verdict and a suggested fix
 paperreel/llm.py      the Protocol; `gemini` is registered against it as a module
 ```
+
+**A stage is a cast, not an agent.** A film crew is several specialists on one scene rather
+than one generalist per phase, and the failure that prevents is specific: one agent asked to
+write the story AND fix the material AND block the frame answers about whichever it noticed
+first.
+
+| stage | cast, in order |
+| --- | --- |
+| `script` | `script-writer`, then the style artist |
+| `storyboard` | the style artist, then `mise-en-scene`, then `storyboarder` |
+| `assets` | `asset-maker`, then three checkers: style, blocking, story |
+
+Order is load-bearing in every row. The writer goes first because there is nothing to style
+until there are beats. On storyboard the style artist goes first because `mise-en-scene` binds
+designs and cannot bind one that has not been minted — and the panels go **last** because
+`panels._digest` names the designs a beat binds, so a panel written before the binding is a
+panel written about a cast it could not see.
+
+**Members do not pass messages; the board is the passing.** Each runs in turn and reads what the
+one before left, which is why no agent is handed another's output and why the board is reloaded
+between them. A member that fails is logged and stepped over — these are separate specialists,
+and the storyboard is still worth having when the design pass fell over.
+
+**A role is not a job; a stage plus a role is** (`crew._is_check`). The style artist and the
+script writer MAKE on their own stages and CHECK on the assets stage, so the same skill name
+appears in three casts doing two different things.
+
+**The style role resolves by medium.** `STAGE_CAST` names `crew.STYLE`, and `style_artist(board)`
+turns it into `style-paper-cutout` or `style-claymation`. Two skills, one tool set — what
+differs is the prompt, not what they can do. Both own `set_medium`, so the skill and the render
+ask for the same material by construction rather than by the director remembering to set both.
+
+**The cross-check reports; it never re-renders.** Three lenses (`critique.LENSES`) — craft,
+staging, story — one structured vision call each, filed into the beat's own `asset_chat` beside
+`stills.review`'s verdicts, carrying a concrete suggested fix. The bound is a money bound as
+much as a design one: three lenses that could each reject and re-render would turn one
+disagreeing panel into a run that spends its whole `CREW_STILL_BUDGET` on one beat. Three vision
+calls per still, once. `POST /api/reels/{slug}/beats/{n}/inspect` runs one lens on demand;
+`GET /api/reels/{slug}/crew` answers what the crew would do next, free.
 
 **The agents wrap; they never reimplement.** Every tool is a call into `agent.py`, `board.py`,
 `develop.py`, `panels.py`, `pictures.py`, `planner.py`, `staging.py` or `stills.py`, so the
@@ -516,7 +607,7 @@ answering to `set_beat` silently overwrote each other the first time.
 **`next_stage` mirrors `resolveStage` (`studio/src/route.ts:93`) line for line, and answers
 `None` where that answers `"studio"`.** That is the whole money boundary: "the crew is
 finished" and "only the paid stage is left" are literally the same value, `STAGES` has three
-entries, and there is no key in `AGENT_FOR` a fourth could resolve through. It is two
+entries, and there is no cast a fourth could resolve through. It is two
 implementations of one rule in two languages — the drift `planner.py`'s docstring warns about —
 because the Python answer is not reachable from the browser without a route. `crew.py --where`
 is what makes a disagreement observable in one command; it agrees on all nine boards on disk.
@@ -569,7 +660,7 @@ conversational turn can see. Per-round tool chatter goes to the job log instead.
 ### Two ways the model writes a script, one specification
 
 `planner.plan` is the one-shot path: `planner.brief()` splices section 0 of
-`prompts/40s-paper-cutout-script.md` out and replaces it with `ANSWERS`, because the studio's
+`prompts/40s-stop-motion-script.md` out and replaces it with `ANSWERS`, because the studio's
 form had already settled the beat count and one length for every beat.
 
 `develop.py` is the conversational one, and it exists because section 0 **is a four-question
@@ -834,7 +925,7 @@ both of those out. Its turn lands in the board's own transcript, not a per-field
 story edit, and the next conversational turn reading a board that changed for no reason it can
 see is the drift `transcript()` exists to prevent.
 
-`prompts/40s-paper-cutout-script.md` is **the** specification of what a script for this pipeline
+`prompts/40s-stop-motion-script.md` is **the** specification of what a script for this pipeline
 has to be, and all three ways into a board are written against it: a human pastes it into an
 outside AI; `planner.brief()` hands the same file over with only its opening interview (section
 0) spliced out, for the beat count and length the studio already asked for; and `develop.brief()`
@@ -977,29 +1068,41 @@ reasoned rather than seen:
 one measured run took minutes for the writing turn on this machine's network path. Do not tune a
 timeout against it.
 
-**No agent in the crew has reached a live model.** What is exercised is everything around one,
-and it is exercised end to end: all three skills load, render and build; the 23-tool toolbox
-constructs; `next_stage` agrees with `resolveStage` on all nine boards on disk; the three new
-routes answer (`GET /api/agents` 200, unknown agent 404, empty message 422, bad stage 422,
-unknown reel 404); `import paperreel.api` still works after `GeminiError` was reparented; and
-the whole loop was driven against a stub provider — five rounds, a tool call that succeeded, an
-invented tool name that came back as text, a refusal that came back as a sentence, the
-transcript written under the skill name, and a cancel between rounds that stopped it at one.
+**No agent in the crew has reached a live model, and neither has claymation.** What is
+exercised is everything around them, end to end and for nothing: all six skills load, render and
+build; the 27-tool toolbox constructs; `next_stage` agrees with `resolveStage` on all nine boards
+on disk; every new route answers (`GET /api/agents`, `GET .../crew`, unknown agent 404, empty
+message 422, bad stage 422, bad lens 404, bad medium 422); `import paperreel.api` still works;
+**9 boards show 0 fingerprint drift and 384 paper-cutout prompt shapes are byte-identical** to
+what `build_prompt` produced before the bundle; and a clay board was driven through two full
+casts against a stub provider — the medium set, the bible written, a design minted, a beat
+blocked, the blocking and the clay audio reaching the video prompt, then three lenses filing
+`pass` / `fail` / `pass` into the beat's transcript with a suggested fix.
 
-So what is NOT known is everything about the *conversation*: whether the script agent actually
-asks section 0's questions rather than writing straight away, whether the storyboarder designs
-what recurs rather than one design per beat, whether the asset agent reads the review's verdict
-before re-rendering or just renders again, and whether any of them stops at the stage boundary
-rather than talking about the next one. `CREW_STILL_BUDGET` is a guess and has never fired.
-`--dry-run` is where to look before spending anything; `--stage storyboard` on a board that
-already has a script is the cheapest first real run, because panels use `PANEL_MODEL` at 1K and
-reach no renderer.
+So what is NOT known is everything about the *conversations and the pictures*. Specifically:
 
-**The script-writer's system prompt is 35 KB**, nearly all of it the authoring brief, and a tool
-loop carries it through every round of history where `develop.turn` pays for it once. That is a
-real per-round input cost with no mitigation short of prompt caching. `max_rounds: 8` on that
-skill is the lever; measure it on the first run rather than guessing.
+- **Nothing has been rendered in clay.** `CLAYMATION`'s thirteen fields are reasoned from
+  `pictures.py`'s measured lessons and from what the two materials physically do, not from a
+  render. The claim most likely to be wrong is that `judge` rejects the right things: a reviewer
+  told to reject anything that is not "sculpted plasticine with visible thumbprints" may reject
+  perfectly good clay for being too smooth.
+- **`blocking` has never been in a paid render.** Whether a separate "In frame:" clause improves
+  a shot or just gives the model one more thing to draw into the frame is unmeasured, and the
+  slot's position (after staging, before scene) is reasoned from `SCENE_PREFIX`'s comment.
+- **Whether a cast beats one agent is the whole claim and it is untested.** Three specialists in
+  sequence cost three turns where one agent costs one; the argument is that the one agent
+  answers about whichever concern it noticed first, and nobody has watched either happen.
+- **The cross-check's false-fail rate is unknown.** Three reviewers each told "pass a still that
+  is right" will still find something. If they fail everything, the verdicts become noise and the
+  bound to report-only is what stops that being expensive.
+- **`CREW_STILL_BUDGET` (24) is a guess and has never fired.**
+- **The script-writer's system prompt is 35 KB**, nearly all of it the brief, carried through
+  every round of history where `develop.turn` pays for it once. No mitigation short of prompt
+  caching; `max_rounds: 8` is the lever.
+- **The frontmatter reader is not YAML.** A user who writes valid YAML it rejects gets an error
+  on a file that looks correct. Errors name the file, line and supported shapes; swapping in
+  PyYAML later is one function.
 
-**The frontmatter reader is not YAML.** A user who writes valid YAML it rejects gets an error on
-a file that looks correct. The errors name the file, the line and the supported shapes, and the
-schema is closed — but swapping in PyYAML later is one function if that trade turns out wrong.
+`uv run crew.py --dry-run` prints every prompt of the next stage without sending one, which is
+where to look before spending anything. The cheapest first real run is
+`--stage storyboard` on a board that already has a script.

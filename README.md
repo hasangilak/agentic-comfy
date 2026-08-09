@@ -241,7 +241,7 @@ somewhere else — verbatim: beat order, per-beat lengths and which beats are cu
 written, and no model turn happens. Talking a model into a script you have already finished is
 slower and loses detail on the way.
 
-All three are written against the *same* brief. `prompts/40s-paper-cutout-script.md` is the
+All three are written against the *same* brief. `prompts/40s-stop-motion-script.md` is the
 prompt that gets an AI to write a script — and it is also, verbatim, what the model is handed by
 the other two: **talk it through** sends it whole, and **write it for me** replaces only its
 opening interview with the beat count and length you already gave. There is deliberately no

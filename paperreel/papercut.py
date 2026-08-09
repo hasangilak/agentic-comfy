@@ -96,12 +96,13 @@ def max_references(reported: dict | None) -> int:
 def style_for(board: board_mod.Board) -> str:
     """The scene-level suffix Papercut appends to every beat.
 
-    The board's style bible plus `config.ASSET_STYLE_SUFFIX`, which is also what the vision
+    The board's style bible plus its medium's still suffix, which is also what the vision
     review judges a still against -- so the words that ask for the medium and the words that
-    check for it cannot drift apart.
+    check for it cannot drift apart. Both sides read `board.look()`, which is the single place
+    that agreement is now enforced.
     """
     bible = " ".join((board.data.get("style_bible") or "").split()).strip()
-    return f"{bible} {config.ASSET_STYLE_SUFFIX}".strip()
+    return f"{bible} {board.look().still}".strip()
 
 
 Pictures = list[tuple[Path, str]]
@@ -537,8 +538,8 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
             gemini_model=gemini_model or beat_model,
             gemini_image_size=gemini_image_size or beat_size,
             # The medium, and NOT the board's style bible -- see `_scene_body`. A prop sheet
-            # shares the paper with the film, not the cast.
-            style=style or config.REF_DRAW_STYLE_SUFFIX,
+            # shares the film's material with it, not the cast.
+            style=style or board.look().sheet,
             label=lambda _n: named,
         )
     return bool(made)

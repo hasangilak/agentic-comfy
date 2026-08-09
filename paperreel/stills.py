@@ -69,12 +69,14 @@ REVIEW_SCHEMA = {
 # checklist because the first version, which only asked "does this match?", rejected almost
 # everything: a still whose setting differed from the reference IS correct -- that is what a
 # cut is for -- and a model with no instruction to the contrary reads any difference as drift.
+# `{medium}` rather than a literal, and this is the one substitution in this file that is not
+# cosmetic: the reviewer REJECTS a still for not being the medium, so a clay reel judged against
+# paper would have every still it rendered thrown away by its own review pass.
 JUDGEMENT = (
     "Judge only these, and reject only for something you can name:\n"
     "- the characters: species, colour, markings, proportions, ear and tail shape, face. "
     "These must be the SAME design as the reference, in every detail.\n"
-    "- the medium: layered paper-cutout with visible paper grain, crisp cut edges, soft "
-    "contact shadows. Not a photograph, not a 3D render, not a flat vector drawing.\n"
+    "- the medium: {medium}, not a flat vector drawing.\n"
     "- the palette and the art direction.\n"
     "- the frame: tall vertical 9:16, the character fully inside it, no text, no watermark, "
     "no signature, no border or frame drawn around the picture.\n"
@@ -119,14 +121,14 @@ CHAT_SCHEMA = {
     },
 }
 
-CHAT_SYSTEM = (
-    "You are the still editor for a paper-cutout stop-motion Instagram Reel studio. You are "
+CHAT_SYSTEM_TEMPLATE = (
+    "You are the still editor for a {name} Instagram Reel studio. You are "
     "looking at ONE opening still with the director, and your job is to turn what they say "
     "about it into the prompt it is drawn from next time.\n\n"
     "The director is the authority on this picture. They are not asking you whether their note "
     "is a good idea -- if they want the puppet facing the other way, that is what the prompt "
     "now says. Two things are not theirs to overrule, because the rest of the pipeline depends "
-    "on them: the medium (layered paper cutout, visible paper grain, soft contact shadows) and "
+    "on them: the medium ({essence}) and "
     "the frame (tall vertical 9:16, no text, no watermark, no signature, no drawn border).\n\n"
     "Rewrite the WHOLE prompt every time, carrying over every part of it the director did not "
     "ask you to change -- the setting, the framing, the scale, the moment, and the style "
@@ -378,7 +380,7 @@ def review(board: board_mod.Board, n: int) -> dict:
         )
     images.append(still)
     parts.append(f"STYLE BIBLE: {board.identity()}")
-    parts.append(f"REQUIRED OF EVERY STILL: {config.ASSET_STYLE_SUFFIX}")
+    parts.append(f"REQUIRED OF EVERY STILL: {board.look().still}")
     if prompt:
         parts.append(f"THIS STILL WAS ASKED FOR AS: {prompt}")
         # This pass rewrites `asset_prompt` without anyone asking for it, and it is told to
@@ -387,7 +389,7 @@ def review(board: board_mod.Board, n: int) -> dict:
         # holding tokens, this is the one nobody is watching when it does.
         if config.mention_bodies(prompt):
             parts.append(config.MENTION_NOTE)
-    parts.append(JUDGEMENT)
+    parts.append(JUDGEMENT.format(medium=board.look().judge))
     parts.append("Return JSON only.")
     return gemini.structured(
         [{"role": "user", "content": "\n\n".join(parts),
@@ -449,6 +451,17 @@ def discussable(board: board_mod.Board, n: int) -> None:
             "about it.",
             status=422,
         )
+
+
+def chat_system(board: board_mod.Board) -> str:
+    """The system prompt, with this board's medium in it.
+
+    A function rather than a constant because the sentence it opens with names the film's
+    medium, and a clay reel told it is a paper-cutout studio would take that as the
+    instruction it is -- this prompt's whole job is to say which half of a director's note
+    the pipeline will not let them overrule."""
+    look = board.look()
+    return CHAT_SYSTEM_TEMPLATE.format(name=look.name, essence=look.essence)
 
 
 def converse(board: board_mod.Board, n: int, message: str, *,
@@ -657,7 +670,7 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
     if history:
         parts.append(history)
     parts.append(f"STYLE BIBLE: {board.identity()}")
-    parts.append(f"REQUIRED OF EVERY STILL: {config.ASSET_STYLE_SUFFIX}")
+    parts.append(f"REQUIRED OF EVERY STILL: {board.look().still}")
     if beat.get("scene"):
         parts.append(f"THE SHOT THIS STILL BELONGS TO: {beat['scene']}")
     if beat.get("action"):
@@ -674,7 +687,7 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
     parts.append(f"THE DIRECTOR SAYS: {message}")
     parts.append("Return JSON only.")
     return [
-        {"role": "system", "content": CHAT_SYSTEM},
+        {"role": "system", "content": chat_system(board)},
         {"role": "user", "content": "\n\n".join(parts),
          "images": [gemini.encode(path) for path in images]},
     ]

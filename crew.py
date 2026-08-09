@@ -2,16 +2,21 @@
 # requires-python = ">=3.12"
 # dependencies = ["pillow", "httpx"]
 # ///
-"""Three agents that walk a reel from a concept to stills on disk, and stop there.
+"""A crew that walks a reel from a concept to stills on disk, and stops there.
 
-    uv run crew.py --concept "a paper pig finds a pond"
+Three stages, each worked by a cast rather than by one agent -- a writer and a style artist,
+then the style artist with mise-en-scene and the storyboarder, then the asset maker with three
+agents checking what it made through three different lenses. `paperreel/crew.py` is the order
+and the reasons.
+
+    uv run crew.py --concept "a clay pig finds a pond" --medium claymation
     uv run crew.py --name <slug>                      # carry on from wherever it is
     uv run crew.py --name <slug> --stage storyboard   # exactly that stage, then stop
-    uv run crew.py --name <slug> --agent asset-maker --note "beat 3 is too dark"
+    uv run crew.py --name <slug> --agent mise-en-scene --note "beat 3 feels empty"
 
     uv run crew.py --list                             # every agent; calls nothing
-    uv run crew.py --name <slug> --where              # which stage it is waiting on; free
-    uv run crew.py --name <slug> --dry-run --agent storyboarder    # the prompt, unsent
+    uv run crew.py --name <slug> --where              # the stages left and who works them
+    uv run crew.py --name <slug> --dry-run            # every prompt of the next stage, unsent
 
 This CLI cannot start a paid render, and the dependency list above is where that is visible:
 no `imageio-ffmpeg`, so nothing here can even reach the video pipeline. `storyboard.py` keeps
@@ -44,6 +49,8 @@ def main() -> int:
                         help="how many shots, when starting from a concept")
     parser.add_argument("--seconds", type=float, default=config.BEAT_LENGTHS[-1],
                         help="how long each beat runs, when starting from a concept")
+    parser.add_argument("--medium", choices=list(config.MEDIUMS),
+                        help="what the film is made of; only meaningful with --concept")
     parser.add_argument("--where", action="store_true",
                         help="print which stage the board is waiting on, and exit")
     parser.add_argument("--list", action="store_true", dest="listing",
@@ -73,7 +80,15 @@ def main() -> int:
     if args.where:
         if board is None:
             parser.error("--where needs --name")
-        print(crew.next_stage(board) or "nothing (only the render is left)")
+        left = crew.plan_of(board)
+        if not left:
+            print("nothing (only the render is left)")
+            return 0
+        for entry in left:
+            cast = ", ".join(
+                member["agent"] + (f" [{member['lens']}]" if member["lens"] else "")
+                for member in entry["cast"])
+            print(f"{entry['stage']:<11} {cast}")
         return 0
 
     if args.dry_run:
@@ -87,14 +102,14 @@ def main() -> int:
     if args.agent:
         if board is None:
             parser.error("--agent needs --name; an agent works on a board that exists")
-        message = args.note.strip() or crew.BRIEF_FOR.get(
-            _stage_of(args.agent) or "", "Do what this board needs next.")
+        message = args.note.strip() or _default_brief(args.agent, board)
         turn = crew.one(args.agent, board, message, hooks=hooks)
         print(f"\n{turn.agent}: {turn.reply}")
         return 0
 
     if args.concept:
-        board = crew.start(args.concept, beats=args.beats, seconds=args.seconds, hooks=hooks)
+        board = crew.start(args.concept, beats=args.beats, seconds=args.seconds,
+                           medium=args.medium, hooks=hooks)
         print(f"\nreel: {board.slug}")
         if args.stage == "script":
             return 0
@@ -107,11 +122,19 @@ def main() -> int:
     return 0
 
 
-def _stage_of(agent: str) -> str | None:
-    for stage, name in crew.AGENT_FOR.items():
-        if name == agent:
-            return stage
-    return None
+def _default_brief(agent: str, board) -> str:
+    """What the orchestrator would say to this agent, for a director who said nothing.
+
+    Found by asking the crew rather than by a table here: an agent appears in more than one
+    cast now and is told something different in each, so "which stage is this agent's" has no
+    single answer and the pair (stage, role) is what carries the brief.
+    """
+    for stage in crew.STAGES:
+        for role, who in zip(crew.STAGE_CAST[stage], crew.cast_for(stage, board)):
+            if who == agent:
+                return crew._brief(stage, role, crew.CHECKERS.get(role)
+                                   if crew._is_check(stage, role) else None, "")
+    return "Do what this board needs next."
 
 
 def _list() -> int:
@@ -155,11 +178,14 @@ def _dry_run(args, board: board_mod.Board | None) -> int:
     This is the review artifact the money guard rests on: a prompt is read before a turn is
     ever paid for, and a skill edit can be checked without spending anything.
     """
-    stage = args.stage or args.through or crew.next_stage(board)
-    name = args.agent or crew.AGENT_FOR.get(stage or "script", "script-writer")
-    agent = runtime.build(name)
-    message = args.note.strip() or crew.BRIEF_FOR.get(stage or "script", "")
-    print(runtime.preview(agent, message, crew.prelude(board)))
+    where = args.stage or args.through or crew.next_stage(board) or "script"
+    names = [args.agent] if args.agent else crew.cast_for(where, board)
+    for index, name in enumerate(names):
+        agent = runtime.build(name)
+        if index:
+            print("\n" + "=" * 78 + "\n")
+        print(runtime.preview(agent, args.note.strip() or _default_brief(name, board),
+                              crew.prelude(board)))
     return 0
 
 

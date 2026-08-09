@@ -12,7 +12,7 @@ import { Button, inputClass } from "../ui";
  *
  * The two exist for opposite situations, and both are first-class. "Write it for me" hands the
  * model the same authoring prompt a human would paste into an AI elsewhere
- * (prompts/40s-paper-cutout-script.md) and turns a one-line concept into a shot list. "Paste a
+ * (prompts/40s-stop-motion-script.md) and turns a one-line concept into a shot list. "Paste a
  * script" takes one that already exists and adopts it verbatim, because talking a model into a
  * script you have already written is slower and lossier than handing it over.
  */
@@ -246,7 +246,7 @@ export function PasteAScript({ onImported }: { onImported?: (notes: string[]) =>
       ) : (
         <p className="text-[10px] leading-snug text-zinc-400">
           Free — no model turn at all. Beat order, lengths and cuts arrive exactly as written.{" "}
-          <code>prompts/40s-paper-cutout-script.md</code> is the prompt that gets an AI to write
+          <code>prompts/40s-stop-motion-script.md</code> is the prompt that gets an AI to write
           one — the same brief “write it for me” uses.
         </p>
       )}

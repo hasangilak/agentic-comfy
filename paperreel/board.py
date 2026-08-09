@@ -1277,7 +1277,42 @@ class Board:
         ]
         if staging:
             parts.append(staging)
+        # Both conditional and both appended after the staging part, in this order, in BOTH
+        # fingerprints. `fingerprint()` is positional, so a part inserted mid-list rather than at
+        # the end would rehash every beat that has the parts before it -- and the two methods
+        # disagreeing on order is how a beat flips between `stale` and `invalidated`.
+        blocking = " ".join(str(beat.get("blocking") or "").split())
+        if blocking:
+            parts.append(blocking)
+        medium = self.medium_digest()
+        if medium:
+            parts.append(medium)
         return fingerprint(*parts)
+
+    def medium(self) -> str:
+        """Which medium this reel is made of. Absent means the default, and must keep meaning it.
+
+        Every board written before the medium bundle existed has no `medium` key, so a missing
+        one has to resolve to paper cutout AND has to hash to nothing -- see `medium_digest`.
+        A key naming a medium nobody ships falls back rather than raising (`config.medium`),
+        because this document is hand-editable and can predate a rename.
+        """
+        return str(self.data.get("medium") or config.DEFAULT_MEDIUM)
+
+    def look(self) -> config.Medium:
+        return config.medium(self.medium())
+
+    def medium_digest(self) -> str:
+        """The medium, for the fingerprints -- and empty on every board that never named one.
+
+        The `staging_digest` rule, applied to something board-wide: an unconditional part would
+        rehash every beat of every reel at once, mark them all stale, and re-price a paid render
+        over a feature nobody had used. Empty when the board is in the default medium, whether it
+        says so or says nothing, so the two are indistinguishable to the hash -- which they have
+        to be, since a director who sets the medium to paper cutout has changed nothing.
+        """
+        key = self.medium()
+        return "" if key == config.DEFAULT_MEDIUM else f"medium:{key}"
 
     def frame_ids_for(self, beat: dict) -> FrameIds:
         """Content hashes of the images this beat is conditioned on, as things stand now.
@@ -1412,6 +1447,16 @@ class Board:
         staging = self.staging_digest(beat["n"])
         if staging:
             parts.append(staging)
+        # The beat's blocking is in the video prompt, so rewriting where things stand really does
+        # change what it would render as -- and it is the beat's own line, not something inherited,
+        # so it reads as `edited`. The medium is board-wide like the style bible above. Both
+        # conditional, both last, in the same order as `render_fingerprint`.
+        blocking = " ".join(str(beat.get("blocking") or "").split())
+        if blocking:
+            parts.append(blocking)
+        medium = self.medium_digest()
+        if medium:
+            parts.append(medium)
         # Deliberately absent: `panel` and the panel image. A storyboard panel is a sketch of the
         # shot that reaches no renderer, so nothing about the render changes when one is redrawn --
         # and putting it in here would mark every beat of every existing board `edited` at once and
@@ -1519,6 +1564,10 @@ class Board:
                 # can make one unreachable.
                 "panel": beat.get("panel", ""),
                 "panel_url": self.media_url(self.panel_path(n)),
+                # Beside the panel because they answer next to each other -- the panel says how
+                # the shot is framed and this says what is standing in it. Unlike the panel, it
+                # reaches the render and is in both fingerprints, conditionally.
+                "blocking": beat.get("blocking", ""),
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
                 "frame": self.media_url(self.frame_path(n)),
@@ -1650,6 +1699,12 @@ class Board:
             ],
             "stage_kinds": list(config.STAGE_KINDS),
             "max_staging": config.MAX_STAGE_SHEETS,
+            # What this reel is made of, and what else it could be. Derived through `medium()`
+            # so a board that never named one publishes the default rather than an empty string,
+            # which is what lets the canvas show a selection without writing one to disk.
+            "medium": self.medium(),
+            "mediums": [{"key": entry.key, "name": entry.name}
+                        for entry in config.MEDIUMS.values()],
             "beats": beats,
             # The whole reel's panels on one numbered sheet, or None until one has been built.
             # Reel-level because that is what a storyboard is -- the sequence read at once.

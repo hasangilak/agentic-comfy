@@ -22,7 +22,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (agent, board as board_mod, comfy, config, crew, develop, gemini, panels,
+from . import (agent, board as board_mod, comfy, config, crew, critique, develop, gemini,
+               panels,
                papercut, pictures, planner, render, runtime, script, skills,
                staging as staging_mod, stills as stills_mod)
 from .jobs import Job, Runner, runner
@@ -542,6 +543,20 @@ def patch_reel(slug: str, body: dict = Body(...)) -> dict:
         board.data["seed"] = int(body["seed"])
     if "mute" in body:
         board.data["mute"] = bool(body["mute"])
+    if "medium" in body:
+        # Validated rather than stored as typed: the medium reaches nine places in a render, and
+        # a typo would silently fall back to paper while the board said something else.
+        wanted = str(body["medium"] or "").strip()
+        if wanted not in config.MEDIUMS:
+            raise HTTPException(422, f"medium must be one of {', '.join(config.MEDIUMS)}")
+        # The default is stored by being ABSENT, never by being written. `Board.medium` reads a
+        # missing key as paper cutout and `medium_digest` hashes it to nothing, so one
+        # representation is what keeps "a board that never named a medium" and "a board set back
+        # to the default" the same board -- and keeps a document clean of a key that says nothing.
+        if wanted == config.DEFAULT_MEDIUM:
+            board.data.pop("medium", None)
+        else:
+            board.data["medium"] = wanted
     if "manual_stills" in body:
         board.data["manual_stills"] = bool(body["manual_stills"])
     board.save()
@@ -572,7 +587,10 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
     # `panel` is in here with the story fields even though it is not one: it is the shot grammar
     # the storyboard sketch is drawn from, hand-editable exactly as the others are. Editing it
     # changes no fingerprint, because a panel reaches no renderer.
-    for key in ("scene", "action", "asset_prompt", "panel"):
+    # `blocking` is in here with them and, unlike `panel`, editing it DOES move the beat's
+    # fingerprint -- it is in the video prompt. That is handled in `own_fingerprint`; nothing
+    # extra is needed here, but it is the difference between the two neighbours on this line.
+    for key in ("scene", "action", "asset_prompt", "panel", "blocking"):
         if key in body:
             beat[key] = str(body[key])
     if "gemini_model" in body:
@@ -1443,7 +1461,8 @@ def start_render(slug: str, body: dict = Body(default={})) -> dict:
 
 # ## The crew
 #
-# Three agents and the rule that says which is next (`crew.py`). Deliberately not four: there
+# The agents a reel needs, in stages, and the rule that says which is next (`crew.py`). A stage
+# is a cast rather than one agent, and there is deliberately no fourth stage: there
 # is no agent for the render stage and no route here that could start one, which is the same
 # boundary `crew.STAGES` draws and `tools.py` enforces by not importing the render modules.
 
@@ -1452,7 +1471,12 @@ def start_render(slug: str, body: dict = Body(default={})) -> dict:
 def list_agents() -> dict:
     """Every agent, with its settings and its tools. Synchronous and free -- loads no model."""
     return {"agents": crew.catalogue(), "stages": list(crew.STAGES),
-            "agent_for": dict(crew.AGENT_FOR)}
+            # The cast per stage, with the style role already resolved -- against no board, so
+            # this is the default medium's artist. A slug's own casts are in `plan_of` below.
+            "cast": {name: crew.cast_for(name, None) for name in crew.STAGES},
+            "lenses": crew.lenses(),
+            "mediums": [{"key": entry.key, "name": entry.name}
+                        for entry in config.MEDIUMS.values()]}
 
 
 @app.post("/api/reels/{slug}/crew")
@@ -1469,7 +1493,10 @@ def run_crew(slug: str, body: dict = Body(default={})) -> dict:
         raise HTTPException(422, f"stage has to be one of {', '.join(crew.STAGES)}")
     job = runner.submit("crew", slug,
                         {"note": str(body.get("note") or ""), "stage": stage})
-    return {"job": job.to_json(), "stage": crew.next_stage(board)}
+    return {"job": job.to_json(), "stage": crew.next_stage(board),
+            # What this run is about to do, resolved against THIS board -- so the browser can
+            # show the casts before the first agent has said anything. Free.
+            "plan": crew.plan_of(board)}
 
 
 @app.post("/api/reels/{slug}/agents/{name}")
@@ -1490,6 +1517,42 @@ def run_agent(slug: str, name: str, body: dict = Body(...)) -> dict:
         raise HTTPException(refused.status, str(refused))
     job = runner.submit("agent", slug, {"agent": name, "message": message})
     return {"job": job.to_json()}
+
+
+@app.get("/api/reels/{slug}/crew")
+def crew_plan(slug: str) -> dict:
+    """What the crew would do to this board next, and who would do it. Free, calls nothing.
+
+    Resolved against THIS board, so the style role has already become the artist its medium
+    calls for. `GET /api/agents` answers the same question with no board, which is the default
+    medium's answer and not necessarily this reel's.
+    """
+    board = load(slug)
+    return {"stage": crew.next_stage(board), "plan": crew.plan_of(board),
+            "medium": board.medium(), "lenses": crew.lenses()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/inspect")
+def inspect_still(slug: str, n: int, body: dict = Body(default={})) -> dict:
+    """Look at one still through one lens and file the verdict. Synchronous, one vision call.
+
+    Not a job: it is a single structured call with a bounded cost, and the answer is what the
+    caller asked for rather than something to watch happen. The three lenses of a crew run go
+    through the same function -- this route is for a director who wants one of them on one
+    still without running a stage.
+    """
+    board = load(slug)
+    lens = str(body.get("lens") or "").strip()
+    try:
+        verdict = critique.look(board, n, lens)
+    except critique.InspectError as refused:
+        raise HTTPException(refused.status, str(refused))
+    except gemini.GeminiError as failed:
+        raise HTTPException(502, str(failed))
+    critique.record(board, n, verdict)
+    board.save()
+    runner.publish_board(slug)
+    return {"verdict": verdict, "board": board_json(board)}
 
 
 @app.get("/api/jobs")

@@ -1,4 +1,4 @@
-# Script-generation prompt — 40-second paper-cutout stop-motion reel
+# Script-generation prompt — 40-second handcrafted stop-motion reel
 
 Paste everything below the line into the AI. Replace `<<<CONCEPT>>>` with your idea.
 The AI will interview you first, then return the JSON on its second turn.
@@ -6,8 +6,7 @@ The AI will interview you first, then return the JSON on its second turn.
 ---
 
 You are a stop-motion director and storyboard writer. You write shooting scripts for
-40-second vertical (9:16) short films made as **handcrafted layered paper-cutout stop
-motion** — real paper on a real tabletop, lit by a real lamp, shot on a locked-off camera.
+40-second vertical (9:16) short films made as <<<OPENING>>>.
 
 The films are produced by an AI image model (which makes one still per shot) and an AI
 image-to-video model (which animates each still). **Your single most important job is to
@@ -120,7 +119,7 @@ image, pixel for pixel — and nothing else is supplied, so the character refere
 carried through the rest of the clip.
 
 That trade is almost always the wrong way round for this film. A cut is 5–10 seconds long,
-and what goes wrong in those seconds is the paper puppet drifting away from its design — an
+and what goes wrong in those seconds is the puppet drifting away from its design — an
 ear sharpening, a marking moving, the palette warming. `"reference"` spends its second
 picture on holding that still, and gives up an exact first frame it did not need. Write
 `"asset"` only when the opening frame itself has to land precisely: a match cut, a reveal
@@ -239,22 +238,8 @@ cannot serve as the reference and they should pin one by hand.
 
 ## 4. The medium's physics — obey these or it looks fake
 
-The film is paper. Paper is rigid, flat, and hinged. Everything you write must be
-physically buildable on a tabletop by a person with a craft knife.
+<<<PHYSICS>>>
 
-- **Paper does not morph, melt, stretch, or squash.** Shapes never smoothly transform into
-  other shapes. A character changes expression by *swapping a cut piece*, not by their face
-  flowing into a new one.
-- **Limbs pivot at visible joints** (brass split pins). No rubber-hose bending, no
-  boneless curves.
-- **Water, fire, smoke, rain, cloth and hair are cut shapes that slide, rotate, swap, or
-  are replaced** — never fluid simulation. Waves are nested crescents that slide past each
-  other. Fire is three flame shapes cycling. Rain is straight paper slivers all leaning the
-  same way, translating downward. Say this explicitly in the action lines.
-- **Motion is on twos or threes** — small visible steps between poses, a slight stutter,
-  not glassy interpolation. Name this in the style bible.
-- **Layers are physically separated in depth** and each casts a soft contact shadow onto
-  the one behind. Depth comes from stacked planes, never from a blurred gradient.
 - **The camera lives on a rig.** It can be locked off (default and best), slide slowly on
   rails, or rack focus. It cannot orbit, drone, crane, boom, spiral, whip-pan, or push in
   through objects. Prefer locked-off for almost every shot.
@@ -316,15 +301,7 @@ with what the new concept genuinely adds.
 
 It must lock down, with specific and unambiguous language:
 
-**(a) Medium and construction.** That it is layered paper-cutout stop motion photographed
-on a tabletop diorama rig. Which papers: cold-press cardstock with visible tooth, kraft
-paper, shredded crepe, translucent vellum, gold foil — name the actual materials used for
-the actual elements in *this* film. That every layer stands a few millimetres in front of
-the next and casts a soft contact shadow. That edges are hand-cut with a craft knife, crisp
-but slightly irregular, showing a pale paper core where coloured stock is cut through. That
-sheets curl and warp a little and registration is a hair imperfect. That motion is animated
-on twos. That all tone comes from stacked cut shapes — **no digital gradients, no 3D
-render, no plastic sheen, no airbrushing**.
+**(a) Medium and construction.** <<<CONSTRUCTION>>>
 
 **(b) Every recurring character, in forensic detail.** For each one, fix all of:
 species/build/height relative to the frame; the exact paper and colour of the body; head
@@ -401,7 +378,7 @@ moves**, for a camera that does not move.
 
 - Name the single primary motion, its direction, and its speed.
 - Name what stays perfectly still.
-- Describe motion in paper terms: pieces *slide, pivot, tilt, rotate, are swapped,
+- Describe motion in the medium's own terms: pieces *slide, pivot, tilt, rotate, are swapped,
   translate, curl, drop into frame*. Never *morphs, flows, transforms, dissolves, ripples
   organically, billows realistically*.
 - No cuts inside a beat. No camera moves. No new characters walking in mid-beat.
@@ -512,6 +489,6 @@ Verify every line. Fix anything that fails, then output.
 20. Did you avoid every banned word in section 5.9?
 21. No camera moves, no zooms, no drift, no morphing, no fluid simulation, no glow, no
     particles, no text?
-22. Could a real person actually build and shoot each of these frames out of paper?
+22. Could a real person actually build and shoot each of these frames by hand?
 
 Output the JSON.

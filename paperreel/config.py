@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # The agent skills, as `<name>/SKILL.md`. Package-relative rather than under ROOT because a
 # SKILL.md is one agent's system prompt and the code cannot run without it -- the same
-# relationship `agent.SYSTEM` has to `agent.py`. `prompts/40s-paper-cutout-script.md` is
+# relationship `agent.SYSTEM` has to `agent.py`. `prompts/40s-stop-motion-script.md` is
 # top-level for the opposite reason: it is a document a human pastes into an outside AI.
 SKILLS_DIR = Path(os.environ.get("PAPERREEL_SKILLS")
                   or Path(__file__).resolve().parent / "skills")
@@ -356,14 +357,224 @@ PAPERCUT_STEPS = int(os.environ.get("PAPERREEL_PAPERCUT_STEPS", "4"))
 # exactly as the frame cap already works.
 MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "4"))
 
+# ## The medium
+#
+# Everything below this comment used to be a global string that said "paper". Nine of them
+# reached a render and one of them -- the vision review's `judge` -- REJECTED a still for not
+# being paper, so a board whose style bible said clay would have been fighting its own
+# reviewer. The bundle exists so a second medium is a table entry rather than a rewrite.
+#
+# What is NOT in here is as important as what is. `agent.MEDIUM` is misnamed and stays where
+# it is: read it and it is entirely pipeline -- the four joins, 5 s or 10 s, one thing moves,
+# the camera never moves -- and every line of it is true of clay. Same for ~88% of
+# `prompts/40s-stop-motion-script.md`; only its section 4 (the physics) and section 6(a) (the
+# construction) are medium-bound, and those two are `physics` and `construction` below.
+#
+# The two entries are not symmetrical descriptions of one thing. Paper is rigid, hinged and
+# flat, and its whole grammar is that shapes are SWAPPED rather than deformed. Clay is the
+# opposite on exactly that axis: squash and stretch is what the medium is FOR, and writing a
+# clay film under paper's physics produces stiff clay, which reads as a bad 3D render. So the
+# claymation entry is written from the material outward rather than by find-and-replacing
+# "paper" -- and it is reasoned, not measured. Nothing has been rendered in it yet.
+@dataclass(frozen=True)
+class Medium:
+    """One medium's words, in the eleven places a render or a review asks for them."""
+
+    key: str
+    # What the prompts call it, e.g. "paper-cutout stop-motion". Spliced into six system
+    # prompts, which is why it is a phrase rather than a sentence.
+    name: str
+    # The first clause of every video prompt, before anything about the join.
+    shot: str
+    # The material words inside OPEN_REFERENCE's list of what a design reference fixes.
+    surface: str
+    # The craft clause, unconditional on every video prompt.
+    craft: str
+    # The audio direction, unless the board is muted.
+    audio: str
+    # The still's style suffix -- and, because the review judges against the same medium, the
+    # thing `judge` has to agree with word for word.
+    still: str
+    # A character or prop design sheet: the subject whole, centred, on nothing.
+    sheet: str
+    # A set sheet: nothing but scenery, the subject deliberately absent.
+    set: str
+    # What the vision review holds a finished still to.
+    judge: str
+    # The same claim in a parenthetical, for the four chat prompts that tell a director which
+    # part of their note the pipeline will not let them overrule. Shorter than `judge` because it
+    # sits inside a sentence rather than being a criterion of its own.
+    essence: str
+    # What a storyboard panel must NOT look like, so a sketch is never mistaken for the shot.
+    negate: str
+    # The brief's opening sentence about what the films are made of, after the em dash.
+    opening: str
+    # Section 4 of the authoring brief: the physics a beat has to obey to look real.
+    physics: str
+    # Section 6(a) of the brief: what the style bible must lock down about construction.
+    construction: str
+
+
+PAPER_CUTOUT = Medium(
+    key="paper-cutout",
+    name="paper-cutout stop-motion",
+    shot=("Single continuous locked-off shot in handcrafted layered paper-cutout stop-motion "
+          "style, shot straight-on. "),
+    surface="paper texture, cut edges",
+    craft=(
+        " Animate it as real paper puppetry: crisp cut edges, visible paper grain, layered "
+        "cardstock depth with soft contact shadows, joints pivoting like split-pin cutouts. "
+        "Keep every character's face, markings, proportions, colours, paper texture, "
+        "decorative cut-paper details, outline weight, and scale identical in every frame. "
+        # Deliberately generic. This used to name the flowers, sun and clouds of the board it
+        # was written for, which on a board without them is an instruction to invent them.
+        "Keep the set, the background layers, the lighting, and the camera completely static. "
+        "Nothing transforms, duplicates, slides, rotates, or changes design. No camera "
+        "movement, no cuts, no new objects, no text, no watermarks. Smooth temporal "
+        "consistency and natural foot contact."
+    ),
+    audio=(" Audio: soft paper rustling and quiet birdsong in a sunny forest, no music, "
+           "no speech."),
+    still=("Vertical 9:16 portrait composition, handcrafted layered paper-cutout art, visible "
+           "paper grain, soft contact shadows, no text, no watermarks, no signature."),
+    sheet=("Handcrafted layered paper-cutout construction, visible paper grain, soft contact "
+           "shadows, plain neutral background, the subject complete and centred with nothing "
+           "cropped, even frontal lighting, no scenery, no text, no watermarks, no signature."),
+    set=("Handcrafted layered paper-cutout construction, visible paper grain, soft contact "
+         "shadows, layered depth from foreground to sky, even daylight unless the description "
+         "says otherwise, an empty set with no characters, no people and no animals anywhere "
+         "in it, nothing cropped at the edges, no text, no watermarks, no signature."),
+    judge=("layered paper-cutout with visible paper grain, crisp cut edges, soft contact "
+           "shadows. Not a photograph, not a 3D render, not clay, not felt"),
+    essence="layered paper cutout, visible paper grain, soft contact shadows",
+    opening=("**handcrafted layered paper-cutout stop motion** — real paper on a real "
+             "tabletop, lit by a real lamp, shot on a locked-off camera"),
+    negate="Not paper cutout, no paper-cutout layers, no paper grain, no collage",
+    physics="""The film is paper. Paper is rigid, flat, and hinged. Everything you write must be
+physically buildable on a tabletop by a person with a craft knife.
+
+- **Paper does not morph, melt, stretch, or squash.** Shapes never smoothly transform into
+  other shapes. A character changes expression by *swapping a cut piece*, not by their face
+  flowing into a new one.
+- **Limbs pivot at visible joints** (brass split pins). No rubber-hose bending, no
+  boneless curves.
+- **Water, fire, smoke, rain, cloth and hair are cut shapes that slide, rotate, swap, or
+  are replaced** — never fluid simulation. Waves are nested crescents that slide past each
+  other. Fire is three flame shapes cycling. Rain is straight paper slivers all leaning the
+  same way, translating downward. Say this explicitly in the action lines.
+- **Motion is on twos or threes** — small visible steps between poses, a slight stutter,
+  not glassy interpolation. Name this in the style bible.
+- **Layers are physically separated in depth** and each casts a soft contact shadow onto
+  the one behind. Depth comes from stacked planes, never from a blurred gradient.""",
+    construction="""That it is layered paper-cutout stop motion photographed
+on a tabletop diorama rig. Which papers: cold-press cardstock with visible tooth, kraft
+paper, shredded crepe, translucent vellum, gold foil — name the actual materials used for
+the actual elements in *this* film. That every layer stands a few millimetres in front of
+the next and casts a soft contact shadow. That edges are hand-cut with a craft knife, crisp
+but slightly irregular, showing a pale paper core where coloured stock is cut through. That
+sheets curl and warp a little and registration is a hair imperfect. That motion is animated
+on twos. That all tone comes from stacked cut shapes — **no digital gradients, no 3D
+render, no plastic sheen, no airbrushing**.""",
+)
+
+
+# Written from the material outward, not by substituting words into the entry above. The one
+# axis where the two media are opposites is deformation: paper's grammar is that a shape is
+# swapped for another shape, and clay's grammar is that a shape BECOMES another shape. A clay
+# film written under paper's rules comes out stiff, which is the failure mode that reads as a
+# cheap 3D render -- the exact thing both media are trying not to look like.
+CLAYMATION = Medium(
+    key="claymation",
+    name="clay stop-motion",
+    shot=("Single continuous locked-off shot in handcrafted plasticine clay stop-motion "
+          "style, shot straight-on. "),
+    surface="clay surface, thumbprints and tool marks",
+    craft=(
+        " Animate it as real clay puppetry: matte plasticine over a wire armature, visible "
+        "thumbprints and sculpting-tool marks, soft rounded forms, seams where parts were "
+        "pressed together, weight in every pose. Bodies squash and stretch as they move and "
+        "settle back; nothing is rigid. Keep every character's face, markings, proportions, "
+        "colours, clay surface, sculpted details, silhouette weight, and scale identical in "
+        "every frame. Keep the set, the background, the lighting, and the camera completely "
+        "static. Nothing duplicates, changes design, or turns into a different character. No "
+        "camera movement, no cuts, no new objects, no text, no watermarks. Smooth temporal "
+        "consistency and natural foot contact."
+    ),
+    audio=(" Audio: soft clay squeaks and quiet room tone, no music, no speech."),
+    still=("Vertical 9:16 portrait composition, handcrafted plasticine clay stop-motion art, "
+           "matte clay surface with visible thumbprints and tool marks, soft practical "
+           "shadows, no text, no watermarks, no signature."),
+    sheet=("Handcrafted plasticine clay construction, matte clay surface with visible "
+           "thumbprints and tool marks, soft practical shadows, plain neutral background, the "
+           "subject complete and centred with nothing cropped, even frontal lighting, no "
+           "scenery, no text, no watermarks, no signature."),
+    set=("Handcrafted plasticine clay construction, matte clay surface with visible "
+         "thumbprints and tool marks, sculpted terrain receding into depth, even daylight "
+         "unless the description says otherwise, an empty set with no characters, no people "
+         "and no animals anywhere in it, nothing cropped at the edges, no text, no "
+         "watermarks, no signature."),
+    judge=("sculpted plasticine clay with a matte surface, visible thumbprints and tool "
+           "marks, soft rounded forms. Not a photograph, not a 3D render, not paper, not felt"),
+    essence="sculpted plasticine clay, visible thumbprints and tool marks, a matte surface",
+    opening=("**handcrafted plasticine clay stop motion** — real clay on a real tabletop, "
+             "lit by a real lamp, shot on a locked-off camera"),
+    negate="Not clay, no plasticine, no sculpted forms, no photographic texture",
+    physics="""The film is clay. Clay is soft, heavy, and continuous. Everything you write must be
+physically buildable on a tabletop by a person with their hands and a set of sculpting tools.
+
+- **Clay squashes and stretches, and that is the point.** A body compresses as it lands and
+  extends as it leaps. Write the anticipation and the settle, not just the move — a pose that
+  arrives and stops dead reads as a 3D render, which is the one thing this medium must not
+  look like.
+- **Limbs bend along their length**, over a wire armature. There are no visible joints and no
+  hinges; a raised arm curves.
+- **A face changes by being re-sculpted**, not by swapping a piece. Mouths are pressed and
+  reshaped; brows are pushed. Expressions arrive over two or three frames rather than cutting.
+- **Water, fire, smoke, rain and hair are sculpted clay forms that deform, roll and are
+  replaced** — never fluid simulation. Waves are rolled clay ridges that bulge and flatten.
+  Fire is three sculpted flame forms cycling. Rain is short clay slivers falling. Say this
+  explicitly in the action lines.
+- **Motion is on twos** — small visible steps between poses, a slight stutter, not glassy
+  interpolation. Name this in the style bible.
+- **Depth comes from real sculpted volume** lit by one rig, never from a blurred gradient.
+  Every surface is matte: clay has no specular sheen and a shiny highlight reads as plastic.""",
+    construction="""That it is handcrafted plasticine clay stop motion photographed
+on a tabletop set. Which clays and which armatures: matte plasticine over twisted aluminium
+wire, harder sculpey for props that must hold an edge, a painted foam or sculpted clay
+groundplane — name the actual materials used for the actual elements in *this* film. That
+the surface holds visible thumbprints, fingernail creases and the drag marks of a sculpting
+tool, and that these move slightly frame to frame. That seams show where two pieces were
+pressed together. That everything is matte and slightly dusty, with **no plastic sheen, no
+specular highlights, no digital gradients, no 3D render, no airbrushing**. That motion is
+animated on twos, with squash on impact and a settle after every stop.""",
+)
+
+MEDIUMS = {entry.key: entry for entry in (PAPER_CUTOUT, CLAYMATION)}
+# The medium a board is in when it does not say. It has to be paper cutout and it has to stay
+# that way: every reel written before the bundle existed has no `medium` key, and `Board.medium`
+# reads a missing key as this. A board that never says is byte-identical to what it was.
+DEFAULT_MEDIUM = PAPER_CUTOUT.key
+
+
+def medium(key: str | None = None) -> Medium:
+    """One medium by key, falling back rather than raising.
+
+    Falls back because the key arrives from a board document, which is hand-editable and can
+    predate a rename. A reel that names a medium nobody ships should render as the default
+    rather than not render at all -- the same judgement `Board.source_for` makes about a join
+    it does not recognise.
+    """
+    return MEDIUMS.get((key or "").strip() or DEFAULT_MEDIUM, PAPER_CUTOUT)
+
+
 # What every still is asked for on top of the board's style bible and the beat's own
 # asset_prompt. One place, because it is also what the vision review judges a still against:
 # a still is rejected for missing the medium described here, so the words that ask for it and
 # the words that check for it must not be able to drift apart.
-ASSET_STYLE_SUFFIX = (
-    "Vertical 9:16 portrait composition, handcrafted layered paper-cutout art, visible "
-    "paper grain, soft contact shadows, no text, no watermarks, no signature."
-)
+#
+# The module-level name is the default medium's, kept so a caller that has no board in its hand
+# still reads correctly. Anything that HAS a board goes through `config.medium(board.medium)`.
+ASSET_STYLE_SUFFIX = PAPER_CUTOUT.still
 
 # ## Reference pictures the studio draws rather than receives
 #
@@ -391,11 +602,7 @@ GEMINI_IMAGE_SIZES = ("1K", "2K", "4K")
 # no framing to speak of, nothing implied off the edges, the subject whole and centred so it can
 # be read rather than staged. Sharing ASSET_STYLE_SUFFIX would ask every prop sheet to be a
 # composition, which is how a picture of a club comes back as a scene with a club in it.
-REF_DRAW_STYLE_SUFFIX = (
-    "Handcrafted layered paper-cutout construction, visible paper grain, soft contact shadows, "
-    "plain neutral background, the subject complete and centred with nothing cropped, even "
-    "frontal lighting, no scenery, no text, no watermarks, no signature."
-)
+REF_DRAW_STYLE_SUFFIX = PAPER_CUTOUT.sheet
 
 # The window and the memory for one picture's conversation, mirroring the still's pair above.
 #
@@ -442,12 +649,7 @@ MAX_STAGE_SHEETS = int(os.environ.get("PAPERREEL_MAX_STAGE_SHEETS", "16"))
 # It also asks for the reel's own vertical shape rather than the square below, because a set is
 # the one design sheet whose framing is load-bearing: what the still needs to know is how much of
 # this clearing is above the puppet's head, and a square sheet answers a different question.
-SET_DRAW_STYLE_SUFFIX = (
-    "Handcrafted layered paper-cutout construction, visible paper grain, soft contact shadows, "
-    "layered depth from foreground to sky, even daylight unless the description says otherwise, "
-    "an empty set with no characters, no people and no animals anywhere in it, nothing cropped "
-    "at the edges, no text, no watermarks, no signature."
-)
+SET_DRAW_STYLE_SUFFIX = PAPER_CUTOUT.set
 # The set sheet's shape. Deliberately the still's grid rather than PAPERCUT_REF_ASPECT: a set is
 # read for its framing, so it is drawn in the frame it will be seen in. Unlike PAPERCUT_ASPECT
 # this carries no hard constraint -- a sheet is conditioning and is never handed to H3 as a frame
@@ -513,13 +715,24 @@ PANEL_ASPECT = "9:16"
 # `pictures.py`'s measured lesson applied one level further out: a model shown the cast reference
 # draws the cast, in the cast's medium. Handed the cutout still, a sketch panel comes back a
 # cutout. The subject travels as words instead -- `panels.write` puts it in the panel text.
-PANEL_STYLE_SUFFIX = (
+# What it negates is the FILM's medium, whichever that is, which is why the clause comes out of
+# the bundle. A clay reel whose panels negated paper cutout would be negating something nobody
+# was going to draw anyway, and leaving the real risk -- a sketch that comes back as a finished
+# clay frame -- unaddressed.
+PANEL_STYLE_TEMPLATE = (
     "Rough black-and-white storyboard panel: soft graphite pencil and grey marker on off-white "
     "paper, loose confident construction lines, flat tonal blocking, no colour. Arrows drawn "
-    "directly on the frame for camera and subject movement. Not paper cutout, no paper-cutout "
-    "layers, no paper grain, no collage, no photographic texture -- this is a sketch of a shot, "
-    "not the shot. No lettering, no captions, no watermarks, no signature."
+    "directly on the frame for camera and subject movement. {negate}, no photographic texture "
+    "-- this is a sketch of a shot, not the shot. No lettering, no captions, no watermarks, no "
+    "signature."
 )
+
+
+def panel_style(key: str | None = None) -> str:
+    return PANEL_STYLE_TEMPLATE.format(negate=medium(key).negate)
+
+
+PANEL_STYLE_SUFFIX = panel_style()
 
 # ## Prompt scaffold
 #
@@ -558,7 +771,7 @@ OPEN_REFERENCE = (
     "No first frame is provided. Instead {tags} are supplied as design references: they fix "
     "what the characters, the set and the materials look like, and nothing else. Reproduce "
     "every subject that appears in them exactly -- same shapes, markings, colours, "
-    "proportions, paper texture, cut edges and palette. The references are not shots: do not "
+    "proportions, {surface} and palette. The references are not shots: do not "
     "show them, do not cut between them, do not pan across them, and do not put more than one "
     "version of a character on screen. A character shown in a reference is the SAME single "
     "character that performs the action below, not an additional one, and the pose it is in "
@@ -630,6 +843,17 @@ IDENTITY_PREFIX = (
 # street at twilight") and sometimes a framing ("macro close-up of the lantern housing"),
 # and no single connecting phrase reads correctly for both.
 SCENE_PREFIX = "Scene: "
+# The beat's blocking: where things stand in THIS frame and what the set holds. The gap it
+# fills is real and was measurable in the panels before it existed -- `scene` is one line and is
+# deliberately shared across every beat of a continuous shot, so a shot where the character
+# crosses from left to right has one scene line for both halves and nothing anywhere that says
+# which half is which. The style bible says what things look like, the design sheets say it
+# again for named things, and none of the three says where anything IS.
+#
+# Labelled rather than woven in, for `SCENE_PREFIX`'s reason one notch further: a blocking line
+# is a list of positions ("the lantern low in the right third, the moth entering frame left")
+# and no connecting phrase makes a list read as a sentence.
+BLOCKING_PREFIX = "In frame: "
 CRAFT = (
     " Animate it as real paper puppetry: crisp cut edges, visible paper grain, layered "
     "cardstock depth with soft contact shadows, joints pivoting like split-pin cutouts. "
@@ -853,7 +1077,8 @@ MENTION_NOTE = (
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
                  continues: bool = False, lands: bool = False, refs: int = 0,
                  ref_notes: list[str] | None = None, ref_videos: int = 0,
-                 opens_on: bool = False, staging: str = "",
+                 opens_on: bool = False, staging: str = "", blocking: str = "",
+                 medium_key: str | None = None,
                  mentions: dict[str, tuple[int | None, str]] | None = None) -> str:
     """Assemble the instruction for one beat.
 
@@ -886,19 +1111,30 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     position, and saying it twice would have the model looking for two clearings. One rule,
     `Board.staging_text`, applied by every renderer.
 
+    `blocking` is where things stand in this frame and what the set holds -- the one question
+    the bible, the sheets and the scene line all leave open. It sits between the staging and the
+    scene line; see `BLOCKING_PREFIX`.
+
+    `medium_key` picks which medium's words wrap all of that: the opening clause, the material
+    words in the reference paragraph, the craft clause and the audio. None means the default,
+    which is what every board written before the bundle existed resolves to and is why their
+    prompts are byte-identical to what they were.
+
     `mentions` resolves the @-tokens a director may have typed into any of the three texts.
     One keyword here rather than three expanded call sites, so every path into a render --
     studio, CLI, and whatever comes next -- gets it by construction rather than by remembering.
     None means no expansion, which is what `reel.py` (no board, so nothing to resolve against)
     passes and why its prompts are byte-identical to what they always were.
     """
+    look = medium(medium_key)
     action = expand_mentions(action, mentions)
     scene = expand_mentions(scene, mentions)
     ref_notes = [expand_mentions(note, mentions) for note in (ref_notes or [])] or None
     if refs > 0 or ref_videos > 0:
-        parts = [MEDIUM]
+        parts = [look.shot]
         if refs > 0:
-            parts.append(OPEN_REFERENCE.format(tags=reference_tags(refs)))
+            parts.append(OPEN_REFERENCE.format(tags=reference_tags(refs),
+                                               surface=look.surface))
             # Straight after the paragraph that says what a reference IS, because these are
             # the exceptions to it: which picture is the cast, which is only the set, which
             # prop.
@@ -918,7 +1154,7 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
         elif refs > 0:
             parts.append(COMPOSE_OPENING)
     else:
-        parts = [MEDIUM, OPEN_CONTINUATION if continues else OPEN_CUT]
+        parts = [look.shot, OPEN_CONTINUATION if continues else OPEN_CUT]
         if lands:
             parts.append(ARRIVE_ON_LAST)
     identity = " ".join(identity.split())
@@ -931,15 +1167,23 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     staging = " ".join(expand_mentions(staging, mentions).split()).strip().rstrip(".")
     if staging:
         parts.append(STAGING_PREFIX + staging + ". ")
+    # Between the designs and the scene line, because it is the answer to a question those two
+    # leave open. The bible says what things look like and the scene line says where the shot is
+    # and at what scale; neither says where in THIS frame anything stands, and left unsaid the
+    # model re-blocks the set every beat. Before the scene line rather than after, so a reader
+    # has the set in mind before being told what is standing in it.
+    blocking = " ".join(expand_mentions(blocking, mentions).split()).strip().rstrip(".")
+    if blocking:
+        parts.append(BLOCKING_PREFIX + blocking + ". ")
     scene = " ".join(scene.split()).strip().rstrip(".")
     if scene:
         parts.append(SCENE_PREFIX + scene + ". ")
     action = action.strip().rstrip(".")
     if action:
         parts.append(action + ".")
-    parts.append(CRAFT)
+    parts.append(look.craft)
     if not mute:
-        parts.append(AUDIO_SUFFIX)
+        parts.append(look.audio)
     return "".join(parts)
 
 

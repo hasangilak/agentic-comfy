@@ -1,7 +1,7 @@
 """Writing the script: one drafting pass, then one pass where the model marks its own work.
 
 Both passes are handed the same document the user would paste into an outside AI --
-`prompts/40s-paper-cutout-script.md`, verbatim. That file is the real specification for what
+`prompts/40s-stop-motion-script.md`, verbatim. That file is the real specification for what
 a script for this pipeline has to be: the beat grid, the four joins, the anti-AI-slop rules,
 the style-bible contract, and a 22-point self-check. There is deliberately no second, shorter
 copy of those rules in this module. There used to be, and a summary that drifts from the
@@ -34,7 +34,7 @@ from . import config, gemini
 
 # The authoring prompt, shared with the human path. `script.py` imports what this produces,
 # so the two are in sync by construction rather than by discipline.
-TEMPLATE_PATH = config.ROOT / "prompts" / "40s-paper-cutout-script.md"
+TEMPLATE_PATH = config.ROOT / "prompts" / "40s-stop-motion-script.md"
 
 # The joins a script may ask for -- now all four, where "reference" used to be excluded because
 # it conditioned only on photographs the user had to upload. It is the default cut instead: its
@@ -145,11 +145,22 @@ class NoTemplate(RuntimeError):
     """The authoring prompt is missing, and there is deliberately no fallback copy of it."""
 
 
-def template() -> str:
+def template(medium_key: str | None = None) -> str:
     """The brief, without the note to the human about where to paste it.
 
     Everything above the first horizontal rule is instructions for the operator ("paste
     everything below the line into the AI"), which is not addressed to the model.
+
+    Three of its passages are medium-bound and live in `config.MEDIUMS` rather than in the file:
+    the opening sentence about what the films are made of, section 4 (the physics), and section
+    6(a) (the construction the style bible must lock down). Everything else -- the interview, the
+    joins, the 40-second budget, the anti-slop rules, the output format, the self-check -- is
+    pipeline and is word-for-word correct in any medium, which is why the file was forked at
+    three seams rather than copied.
+
+    Those three are not a find-and-replace of "paper" for "clay". Paper's whole grammar is that a
+    shape is SWAPPED for another shape and clay's is that a shape BECOMES one, so section 4
+    inverts rather than translates.
     """
     try:
         text = TEMPLATE_PATH.read_text()
@@ -160,12 +171,18 @@ def template() -> str:
             "writes one without it."
         ) from missing
     _, _, body = text.partition("\n---\n")
-    return (body or text).strip()
+    look = config.medium(medium_key)
+    return ((body or text)
+            .replace("<<<OPENING>>>", look.opening)
+            .replace("<<<PHYSICS>>>", look.physics)
+            .replace("<<<CONSTRUCTION>>>", look.construction)
+            .strip())
 
 
-def brief(concept: str, beats: int, seconds: float) -> str:
+def brief(concept: str, beats: int, seconds: float,
+          medium_key: str | None = None) -> str:
     """The authoring prompt with the interview answered and the concept filled in."""
-    body = template().replace("<<<CONCEPT>>>", concept.strip())
+    body = template(medium_key).replace("<<<CONCEPT>>>", concept.strip())
     answers = ANSWERS.format(
         beats=beats, seconds=f"{seconds:.0f}", total=f"{beats * seconds:.0f}",
         plural="" if beats == 1 else "s",
@@ -209,6 +226,7 @@ final. Write the script now and return the JSON on this turn.
 
 
 def plan(concept: str, beats: int, seconds: float, *,
+         medium_key: str | None = None,
          log: Callable[[str], None] = print) -> dict:
     """A script from a one-line concept: draft, then review.
 
@@ -216,7 +234,7 @@ def plan(concept: str, beats: int, seconds: float, *,
     visible: the model is editing words the user never saw, and a silent rewrite of a draft
     is indistinguishable from a model that writes well.
     """
-    instructions = brief(concept, beats, seconds)
+    instructions = brief(concept, beats, seconds, medium_key)
     log(f"[plan] briefing {config.TEXT_MODEL} from {TEMPLATE_PATH.name}")
     draft = numbered(gemini.structured(
         [{"role": "user", "content": instructions}], PLAN_SCHEMA,

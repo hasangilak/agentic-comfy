@@ -59,6 +59,12 @@ class Shot:
     # Reference beats only: send the tail of the previous clip as a reference video, which is
     # how this join gets continuity without a keyframe.
     carry: bool = False
+    # Where things stand in this frame, and which medium's words wrap the whole prompt. Carried
+    # on the shot rather than read at render time for the reason `staging` and `mentions` are:
+    # this dataclass is the whole description of what one beat was handed, and a board read
+    # halfway through a batch could answer differently than the one the batch was planned from.
+    blocking: str = ""
+    medium_key: str | None = None
 
 
 @dataclass
@@ -238,6 +244,8 @@ def render_beats(
                                                              and pictures[0][0] == shot.asset),
                                                    ref_videos=1 if carry else 0,
                                                    staging=shot.staging,
+                                                   blocking=shot.blocking,
+                                                   medium_key=shot.medium_key,
                                                    mentions=shot.mentions or None),
                         length=length, steps=steps, seed=seed + n,
                     ),
@@ -325,6 +333,8 @@ def render_reel(
             # must not also arrive as prose about a second one of it.
             staging=view.staging_text(beat["n"], view.pictures_for(beat["n"])),
             carry=(beat.get("ref_video") == board_mod.CARRY_UPSTREAM and index > 0),
+            blocking=beat.get("blocking", ""),
+            medium_key=view.medium(),
         )
         for index, (beat, source) in enumerate(zip(beats, resolved))
     ]

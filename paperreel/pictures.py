@@ -70,8 +70,8 @@ DRAW_CHAT_SCHEMA = {
     },
 }
 
-DRAW_SYSTEM = (
-    "You are the reference-picture editor for a paper-cutout stop-motion Instagram Reel studio. "
+DRAW_SYSTEM_TEMPLATE = (
+    "You are the reference-picture editor for a {name} Instagram Reel studio. "
     "You are looking at ONE reference picture with the director, and your job is to turn what "
     "they say about it into the prompt it is drawn from next time.\n\n"
     "A reference picture is not a shot. It is a design sheet the video model is shown so that a "
@@ -86,7 +86,7 @@ DRAW_SYSTEM = (
     "nothing in it belongs in your prompt unless it is already there. Replacing the subject with "
     "what the cast reference shows is the one mistake that makes this picture useless.\n\n"
     "The director is the authority on this picture. What is not theirs to overrule is the medium "
-    "-- layered paper cutout, visible paper grain, soft contact shadows -- because every other "
+    "-- {essence} -- because every other "
     "image in the reel is made of it.\n\n"
     "Rewrite the WHOLE prompt every time, carrying over every part the director did not ask you "
     "to change. Drawing it again is a new Gemini request, so ask for it "
@@ -300,6 +300,17 @@ def _draw_seed(board: board_mod.Board, n: int, index: int) -> int:
     return int(digest[:8], 16)
 
 
+def draw_system(board: board_mod.Board) -> str:
+    """The system prompt, with this board's medium in it.
+
+    A function rather than a constant because the sentence it opens with names the film's
+    medium, and a clay reel told it is a paper-cutout studio would take that as the
+    instruction it is -- this prompt's whole job is to say which half of a director's note
+    the pipeline will not let them overrule."""
+    look = board.look()
+    return DRAW_SYSTEM_TEMPLATE.format(name=look.name, essence=look.essence)
+
+
 def converse(board: board_mod.Board, n: int, index: int, message: str, *,
              log: Callable[[str], None] = print,
              progress: Callable[[int, float], None] | None = None,
@@ -492,7 +503,7 @@ def _chat_messages(board: board_mod.Board, n: int, index: int, message: str) -> 
         "prompt in it."
     )
     return [
-        {"role": "system", "content": DRAW_SYSTEM},
+        {"role": "system", "content": draw_system(board)},
         {"role": "user", "content": "\n\n".join(parts),
          "images": [gemini.encode(path) for path in images]},
     ]
