@@ -6,18 +6,19 @@ a script for this pipeline has to be: the beat grid, the four joins, the anti-AI
 the style-bible contract, and a 22-point self-check. There is deliberately no second, shorter
 copy of those rules in this module. There used to be, and a summary that drifts from the
 document is worse than no summary: the two paths into a board -- import a script written
-outside, or ask the local model for one -- would quietly be writing to different briefs.
+outside, or ask the model for one -- would quietly be writing to different briefs.
 
 Only section 0 is replaced. The template opens by interviewing the director about beat
 structure and shot count, which the studio has already asked for on the way in, so that
 section becomes a block of answers and the model writes on its first turn instead of its
 second.
 
-Both passes run on the local model (see `qwen.py`), so neither costs anything. That is the
-whole reason the second one exists. Under the Antigravity CLI every turn came out of a plan
-quota that refreshed on a ~5 hour window, so asking the model to re-read its own draft meant
-spending a slot to look for faults that might not be there. Locally it is seconds, and the
-faults it finds are the ones that are invisible on the page and unmissable in the render.
+Both passes run on Gemini (see `gemini.py`). The second one exists because it is cheap
+rather than free: under the Antigravity CLI every turn came out of a plan quota that
+refreshed on a ~5 hour window, so asking the model to re-read its own draft meant spending a
+slot to look for faults that might not be there. A flash review turn costs a fraction of one
+of the images this pipeline spends without hesitating, and the faults it finds are the ones
+that are invisible on the page and unmissable in the render.
 
 Nothing here generates an image. Stills come from Papercut Studio next door -- see
 `stills.py` for the loop that renders them and then looks at them.
@@ -29,7 +30,7 @@ import json
 from typing import Callable
 
 from . import board as board_mod
-from . import config, qwen
+from . import config, gemini
 
 # The authoring prompt, shared with the human path. `script.py` imports what this produces,
 # so the two are in sync by construction rather than by discipline.
@@ -114,7 +115,7 @@ PLAN_SCHEMA = {
 # rewriting them, and an off-by-one there silently attaches beat 3's fix to beat 2. Returning
 # the script entire cannot go wrong that way, and `changes` is what gets logged.
 #
-# `changes` is LAST, and that ordering is load-bearing. Ollama constrains the decode in schema
+# `changes` is LAST, and that ordering is load-bearing. The decode is constrained in schema
 # order, so a `changes` array declared first is written before the corrections exist -- and a
 # model with nowhere else to think uses it as a scratchpad. Measured: 40 log lines of
 # stream-of-consciousness, several of them contradicting each other, before a single beat was
@@ -216,13 +217,13 @@ def plan(concept: str, beats: int, seconds: float, *,
     is indistinguishable from a model that writes well.
     """
     instructions = brief(concept, beats, seconds)
-    log(f"[plan] briefing {config.QWEN_MODEL} from {TEMPLATE_PATH.name}")
-    draft = _numbered(qwen.structured(
+    log(f"[plan] briefing {config.TEXT_MODEL} from {TEMPLATE_PATH.name}")
+    draft = _numbered(gemini.structured(
         [{"role": "user", "content": instructions}], PLAN_SCHEMA,
         think=config.PLAN_THINK, temperature=config.PLAN_TEMPERATURE,
     ))
     if not draft.get("beats"):
-        raise qwen.OllamaError(f"{config.QWEN_MODEL} returned a script with no beats.")
+        raise gemini.GeminiError(f"{config.TEXT_MODEL} returned a script with no beats.")
     if len(draft["beats"]) != beats:
         # Not fatal, and not silently corrected either: the canvas can add or remove a beat
         # for free, and dropping one here would take a scene of the story with it.
@@ -265,12 +266,12 @@ def review(draft: dict, instructions: str, *,
         f"===== THE SCRIPT TO CHECK =====\n{_as_json(draft)}"
     )
     try:
-        reviewed = qwen.structured(
+        reviewed = gemini.structured(
             [{"role": "user", "content": prompt}], REVIEW_SCHEMA,
             # Thinking on, so the reasoning has somewhere to go that is not the changelog.
-            think=config.PLAN_THINK, temperature=config.QWEN_TEMPERATURE,
+            think=config.PLAN_THINK, temperature=config.LLM_TEMPERATURE,
         )
-    except qwen.OllamaError as failed:
+    except gemini.GeminiError as failed:
         log(f"[plan] review skipped: {failed}")
         return draft
 

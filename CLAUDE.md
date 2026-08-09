@@ -10,10 +10,10 @@ Modal via ComfyUI. **Papercut Studio** (`image/`, a separate project with its ow
 renders the opening stills through Gemini. paperreel calls it over HTTP; see
 "The two projects" below.
 
-Everything that is words runs on **one local model** — `qwen3.6` on Ollama — and everything
-that is a still runs through Google's API next door. Image generation and video rendering are
-metered. See "The
-language model" below; there is no hosted LLM anywhere in this repo.
+Everything that is words runs on **one Gemini model** — `gemini-3.6-flash` over Google's API
+— and everything that is a still runs through the same API next door, on the same
+`X-GOOG-API-KEY`. Words, stills and video are all metered; only the ffmpeg work is free. See
+"The language model" below. There is no local model and no Ollama anywhere in this repo.
 
 Two front ends drive paperreel: `storyboard.py` / `reel.py` (CLI) and a local FastAPI + React
 node canvas ("the studio").
@@ -29,7 +29,6 @@ make run          # all three: stills :8791, backend :8787, Vite :5173 — use t
                   # it proxies /api and /media. The everyday target.
 make studio       # an alias for make run
 make images       # just Papercut Studio's render server (make -C image dev-server)
-make qwen         # ollama pull qwen3.6 — the script writer and still reviewer, one-time ~23 GiB
 make serve        # build the frontend, serve everything from :8787
 make backend      # studio.py only
 make frontend     # vite only
@@ -56,13 +55,14 @@ studio's render button. Planning, asset generation, uploads and compositing are 
 
 Never run a render to "verify" a change. A 4×10 s reel costs ~$1.13.
 
-**Image generation is explicit and metered.** The language model is local (Ollama), while
-stills are generated through Gemini with `X-GOOG-API-KEY` from `.env`. The
-Antigravity CLI (`agy`) is gone; its ~five-images-per-five-hours window is the reason chaining
-is the default and a reel was designed to need one image rather than one per beat. Both are
-still good filmmaking. Neither is forced. **Do not write new copy or docs that state an image
-quota** — that constraint no longer exists, and saying it trains the user to ration something
-free.
+**Words and images are both metered, on one key.** The language model and the stills both go
+through Gemini with `X-GOOG-API-KEY` from `.env`. A turn is cents and a still is cents against
+a reel's dollars, so neither is a thing to ration — but neither is free either, and a call
+added to a loop that runs per beat has a price. The Antigravity CLI (`agy`) is gone; its
+~five-images-per-five-hours window is the reason chaining is the default and a reel was
+designed to need one image rather than one per beat. Both are still good filmmaking. Neither
+is forced. **Do not write new copy or docs that state an image quota** — that constraint no
+longer exists, and saying it trains the user to ration something that is not scarce.
 
 ## Architecture
 
@@ -73,7 +73,7 @@ paperreel/comfy.py      ComfyUI HTTP/WS client + the H3 graph builder
 paperreel/pipeline.py   Modal app lifecycle + chained batch rendering (CLI path)
 paperreel/render.py     the same, with per-beat telemetry and cancellation (studio path)
 paperreel/papercut.py   HTTP client for image/ — the transport to the Gemini stills server
-paperreel/qwen.py       Ollama transport: structured output, tool calls, vision
+paperreel/gemini.py     Gemini transport: structured output, tool calls, vision
 paperreel/stills.py     rendering stills, then LOOKING at them; the still-job rules
 paperreel/pictures.py   reference pictures as drawable assets; NO review pass, deliberately
 paperreel/staging.py    the reel's cast and sets, designed once and bound to beats
@@ -91,9 +91,9 @@ studio/src/             React 19 + @xyflow/react canvas, Tailwind 4, Vite
 ### The two projects
 
 ```
-Ollama :11434            paperreel  this repo            Modal
-  qwen3.6 · 36B MoE      ──▶   script, board ops,   ──▶   MiniMax-H3
-  vision · tools · think        caption, still review      the paid stage
+Google API               paperreel  this repo            Modal
+  gemini-3.6-flash       ──▶   script, board ops,   ──▶   MiniMax-H3
+  vision · tools · think        caption, still review      the expensive stage
                                      │        ▲
 image/  Papercut Studio               ▼        │ the still, looked at
   Gemini image API          ──▶   storyboard.json
@@ -148,7 +148,7 @@ still after the batch would replace the reference every other still was just mat
 Four modules, four jobs, and keeping them apart is what makes the review possible at all:
 `papercut.py` is transport, `stills.py` is judgement about stills (which beats may get one, and
 what happens to one that comes back wrong), `pictures.py` is the same for reference pictures —
-which is a *different* judgement, see below — and `qwen.py` is the model.
+which is a *different* judgement, see below — and `gemini.py` is the model.
 
 `pictures.py` exists because a reference picture is now drawn, not only uploaded: `pictures.draw`
 renders one into `beat<n>_ref<i>.png`, `pictures.converse` is a vision turn about it that ends in
@@ -275,7 +275,7 @@ one scene body serve a still, a reference picture and a design sheet.
 A storyboard in the film sense is a sheet of rough panels — one drawing per shot, showing framing,
 angle, and with arrows on the panel how the subject and camera move. `panels.py` is that pass, and
 it is the only module here that puts a picture on disk **which reaches no renderer**: a panel
-conditions nothing, is handed to H3 never, and is in no fingerprint. Written by qwen into a new
+conditions nothing, is handed to H3 never, and is in no fingerprint. Written by Gemini into a new
 per-beat `panel` field (free, one turn for the whole reel), drawn by `gemini-3.1-flash-lite-image`
 at 1K, and stitched into `reels/<slug>/storyboard_sheet.png`.
 
@@ -366,32 +366,45 @@ what the user does with its output; don't "fix" it by adding uploads to `image/`
 
 ### The language model
 
-`qwen.py` is the only place that talks to Ollama, over plain httpx — no SDK, no LangChain, no
-new dependency (httpx is already in every entry point's PEP 723 block). Three shapes of call,
-all `/api/chat`:
+`gemini.py` is the only place that talks to the language model, over plain httpx — no SDK, no
+LangChain, no new dependency (httpx is already in every entry point's PEP 723 block). Three
+shapes of call, all `models/<model>:generateContent`:
 
-- `structured(messages, schema)` — Ollama constrains the decode to the JSON Schema, so the
-  script and every verdict come back validated rather than parsed hopefully.
+- `structured(messages, schema)` — the decode is constrained to the JSON Schema
+  (`responseJsonSchema`), so the script and every verdict come back validated rather than
+  parsed hopefully.
 - `chat(messages, tools=...)` — one round of a tool loop. `calls_of` / `answered` handle the
   round-trip; `agent.turn` drives it, capped at `config.AGENT_MAX_ROUNDS`.
 - `text(messages)` — prose, for the caption.
 
-Vision is the same call with base64 `images` on a message (`qwen.encode`). Used only by
-`stills.review`.
+**Callers speak the Ollama message vocabulary and `gemini.py` translates it.** Every prompt in
+`agent.py`, `planner.py`, `stills.py`, `pictures.py`, `staging.py` and `panels.py` is written
+as `{"role": "system"|"user"|"assistant"|"tool", "content": str, "images": [base64]}`, and
+`_contents` turns that into Gemini `contents` + `systemInstruction`. Keep new callers in that
+vocabulary: the transport is the one place a change of provider should be visible.
+
+Vision is the same call with base64 `images` on a message (`gemini.encode`, which downscales
+to `config.LLM_IMAGE_EDGE`). Used by `stills.review` / `stills.converse`, `pictures.converse`
+and `staging.converse`.
 
 Things that are the way they are because they were measured, not assumed:
 
-- **`think` is passed explicitly on every call, and defaults to off.** The default for a
-  reasoning model is on, and the same unambiguous board edit took 0.9 s with it off and 14 s
-  with it on. Only the planning pair asks for it (`config.PLAN_THINK`).
-- **A structured field the model writes *first* becomes its scratchpad.** Ollama decodes in
+- **`think` is passed explicitly on every call, and defaults to off** — `minimal` rather than
+  the model's own default. Thought tokens are billed as output and an unambiguous board edit
+  needs none; only the planning pair asks for `high` (`config.PLAN_THINK`).
+- **An assistant turn goes back to the API as the parts the model returned**, kept on the
+  message as `_parts`. Gemini 3 signs its reasoning (`thoughtSignature`) and checks that
+  signature on the next turn, so a reconstructed text-only assistant turn breaks the tool loop
+  `agent.turn` depends on. Same reason `answered()` returns one message holding every
+  `functionResponse` rather than one per call.
+- **A function declaration takes `enum` on strings only.** `{"type": "number", "enum": [5, 10]}`
+  on the beat length — legal JSON Schema, and what Ollama was given — answers with a 400 naming
+  the index and takes the whole tool loop with it. `gemini._declarable` moves a non-string enum
+  into the parameter's description rather than dropping the constraint.
+- **A structured field the model writes *first* becomes its scratchpad.** The decode follows
   schema-property order, so `changes` declared before `beats` in `REVIEW_SCHEMA` produced 40
   log lines of stream-of-consciousness before a single beat was rewritten. It is declared last,
   and thinking is on for that call so reasoning has a channel of its own.
-- **`num_ctx` must be set** (32768). Ollama defaults to a few thousand tokens and truncates
-  silently — which does not fail, it answers confidently from a prompt whose end is missing.
-  The review pass sizes this: the whole authoring brief (~6.7k tokens) plus a draft plus its
-  correction.
 - **Prompt order in `agent.turn` is history → board → question.** The board used to come first,
   which left a stale line of the model's own transcript nearer the question than the truth —
   and it answered from the nearer one, insisting a four-beat reel had five for the rest of the
@@ -401,10 +414,12 @@ Things that are the way they are because they were measured, not assumed:
   it wrong in both directions. Both lists are already derived in `board.py`.
 - **Tool parameter descriptions are load-bearing.** Given a bare "Edit one beat" the model spent
   a whole turn reasoning about what a parameter called `action` wanted — reading the field name
-  as a verb. `qwen.tool()` exists to make writing them the default.
+  as a verb. `gemini.tool()` exists to make writing them the default.
 
-**Both review passes are only affordable because nothing is metered.** Neither would have been
-worth a quota slot; both are worth ten seconds. If you add a call, that is the test to apply.
+**Both review passes are affordable, not free.** Neither would have been worth a slot in
+`agy`'s five-per-five-hours window; both are worth a flash turn, which is a fraction of one of
+the images this pipeline already spends without hesitating. That is the test to apply to a new
+call — not "does it cost anything" but "is it worth less than the image it is checking".
 
 **No LangGraph, deliberately.** The graph here is four nodes with one back-edge, and the two
 things a graph framework would bring are already owned: durable serial execution is
@@ -540,8 +555,10 @@ a *different* credential type from the `ak-` CLI token in `~/.modal.toml` — th
 401. `config.load_env_file()` reads `.env` at import with `setdefault`, so a shell export wins.
 
 The studio server runs on loopback only and holds those tokens; the browser never talks to
-Modal. Don't move the `modal` shell-outs anywhere else, and don't give the browser Ollama's URL
-either — the model is reached from the server so one place decides what it is allowed to do.
+Modal. Don't move the `modal` shell-outs anywhere else, and don't give the browser the Google
+API key either — the model is reached from the server, so one place decides what it is allowed
+to spend. `config.GOOGLE_API_KEY` reads `X-GOOG-API-KEY` first (the spelling the image server
+uses in the same `.env`), then `GEMINI_API_KEY`, then `GOOGLE_API_KEY`.
 
 ## Constraints that are not negotiable without new measurements
 
@@ -662,10 +679,18 @@ pictures hold the cast better than one, or whether the *reference images show: �
 rather than giving Gemini one more thing to draw into the frame. Do not quote a quality claim;
 `PAPERREEL_MAX_STILL_REFS` is how to explore it.
 
-Added with the local model, and unmeasured: the still review's false-accept rate on *subtle*
-cast drift (it is verified to reject an obvious mismatch and to pass a good still, which is not
-the same thing), and how a board behaves when Ollama is stopped mid-turn rather than absent from
-the start. Planning is also slow — draft plus self-check is about five minutes.
+Unmeasured on Gemini: the still review's false-accept rate on *subtle* cast drift (it was
+verified on the local model to reject an obvious mismatch and pass a good still, which is not
+the same thing, and has not been re-run since the move), and how a board behaves when the API
+refuses mid-turn — a 429 in the middle of a stills pass is the likely shape and nothing has
+produced one yet. Planning measured 239 s end to end (draft plus self-check, thinking on for
+both), so it is still a job you watch.
+
+**Per-call latency on this machine is not the API's.** Every request measured during the move
+came back in ~81 s regardless of payload — 1 KB prompt, 100 KB prompt and two 1.5 MB stills all
+the same, while `curl` against the same endpoint answered in seconds. Something in the local
+network path, not the model. Do not quote those numbers as Gemini's speed, and do not tune
+timeouts against them.
 
 **The expanded scene view is unexercised in a browser.** Its server side is not: a note with a
 picture attached stores the picture, moves the join, redraws the still and writes both turns into
@@ -677,7 +702,7 @@ director. Its `reply` field needed the prompt to name both JSON fields explicitl
 the schema the model filled `reply` with the beat's *other* line, reading the object as a form to
 copy the board into. Do not drop that closing sentence.
 
-The per-still conversation (`stills.converse`) has now run end to end against a live qwen and
+The per-still conversation (`stills.converse`) has now run end to end against a live model and
 Gemini — one turn with a picture attached rewrote the prompt and redrew the still — but that is one
 turn. What is unverified is how often the model sets `regenerate` correctly (a question about the
 picture that redraws it anyway costs a new Gemini request) and whether it really carries the
@@ -721,7 +746,7 @@ after a panel appears — which is what keeps every rendered board out of `stale
 seen is a sketch. So three claims are reasoned rather than measured: that `PANEL_STYLE_SUFFIX`
 actually gets a grey pencil panel rather than the paper cutout it negates, that Lite at 1K is
 legible enough to judge framing by, and that a panel is a useful read of a shot that will be made of
-paper — the point where preview and product diverge most. Whether qwen writes shot grammar that
+paper — the point where preview and product diverge most. Whether the model writes shot grammar that
 *varies* across the reel, rather than five medium shots in a row, is the other one, and the contact
 sheet is where to look: that is what it is for. The node row, the modal field and the sidebar rows
 have not been clicked in a browser.

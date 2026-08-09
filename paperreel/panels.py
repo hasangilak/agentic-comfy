@@ -4,7 +4,7 @@ A storyboard in the film sense is a sheet of rough panels -- one drawing per sho
 framing, the angle and, with arrows on the panel, how the subject and the camera move. It is drawn
 cheap and read fast, and it exists so the sequence is judged *before* money goes out.
 
-    panels.write(board)                 # qwen writes the shot grammar for every beat, free
+    panels.write(board)                 # one text turn writes the shot grammar for every beat
     panels.draw_all(board, [1, 2, 3])   # the cheapest Nano Banana draws them, then the sheet
     panels.sheet(board)                 # 3 across, numbered, in reels/<slug>/storyboard_sheet.png
 
@@ -41,9 +41,9 @@ from pathlib import Path
 from typing import Callable
 
 from . import board as board_mod
-from . import config, papercut, qwen
+from . import config, gemini, papercut
 
-# One entry per beat. `panel` last within the object because Ollama decodes in schema-property
+# One entry per beat. `panel` last within the object because the decode follows schema-property
 # order and the field written first becomes the model's scratchpad -- the lesson
 # `planner.REVIEW_SCHEMA` records at greater length. `n` first means the beat number is committed
 # before the sentence about it, which is also the order it is easiest to check.
@@ -184,15 +184,15 @@ def write(board: board_mod.Board, beats: list[int] | None = None, *,
     beat be told to reuse its shot's setup.
 
     `think` is left off (the default). This is a translation of prose that already exists into
-    camera language, not a planning decision -- and the 0.9s-against-14s measurement in
-    `qwen.chat` applies to every call that does not need reasoning.
+    camera language, not a planning decision, and reasoning here would be paid for in thought
+    tokens on every beat -- see `gemini._thinking`.
     """
     wanted = [b["n"] for b in board.ordered_beats()
               if beats is None or b["n"] in set(beats)]
     if not wanted:
         raise PanelsError("no beats to write panels for", status=422)
 
-    verdict = qwen.structured(
+    verdict = gemini.structured(
         _messages(board, wanted), PANEL_SCHEMA,
         # Warmer than a review's 0.1 for the reason `pictures.converse` gives: this is writing
         # rather than checking, and a near-deterministic decode answers a second pass over the
@@ -217,7 +217,7 @@ def write(board: board_mod.Board, beats: list[int] | None = None, *,
         written.append(n)
         log(f"[panel] beat {n}: {text}")
     if not written:
-        raise PanelsError(f"{config.QWEN_MODEL} wrote no usable panels")
+        raise PanelsError(f"{config.TEXT_MODEL} wrote no usable panels")
     missed = [n for n in wanted if n not in written]
     if missed:
         # Not fatal: the panels that landed are worth keeping, and the board shows which beats are

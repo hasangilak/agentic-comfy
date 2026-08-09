@@ -165,7 +165,8 @@ export interface Beat {
  * change, and the automatic review saying what it made of a render nobody had looked at yet.
  */
 export interface AssetTurn {
-  role: "user" | "qwen";
+  /** "qwen" is only ever read: boards written before the studio moved to Gemini carry it. */
+  role: "user" | "gemini" | "qwen";
   text: string;
   /** The rewritten `asset_prompt`, on a turn that changed it. */
   prompt?: string;
@@ -320,10 +321,11 @@ export interface Container {
 export interface ChatTurn {
   /**
    * "studio" is the board speaking for itself -- e.g. what an imported script arrived as.
-   * "agy" is only ever read, never written: it is what the model was called before the studio
-   * moved to a local one, and boards written back then still carry it in their transcript.
+   * "agy" and "qwen" are only ever read, never written: they are what the model was called
+   * before this studio moved to Gemini, and boards written back then still carry them in
+   * their transcript.
    */
-  role: "user" | "qwen" | "agy" | "studio";
+  role: "user" | "gemini" | "qwen" | "agy" | "studio";
   text: string;
   selection?: number[];
   ops?: { op: string; n?: number; summary: string }[];

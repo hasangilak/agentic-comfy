@@ -1,10 +1,10 @@
 """HTTP layer for the studio: board CRUD, job submission, and one SSE stream.
 
-Runs locally, not on Modal. Everything it orchestrates is on this machine: the language model
-on Ollama, the image server next door, and the `modal` CLI with the credentials that let it
-deploy a GPU. That also means the Modal proxy tokens never leave the server -- the browser
-talks only to this process, which is the only arrangement that works anyway, since a browser
-cannot attach auth headers to a WebSocket.
+Runs locally, not on Modal. It holds every credential: the Google API key the language
+model and the image server both go through, and the Modal proxy tokens that deploy a GPU.
+That is the point -- nothing secret leaves this process, the browser talks only to it, which
+is the only arrangement that works anyway, since a browser cannot attach auth headers to a
+WebSocket.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (agent, board as board_mod, comfy, config, panels, papercut, pictures, qwen, render,
+from . import (agent, board as board_mod, comfy, config, gemini, panels, papercut, pictures, render,
                script, staging as staging_mod, stills as stills_mod)
 from .jobs import Job, Runner, runner
 
@@ -130,7 +130,7 @@ async def store_upload(file: UploadFile, dest: Path) -> None:
 
 def handle_plan(job: Job, run: Runner) -> dict:
     detail = job.detail
-    run.log(job, f'[plan] {detail["beats"]} beats x {detail["seconds"]:.0f}s via {config.QWEN_MODEL}')
+    run.log(job, f'[plan] {detail["beats"]} beats x {detail["seconds"]:.0f}s via {config.TEXT_MODEL}')
     board = agent.create(detail["concept"], detail["beats"], detail["seconds"],
                          log=lambda line: run.log(job, line))
     job.slug = board.slug  # the slug only exists once the title does
@@ -146,7 +146,7 @@ def handle_chat(job: Job, run: Runner) -> dict:
     tool call in the job log and on the canvas as it happens rather than after the turn ends.
     """
     board = load(job.slug)
-    run.log(job, f'[qwen] {job.detail["message"]}')
+    run.log(job, f'[gemini] {job.detail["message"]}')
     result = agent.turn(
         board, job.detail["message"], selection=job.detail.get("selection"),
         log=lambda line: run.log(job, line),
@@ -192,7 +192,7 @@ def handle_still_chat(job: Job, run: Runner) -> dict:
     """
     board = load(job.slug)
     n = int(job.detail["beat"])
-    run.log(job, f'[qwen] beat {n} still: {job.detail["message"]}')
+    run.log(job, f'[gemini] beat {n} still: {job.detail["message"]}')
     return stills_mod.converse(
         board, n, job.detail["message"],
         attached=int(job.detail.get("attached") or 0),
@@ -233,7 +233,7 @@ def handle_ref_chat(job: Job, run: Runner) -> dict:
     board = load(job.slug)
     n = int(job.detail["beat"])
     index = int(job.detail["index"])
-    run.log(job, f'[qwen] beat {n} picture {index}: {job.detail["message"]}')
+    run.log(job, f'[gemini] beat {n} picture {index}: {job.detail["message"]}')
     return pictures.converse(
         board, n, index, job.detail["message"],
         log=lambda line: run.log(job, line),
@@ -271,7 +271,7 @@ def handle_stage_chat(job: Job, run: Runner) -> dict:
     """One turn of the conversation about one design sheet, its redraw included."""
     board = load(job.slug)
     entry_id = str(job.detail["id"])
-    run.log(job, f'[qwen] design {entry_id}: {job.detail["message"]}')
+    run.log(job, f'[gemini] design {entry_id}: {job.detail["message"]}')
     return staging_mod.converse(
         board, entry_id, job.detail["message"],
         log=lambda line: run.log(job, line),
@@ -286,10 +286,10 @@ def handle_panel_write(job: Job, run: Runner) -> dict:
 
     Its own kind rather than a variant of `revise`: that one rewrites a story field of one beat
     from a note, and this writes a field the story does not have, for every beat at once, because
-    the shot sizes have to vary across the film. Free -- local model, no image.
+    the shot sizes have to vary across the film. One text turn, no image.
     """
     board = load(job.slug)
-    run.log(job, "[qwen] writing the storyboard panels")
+    run.log(job, "[gemini] writing the storyboard panels")
     written = panels.write(
         board, job.detail.get("beats"),
         log=lambda line: run.log(job, line),
@@ -329,7 +329,7 @@ def handle_revise(job: Job, run: Runner) -> dict:
     board = load(job.slug)
     n = int(job.detail["beat"])
     field = str(job.detail["field"])
-    run.log(job, f'[qwen] beat {n} {field}: {job.detail["message"]}')
+    run.log(job, f'[gemini] beat {n} {field}: {job.detail["message"]}')
     result = agent.revise(board, n, field, job.detail["message"],
                           log=lambda line: run.log(job, line))
     run.publish_board(board.slug)
@@ -338,7 +338,7 @@ def handle_revise(job: Job, run: Runner) -> dict:
 
 def handle_caption(job: Job, run: Runner) -> dict:
     board = load(job.slug)
-    run.log(job, "[qwen] writing the caption")
+    run.log(job, "[gemini] writing the caption")
     return {"caption": agent.caption(board)}
 
 
@@ -607,7 +607,7 @@ async def still_chat(slug: str, n: int, message: str = Form(""),
     """Say what is wrong with one still -- optionally showing it a picture -- and have it redrawn.
 
     The board conversation edits the story; this one edits a picture. Both run on the same
-    local model with the same vision head -- the difference is what is in the prompt: this turn
+    model with the same vision head -- the difference is what is in the prompt: this turn
     is shown the still itself, everything the still is drawn from, and everything already said
     about that one image, and what it writes back is the beat's `asset_prompt`.
 
@@ -1173,9 +1173,9 @@ def bind_staging(slug: str, n: int, body: dict = Body(...)) -> dict:
 
 @app.post("/api/reels/{slug}/panels/text")
 def write_panels(slug: str, body: dict = Body(default={})) -> dict:
-    """Have the local model write the shot grammar for every beat, or for the ones named.
+    """Have the model write the shot grammar for every beat, or for the ones named.
 
-    Free: one Ollama turn, no image. The default is the whole reel rather than the beats with no
+    One text turn, no image. The default is the whole reel rather than the beats with no
     panel yet, because the shot sizes are judged against each other -- a pass over beat 4 alone
     cannot see that beats 1 to 3 are already three wide shots.
     """
@@ -1367,15 +1367,16 @@ def status() -> dict:
         # separate process the user starts and stops -- a value read once at import would have
         # the studio still claiming the image server is down an hour after `make images`.
         #
-        # Neither is fatal and neither costs anything, but they fail in different ways and the
-        # UI has to be able to say which: with no model there is no script, no conversation and
-        # no caption; with no image server the stills have to be uploads.
+        # Neither is fatal, but they fail in different ways and the UI has to be able to say
+        # which: with no model there is no script, no conversation and no caption; with no
+        # image server the stills have to be uploads. The language probe is itself cached in
+        # `gemini.health`, so polling this route does not mean a request per poll.
         "stills": {
             "backend": "papercut" if papercut.available() else "none",
             "papercut_url": config.PAPERCUT_URL,
         },
-        "language": qwen.health() or {"url": config.OLLAMA_URL, "model": config.QWEN_MODEL,
-                                      "ready": False, "models": []},
+        "language": gemini.health() or {"url": config.GEMINI_API_URL, "model": config.TEXT_MODEL,
+                                        "ready": False, "models": []},
     }
 
 

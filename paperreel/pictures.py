@@ -28,12 +28,12 @@ from pathlib import Path
 from typing import Callable
 
 from . import board as board_mod
-from . import config, papercut, qwen
+from . import config, gemini, papercut
 
 # One turn of the conversation about one picture. The same three outcomes as a still's, because
 # there are the same three things that can come out of looking at a picture with someone.
 #
-# Declared in this order because Ollama decodes in schema-property order, so `reply` is written
+# Declared in this order because the decode follows schema-property order, so `reply` is written
 # LAST -- after the model has committed to a prompt and to whether it is drawing. The other way
 # round it announces a change it then does not make, which is the lesson `stills.CHAT_SCHEMA` and
 # `agent.REVISE_SCHEMA` both record.
@@ -329,13 +329,13 @@ def converse(board: board_mod.Board, n: int, index: int, message: str, *,
         )
 
     before = board.ref_draws(n)[index - 1].strip()
-    verdict = qwen.structured(
+    verdict = gemini.structured(
         _chat_messages(board, n, index, message), DRAW_CHAT_SCHEMA,
         # Warmer than a review's 0.1 for the reason `stills.converse` gives: this is writing a
         # prompt rather than checking one, and a near-deterministic decode answers a second
         # attempt at the same note with the same words, which reads as not having listened.
         temperature=0.4,
-        model=config.QWEN_VISION_MODEL,
+        model=config.VISION_MODEL,
     )
     corrected = " ".join(str(verdict.get("ref_draw") or "").split()).strip()
     reply = " ".join(str(verdict.get("reply") or "").split()).strip()
@@ -355,7 +355,7 @@ def converse(board: board_mod.Board, n: int, index: int, message: str, *,
 
     remember(board, n, index, "user", message)
     spoken = remember(
-        board, n, index, "qwen",
+        board, n, index, "gemini",
         reply or ("Rewrote the prompt." if changed else "Nothing to change."),
         prompt=corrected if changed else None,
         regenerated=regenerate or None,
@@ -494,5 +494,5 @@ def _chat_messages(board: board_mod.Board, n: int, index: int, message: str) -> 
     return [
         {"role": "system", "content": DRAW_SYSTEM},
         {"role": "user", "content": "\n\n".join(parts),
-         "images": [qwen.encode(path) for path in images]},
+         "images": [gemini.encode(path) for path in images]},
     ]

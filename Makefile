@@ -5,7 +5,6 @@
 # target must not be able to start a paid render.
 #
 #   make install     dependencies (npm + the uv environment)
-#   make qwen        pull the local language model (one-time, ~23 GiB)
 #   make run         all three servers: stills on :8791, backend on :8787, Vite on :5173
 #   make serve       build the frontend and serve everything from :8787
 #
@@ -17,12 +16,13 @@ IMAGE := image
 BACKEND_PORT ?= 8787
 IMAGE_PORT ?= 8791
 STAMP := .make/uv.stamp
-# The model that writes the scripts, edits the board and looks at the stills. Keep in step
-# with config.QWEN_MODEL, or override both together (PAPERREEL_QWEN_MODEL / QWEN_MODEL=...).
-QWEN_MODEL ?= qwen3.6
+# The model that writes the scripts, edits the board and looks at the stills. Only used for
+# what `make run` prints; config.TEXT_MODEL is the one that decides, so keep them in step or
+# override both (PAPERREEL_TEXT_MODEL / TEXT_MODEL=...).
+TEXT_MODEL ?= gemini-3.6-flash
 
 .DEFAULT_GOAL := help
-.PHONY: help install build run backend frontend serve stop images studio qwen \
+.PHONY: help install build run backend frontend serve stop images studio \
         login models deploy stop-app clean
 
 help:
@@ -33,7 +33,6 @@ help:
 	@echo "make frontend  just the Vite dev server"
 	@echo "make images    Papercut Studio's render server on :$(IMAGE_PORT) -- where stills come from"
 	@echo "make studio    an alias for make run"
-	@echo "make qwen      pull $(QWEN_MODEL) into Ollama -- the script writer and still reviewer"
 	@echo "make stop      kill every server either project has running"
 	@echo
 	@echo "one-time, touches Modal:"
@@ -72,11 +71,12 @@ run: install $(IMAGE)/node_modules
 	@echo "backend  http://127.0.0.1:$(BACKEND_PORT)"
 	@echo "frontend http://127.0.0.1:5173   <- use this one, it proxies the API through"
 	@# Said before the servers start rather than discovered as a failed job three clicks in:
-	@# with no model there is no script, no conversation and no caption.
-	@if ollama list 2>/dev/null | grep -q '^$(QWEN_MODEL)'; then \
-		echo "model    $(QWEN_MODEL) via ollama"; \
+	@# with no key there is no script, no conversation, no caption -- and no stills either,
+	@# since the image server reads the same one.
+	@if grep -qs '^X-GOOG-API-KEY=.' .env || [ -n "$$X_GOOG_API_KEY$$GEMINI_API_KEY$$GOOGLE_API_KEY" ]; then \
+		echo "model    $(TEXT_MODEL) via the Google API"; \
 	else \
-		echo "model    $(QWEN_MODEL) NOT AVAILABLE -- run 'make qwen', and start Ollama"; \
+		echo "model    NO API KEY -- put X-GOOG-API-KEY=... in .env"; \
 	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server & \
@@ -103,16 +103,6 @@ $(IMAGE)/node_modules: $(IMAGE)/package.json $(IMAGE)/package-lock.json
 # says on the node rather than failing a click.
 images: $(IMAGE)/node_modules
 	PORT=$(IMAGE_PORT) npm --prefix $(IMAGE) run dev:server
-
-# Everything the studio needs from Ollama, in one place. The weights are ~23 GiB, so this is
-# a one-time download; Ollama itself has to already be running (`ollama serve`, or the app).
-#
-# It does NOT start Ollama: it is a system service on most installs and a desktop app on the
-# rest, and a Makefile that starts one of those has to know which -- and then owns stopping it.
-# `make studio` reports whether it is answering instead, which is the part that is useful.
-qwen:
-	ollama pull $(QWEN_MODEL)
-	@ollama show $(QWEN_MODEL) | sed -n '/Capabilities/,/^$$/p'
 
 # `make studio` was the three-server target before `run` became it. Kept as an alias because
 # it is what the README, the docs and a year of muscle memory say.

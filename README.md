@@ -3,18 +3,18 @@
 Turn a one-line concept into a vertical 1080×1920 Instagram Reel in handcrafted
 paper-cutout stop-motion, using MiniMax-H3 on a single GPU on Modal.
 
-Scripts come from **qwen3.6 on Ollama**
-on this machine — the same model then carries out board edits, writes the caption, and *looks
-at* every still with its vision head to check it belongs in the reel. Opening stills come from
-**Papercut Studio** in `image/`, using Gemini Nano Banana through Google's API. Image generation
-and video rendering are explicit stages, so the stages are deliberately separable. A script you
-wrote yourself is imported as it stands, with no planning turn at all.
+Scripts come from **Gemini** through Google's API — the same model then carries out board
+edits, writes the caption, and *looks at* every still with its vision head to check it belongs
+in the reel. Opening stills come from **Papercut Studio** in `image/`, using Gemini Nano Banana
+through the same API and the same key. Words, image generation and video rendering are all
+explicit stages, so the stages are deliberately separable. A script you wrote yourself is
+imported as it stands, with no planning turn at all.
 
 ```
-concept ──qwen──▶ ┐
+concept ─Gemini─▶ ┐
                   ├──▶ storyboard.json ──Gemini──▶ opening still  (image/, API)
   your own script ┘                                  │
-                                       qwen looks at it: same cast? ──reject──▶ rewrite, again
+                                     Gemini looks at it: same cast? ──reject──▶ rewrite, again
                                                     │
                                           compose 9:16 frame (local, free)
                                                     │
@@ -27,7 +27,7 @@ concept ──qwen──▶ ┐
 ## Setup
 
 ```bash
-make qwen                                              # once, ~23 GiB into Ollama
+# X-GOOG-API-KEY=... in .env                          # the script, the stills, one key
 make login                                             # once — uvx modal setup
 make models                                            # once, ~59 GiB into a Volume
 ```
@@ -61,7 +61,7 @@ PAPERREEL_PUBLIC=1 uvx modal deploy comfyui_minimax_h3.py
 
 ## The studio
 
-A node canvas: talk to the local model, get a script and a chain of shots, render when you're
+A node canvas: talk to the model, get a script and a chain of shots, render when you're
 ready.
 
 ```bash
@@ -106,7 +106,7 @@ they are in the video render: the join decides whether a picture counts, in one 
 
 Then the model looks at what came back. A style bible is words, and the same paragraph that
 produced a round-eared pig in beat 1 produces a sharper-eared one in beat 4 — neither prompt
-wrong, and until now nothing ever checked. Each finished still goes to qwen's vision head
+wrong, and until now nothing ever checked. Each finished still goes back to Gemini's vision head
 alongside the cast reference, judged on the cast, the medium, the palette and the frame, and
 explicitly *not* on the setting or the framing, which are supposed to differ. A still that
 misses gets its `asset_prompt` rewritten against the specific mismatch and is rendered again:
@@ -231,7 +231,7 @@ per-beat lengths and which beats are cuts all arrive as written, and no model tu
 Talking a model into a script you have already finished is slower and loses detail on the way.
 
 Both paths are written against the *same* brief. `prompts/40s-paper-cutout-script.md` is the
-prompt that gets an AI to write a script — and it is also, verbatim, what the local model is
+prompt that gets an AI to write a script — and it is also, verbatim, what the model is
 handed by **write it for me**, with only its opening interview replaced by the beat count and
 length the studio already asked you for. There is deliberately no second, shorter copy of those
 rules inside `planner.py`: a summary that drifts from the document would have the two ways into
@@ -380,7 +380,7 @@ of one shot, drawn to be looked at and nothing else. It conditions nothing, no m
 one, and drawing or deleting one changes no scene's state — which is what makes it safe to press on
 a reel that is already rendered and paid for.
 
-Two rows in the sidebar. **Write the shots** hands the whole script to the local model in one turn
+Two rows in the sidebar. **Write the shots** hands the whole script to the model in one turn
 and gets back a line per scene the board has never held: shot size, angle, camera move, where the
 subject sits in the frame, what the arrows point at. One turn for the reel rather than one per
 scene, because shot sizes only mean anything judged against each other — a model shown one beat
@@ -502,8 +502,9 @@ edit a beat, read the board back to see what that did, and then ask for the stil
 created, all inside one turn, with each step in the job log. It cannot render. Spending money
 stays a human action.
 
-The server runs locally because it drives Ollama, the image server and the `modal` CLI, all on
-this machine; the browser never talks to Modal, so the proxy tokens stay on yours.
+The server runs locally because it holds every credential — the Google API key the language
+model and the image server both go through, and the Modal proxy tokens; the browser never talks
+to either, so nothing secret leaves this machine.
 
 For frontend development, run `npm run dev` in `studio/` alongside `uv run studio.py` and
 use the Vite URL — it proxies the API through.
@@ -587,32 +588,35 @@ Other measurements worth keeping:
   load. Chaining is serial by construction anyway. Parallelism is a latency tool, not a
   cost tool.
 
-### Gemini image generation
+### Gemini, for the words and the pictures
 
-The language model is `qwen3.6` under Ollama on this machine — 36B MoE, 23 GiB of weights, with
-`vision`, `tools` and `thinking` all reported
-by `ollama show`, which is what lets one model write the script, drive the board through tool
-calls and look at the stills. The stills come from Gemini Nano Banana. Set `X-GOOG-API-KEY` in
-`.env`; prompts and reference images are sent to Google's image API, while generated files and
+One model does everything that is words: `gemini-3.6-flash` over Google's API, with vision,
+tool calling and a thinking level, which is what lets a single model write the script, drive
+the board through tool calls and look at the stills. The stills come from Gemini Nano Banana
+next door, through the same endpoint and the same credential — set `X-GOOG-API-KEY` in `.env`
+once and both work. Prompts and reference images go to Google; generated files, boards and
 scene history stay on disk.
 
-This replaced the Antigravity CLI, and one number is why it mattered: `agy`'s image tool
-allowed roughly **five generations per five-hour window**, and its agent turns came out of the
-same plan quota. That single limit shaped most of the original design — it is why chaining is
-the default and why a reel was built to need one image rather than one per beat. Both are still
-good filmmaking; neither is forced any more. Chaining is now an editorial choice about seams.
+Two things came before it. The Antigravity CLI, whose image tool allowed roughly **five
+generations per five-hour window** with agent turns out of the same plan quota — the single
+limit that shaped most of the original design, and why chaining is the default and a reel was
+built to need one image rather than one per beat. Then `qwen3.6` under Ollama, which removed
+the meter entirely at the price of 23 GiB of weights, a service to keep running and a draft
+that took minutes. The API is the middle: nothing to install, and a turn priced in cents.
 
-What the absence of a meter bought, concretely, is two passes that were never worth a quota
-slot: the script marks its own work against the brief's 22-point self-check, and every still is
-looked at next to the cast reference before the board accepts it.
+What that buys, concretely, is two passes worth keeping: the script marks its own work against
+the brief's 22-point self-check, and every still is looked at next to the cast reference before
+the board accepts it. Neither was worth a quota slot under `agy`. Both are worth a flash turn,
+which costs a fraction of one of the images this pipeline already spends without hesitating.
 
-Knobs, all with `PAPERREEL_` prefixes: `QWEN_MODEL`, `OLLAMA_URL`, `QWEN_NUM_CTX` (32768 — the
-review pass holds the whole brief plus a draft plus its correction), `PLAN_THINK`,
-`PLAN_REVIEW`, `STILL_REVIEW`, `STILL_ATTEMPTS`, `QWEN_TIMEOUT`, `QWEN_KEEP_ALIVE`.
+Knobs, all with `PAPERREEL_` prefixes: `TEXT_MODEL`, `VISION_MODEL`, `GEMINI_API_URL`,
+`LLM_TEMPERATURE`, `LLM_TIMEOUT`, `LLM_IMAGE_EDGE` (1024 — a picture is shrunk on the way to
+the model, which resamples it anyway), `PLAN_THINK`, `PLAN_REVIEW`, `STILL_REVIEW`,
+`STILL_ATTEMPTS`.
 
-Reasoning is off everywhere except the planning pair, and that is measured rather than assumed:
-an unambiguous board edit took **0.9 s** with thinking off and **14 s** with it on, for the same
-single tool call. Writing a script is the one place the wall clock is worth it.
+Reasoning is `minimal` everywhere except the planning pair. Thought tokens are billed as output
+and an unambiguous board edit needs none of them; writing a script is the one place the quality
+is worth both the tokens and the wall clock.
 
 ## Layout
 
@@ -620,7 +624,7 @@ single tool call. Writing a script is the one place the wall clock is worth it.
 paperreel/config.py     geometry, rates, prompt scaffold, measured constants
 paperreel/media.py      chroma-key cutout, compositing, stitching  (local, free)
 paperreel/comfy.py      ComfyUI client + the 15-node H3 graph
-paperreel/qwen.py       Ollama: structured output, tool calls, vision
+paperreel/gemini.py     Gemini: structured output, tool calls, vision
 paperreel/papercut.py   stills from image/, over HTTP on this machine
 paperreel/stills.py     rendering stills, then looking at them
 paperreel/pictures.py   a beat's reference pictures, drawn as well as uploaded
@@ -674,7 +678,7 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   sketch. Three claims are therefore reasoned, not measured: that the panel style actually comes
   back as grey pencil rather than the paper cutout it explicitly negates, that Lite at 1K is
   legible enough to judge framing by, and that a sketch is a useful read of a shot that will be
-  made of paper. Whether the local model varies its shot sizes across a reel rather than writing
+  made of paper. Whether the model varies its shot sizes across a reel rather than writing
   five medium shots in a row is the fourth, and the contact sheet is exactly where that shows.
 - **Nothing arbitrates between a design and a beat's own picture.** Bind a wolf and upload a
   picture of the same wolf to one scene and the render is handed both, described twice. The slot
@@ -727,9 +731,14 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   against the brief; this reads one line and the two beside it, and nothing looks at what comes
   back. It is free and it is undo-able by typing, but a rewrite that quietly drops half the
   movement is caught by you, not by the studio.
-- **Planning is slow.** Draft plus self-check is about five minutes on a 36B local model,
-  against a few seconds for a hosted one. It costs nothing and it is a job the UI shows
-  progress for, but it is not interactive.
+- **Planning is still not interactive.** Draft plus self-check measured **239 s** on
+  `gemini-3.6-flash` with thinking on for both passes — faster than the local 36B model it
+  replaced, and still a job you watch rather than a prompt you wait on.
+- **Turn latency is unexplained.** Every request in the environment these numbers were taken
+  in came back in roughly **81 s** regardless of payload — a 1 KB prompt, a 100 KB prompt and
+  two 1.5 MB stills all measured the same, and the same calls through `curl` were seconds. So
+  the flat minute is something about this machine's network path, not about the model, and
+  none of the per-call timings here should be read as the API's speed.
 - **Container may be over-provisioned** at 8 cores / 64 GiB — that's 23% of the bill
   and was never measured against actual usage.
 - **The studio's per-step progress is unverified against a live render.** ComfyUI's `/ws`

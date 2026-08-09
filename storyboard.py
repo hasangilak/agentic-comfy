@@ -4,9 +4,9 @@
 # ///
 """Concept -> script -> assets -> chained clips -> one stitched Reel.
 
-Planning runs on a local model through Ollama and the stills on the local image server; both
-are free. Only --render touches a GPU. The stages are separable so you can iterate for free
-and pay once.
+Planning runs on Gemini and the stills on the image server next door; both are cheap. Only
+--render touches a GPU, which is the expensive stage. The stages are separable so you can
+iterate on the script for cents and pay once.
 
     uv run storyboard.py --concept "a paper pig finds a pond" --beats 4 --seconds 10
     uv run storyboard.py --script story.json          # your own script, no planner turn
@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from paperreel import board as board_mod
-from paperreel import config, panels, papercut, pipeline, planner, qwen, script as script_mod
+from paperreel import config, gemini, panels, papercut, pipeline, planner, script as script_mod
 from paperreel import stills as stills_mod
 
 
@@ -117,7 +117,7 @@ def main() -> None:
             print("[script] this script mixes beat lengths, which --render flattens to one "
                   "--seconds. Open it in the studio to render it as written.")
     elif do_plan:
-        print(f"[plan] {args.beats} beats x {args.seconds:.0f}s via {config.QWEN_MODEL}")
+        print(f"[plan] {args.beats} beats x {args.seconds:.0f}s via {config.TEXT_MODEL}")
         plan = planner.plan(args.concept, args.beats, args.seconds)
         plan["seconds"] = args.seconds
         # Through the same normaliser an imported script takes, because both are now written
@@ -149,7 +149,7 @@ def main() -> None:
             else:
                 print("[panel] every scene already has its shot written; drawing")
             panels.draw_all(live, log=print)
-        except (panels.PanelsError, papercut.PapercutError, qwen.OllamaError) as gone:
+        except (panels.PanelsError, papercut.PapercutError, gemini.GeminiError) as gone:
             raise SystemExit(f"[panel] {gone}")
         sheet = live.sheet_path()
         print(f"[panel] {sheet}" if sheet.is_file() else "[panel] no panels drawn")
@@ -177,7 +177,7 @@ def main() -> None:
 
         # The Gemini renderer next door is the only generator, and it
         # renders straight onto the H3 grid so nothing is cropped on the way to the video
-        # model. Every still it produces is then looked at by the same local model that wrote
+        # model. Every still it produces is then looked at by the same model that wrote
         # the script -- see paperreel/stills.py. With the server down there is nothing to fall
         # back to, so the stills have to be supplied by hand.
         if missing():

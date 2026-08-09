@@ -8,8 +8,8 @@ The review pass is the point of this module. A style bible is words, and words l
 differently on every generation: the same paragraph that produced a round-eared pink pig in
 beat 1 produces a sharper-eared one in beat 4, and neither prompt was wrong. Conditioning
 every still on the reel's locked cast reference fixed most of that, but not all of it, and
-nothing in the pipeline ever checked. Now something does: the model has vision, it is local
-and unmetered, and a look costs about three seconds. A still that misses gets its asset
+nothing in the pipeline ever checked. Now something does: the model has vision, and a look
+costs one small request against the still it just paid for. A still that misses gets its asset
 prompt rewritten against the specific thing that is wrong and is rendered again.
 
     made = stills.generate(board, [2, 3, 5], log=print)
@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import board as board_mod
-from . import config, papercut, qwen
+from . import config, gemini, papercut
 
 REVIEW_SCHEMA = {
     "type": "object",
@@ -87,7 +87,7 @@ JUDGEMENT = (
 # The conversation about one still. Same three outcomes every turn: the prompt this still will
 # be drawn from next time, whether to draw it now, and what to tell the director.
 #
-# Declared in that order because Ollama decodes in schema-property order, so the reply is
+# Declared in that order because the decode follows schema-property order, so the reply is
 # written LAST -- after the model has committed to a prompt and to whether it is rendering.
 # The other way round it announced changes it then did not make.
 CHAT_SCHEMA = {
@@ -311,13 +311,13 @@ def _rejected(board: board_mod.Board, beats: list[int], *,
             break
         try:
             verdict = review(board, n)
-        except qwen.OllamaError as unavailable:
+        except gemini.GeminiError as unavailable:
             log(f"[stills] beat {n}: not reviewed ({unavailable})")
             continue
         touched = True
         if verdict.get("consistent"):
             log(f"[stills] beat {n}: matches the reel")
-            remember(board, n, "qwen", "Checked this against the reel — it matches.")
+            remember(board, n, "gemini", "Checked this against the reel — it matches.")
             continue
         problems = [str(p).strip() for p in verdict.get("problems") or [] if str(p).strip()]
         corrected = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
@@ -327,13 +327,13 @@ def _rejected(board: board_mod.Board, beats: list[int], *,
         # would just spend wall clock on the same generation with a new seed.
         if not corrected or corrected == (board.beat(n).get("asset_prompt") or "").strip():
             log(f"[stills] beat {n}: kept, the review had no different prompt to offer")
-            remember(board, n, "qwen", "Kept: " + ("; ".join(problems) or "nothing to change")
+            remember(board, n, "gemini", "Kept: " + ("; ".join(problems) or "nothing to change")
                      + ", but no different prompt to render from.")
             continue
         board.beat(n)["asset_prompt"] = corrected
         failed.append(n)
         log(f"[stills] beat {n}: prompt rewritten -> {corrected}")
-        remember(board, n, "qwen",
+        remember(board, n, "gemini",
                  "; ".join(problems) or "This did not match the reel.", prompt=corrected,
                  regenerated=True)
     if failed or touched:
@@ -351,7 +351,7 @@ def review(board: board_mod.Board, n: int) -> dict:
     """
     still = board.asset_path(n)
     if not still.is_file():
-        raise qwen.OllamaError(f"beat {n} has no still to look at")
+        raise gemini.GeminiError(f"beat {n} has no still to look at")
     reference = board.reference_for(n)
     prompt = (board.beat(n).get("asset_prompt") or "").strip()
     parts: list[str] = []
@@ -382,14 +382,14 @@ def review(board: board_mod.Board, n: int) -> dict:
             parts.append(config.MENTION_NOTE)
     parts.append(JUDGEMENT)
     parts.append("Return JSON only.")
-    return qwen.structured(
+    return gemini.structured(
         [{"role": "user", "content": "\n\n".join(parts),
-          "images": [qwen.encode(path) for path in images]}],
+          "images": [gemini.encode(path) for path in images]}],
         REVIEW_SCHEMA,
         # Near-deterministic on purpose: this is a check, and a reviewer that changes its mind
         # between runs turns "generate the stills" into a dice roll on how many get re-rendered.
         temperature=0.1,
-        model=config.QWEN_VISION_MODEL,
+        model=config.VISION_MODEL,
     )
 
 
@@ -475,13 +475,13 @@ def converse(board: board_mod.Board, n: int, message: str, *,
     """
     discussable(board, n)
     before = (board.beat(n).get("asset_prompt") or "").strip()
-    verdict = qwen.structured(
+    verdict = gemini.structured(
         _chat_messages(board, n, message, attached=attached), CHAT_SCHEMA,
         # Warmer than the review's 0.1: this one is writing a prompt, not checking one, and a
         # near-deterministic decode answers a second attempt at the same note with the same
         # words -- which reads as not having listened.
         temperature=0.4,
-        model=config.QWEN_VISION_MODEL,
+        model=config.VISION_MODEL,
     )
     corrected = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
     reply = " ".join(str(verdict.get("reply") or "").split()).strip()
@@ -501,7 +501,7 @@ def converse(board: board_mod.Board, n: int, message: str, *,
 
     remember(board, n, "user", message)
     spoken = remember(
-        board, n, "qwen",
+        board, n, "gemini",
         reply or ("Rewrote the prompt." if changed else "Nothing to change."),
         prompt=corrected if changed else None,
         regenerated=regenerate or None,
@@ -669,5 +669,5 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
     return [
         {"role": "system", "content": CHAT_SYSTEM},
         {"role": "user", "content": "\n\n".join(parts),
-         "images": [qwen.encode(path) for path in images]},
+         "images": [gemini.encode(path) for path in images]},
     ]

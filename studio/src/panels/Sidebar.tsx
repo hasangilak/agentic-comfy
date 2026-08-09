@@ -294,12 +294,12 @@ export function Sidebar() {
         <RailRow
           icon="🧠"
           label={studio.model.model || "language model"}
-          value={studio.model.ready ? "local" : "offline"}
+          value={studio.model.ready ? "ready" : "offline"}
           tone={studio.model.ready ? "quiet" : "warn"}
           title={
             studio.model.ready
-              ? "runs on this machine through Ollama — nothing metered, nothing leaves"
-              : "Ollama is not answering, or the model is not pulled. `make qwen` pulls it."
+              ? "the script, the board edits and the still review — through the Google API"
+              : "no Google API key, or it was refused. Put X-GOOG-API-KEY=… in .env."
           }
         />
       </div>

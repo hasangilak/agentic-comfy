@@ -223,43 +223,56 @@ REF_VIDEO_WITH_AUDIO = False
 
 # ## The language model
 #
-# One local model does every job that is words: writing the script, carrying out the board
-# edits a conversation asks for, writing the caption, and -- because it has vision -- looking
-# at each still the image server produced and saying whether it belongs in this reel.
+# One model does every job that is words: writing the script, carrying out the board edits a
+# conversation asks for, writing the storyboard panels, writing the caption, and -- because
+# it has vision -- looking at each still the image server produced and saying whether it
+# belongs in this reel.
 #
-# It replaced the Antigravity CLI, and one number is why: agy's image tool allowed roughly
-# five generations per five-hour window and its agent turns billed against the same plan
-# quota, so every turn had a price. Ollama on this machine has none, which is what makes the
-# self-review passes below affordable -- they were never worth a quota slot.
-OLLAMA_URL = os.environ.get("PAPERREEL_OLLAMA_URL", "http://127.0.0.1:11434")
-QWEN_MODEL = os.environ.get("PAPERREEL_QWEN_MODEL", "qwen3.6")
-# Vision is a separate name only so a machine whose main model is text-only can still point
-# this at one that sees. Same model by default: qwen3.6 reports `vision` and `tools` and
-# `thinking` together, which is the whole reason it can drive this pipeline alone.
-QWEN_VISION_MODEL = os.environ.get("PAPERREEL_QWEN_VISION_MODEL", QWEN_MODEL)
-# Ollama defaults the context window to a few thousand tokens and TRUNCATES silently past it,
-# which does not fail -- it answers confidently from a prompt whose end is missing.
+# It is Gemini, over the same Google API and the same `X-GOOG-API-KEY` the stills go through,
+# which is the reason for the move: one credential, one provider, one bill, and nothing to
+# install or keep resident. It replaced `qwen3.6` on Ollama, which replaced the Antigravity
+# CLI before that.
 #
-# The largest call decides this, and it is the script review: the whole authoring prompt
-# (prompts/40s-paper-cutout-script.md, ~6.7k tokens) plus the draft it is checking plus the
-# corrected script it returns. 32k leaves room for an eight-beat script whose asset prompts
-# are the 150-250 words the brief asks for. qwen3.6 itself tops out at 262144.
-QWEN_NUM_CTX = int(os.environ.get("PAPERREEL_QWEN_NUM_CTX", "32768"))
-# The model ships with temperature 1.0 and presence_penalty 1.5, which is tuned for open
-# chat. Board edits want the opposite, and this is the default for everything except the
+# The consequence to keep in mind is that words are metered again. Not the way agy was --
+# there is no five-images-per-five-hours window and no quota to ration -- but a turn has a
+# price, so a call added here has to be worth one. The two self-review passes below still
+# are: a flash review turn is a fraction of one Gemini image, and this pipeline spends those
+# without hesitating.
+GEMINI_API_URL = os.environ.get(
+    "PAPERREEL_GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta")
+# The image server reads the key as `X-GOOG-API-KEY` from the same .env, so that spelling is
+# first; the other two are what a shell that already has a Google key tends to call it.
+GOOGLE_API_KEY = (os.environ.get("X-GOOG-API-KEY")
+                  or os.environ.get("GEMINI_API_KEY")
+                  or os.environ.get("GOOGLE_API_KEY") or "")
+# Flash rather than Pro: every call here is either a short board edit or a look at one
+# picture, and the one call whose quality is worth more (the script) buys it with reasoning
+# instead (PLAN_THINK). 3.6-flash has vision, tool calling and a thinking level, which is
+# what lets a single model drive the whole pipeline.
+TEXT_MODEL = os.environ.get("PAPERREEL_TEXT_MODEL", "gemini-3.6-flash")
+# Vision is a separate name only so the picture calls can be pointed at a different model --
+# a bigger one when cast drift is being chased, a cheaper one when it is not.
+VISION_MODEL = os.environ.get("PAPERREEL_VISION_MODEL", TEXT_MODEL)
+# Board edits want a near-deterministic decode; this is the default for everything except the
 # creative pass, which asks for more (see PLAN_TEMPERATURE).
-QWEN_TEMPERATURE = float(os.environ.get("PAPERREEL_QWEN_TEMPERATURE", "0.3"))
+LLM_TEMPERATURE = float(os.environ.get("PAPERREEL_LLM_TEMPERATURE", "0.3"))
 PLAN_TEMPERATURE = float(os.environ.get("PAPERREEL_PLAN_TEMPERATURE", "0.8"))
-# Reasoning is on by default in a thinking model and it is not free: the same unambiguous
-# board edit measured 0.9s with thinking off and 14s with it on. So it is off everywhere
-# except writing the script, which is the one call whose quality is worth the wall clock.
+# Reasoning costs output tokens and wall clock, and an unambiguous board edit needs none of
+# it. So `gemini.chat` sends thinkingLevel `minimal` everywhere except writing the script,
+# which is the one call whose quality is worth both.
 PLAN_THINK = os.environ.get("PAPERREEL_PLAN_THINK", "1") == "1"
-# ~23 GiB of weights, about four seconds to load. A session is dozens of short turns, so
-# keeping the model resident is the difference between an edit landing at once and every
-# single one of them paying the load again.
-QWEN_KEEP_ALIVE = os.environ.get("PAPERREEL_QWEN_KEEP_ALIVE", "10m")
-QWEN_TIMEOUT = float(os.environ.get("PAPERREEL_QWEN_TIMEOUT", "900"))
-QWEN_PROBE_TIMEOUT = 2.0
+# Long because the script review generates a whole corrected script with reasoning on; short
+# calls come back in seconds and never approach it.
+LLM_TIMEOUT = float(os.environ.get("PAPERREEL_LLM_TIMEOUT", "600"))
+LLM_PROBE_TIMEOUT = 4.0
+# The long edge of a picture on its way to the model, in pixels. A still is a 1.5 MB PNG and
+# the review sends two; Gemini resamples an inline image onto its own tile grid anyway, so the
+# full-size bytes were never reaching the model as detail. It does not measurably change the
+# round trip (see `gemini.encode`) -- it is about request size. 0 sends the file untouched.
+LLM_IMAGE_EDGE = int(os.environ.get("PAPERREEL_LLM_IMAGE_EDGE", "1024"))
+# /api/status is polled after every settled job, so the probe behind it is cached. Short
+# enough that a key just fixed in .env shows up while the user is still looking at the rail.
+LLM_PROBE_CACHE = 60.0
 # A tool loop has to be able to end. Every round is one model turn plus whatever the tools
 # did, and a model that has started calling `read_board` in circles is not going to stop on
 # its own. Eight is far more than any observed turn needs.

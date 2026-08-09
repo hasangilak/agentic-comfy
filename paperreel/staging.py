@@ -38,10 +38,10 @@ from pathlib import Path
 from typing import Callable
 
 from . import board as board_mod
-from . import config, papercut, qwen
+from . import config, gemini, papercut
 
 # One turn of the conversation about one staging sheet. The same three outcomes as a still's and
-# a picture's, and declared in the same order and for the same reason: Ollama decodes in
+# a picture's, and declared in the same order and for the same reason: the decode follows
 # schema-property order, so `reply` is written LAST -- after the model has committed to a prompt
 # and to whether it is drawing. The other way round it announces a change it then does not make.
 #
@@ -347,13 +347,13 @@ def converse(board: board_mod.Board, entry_id: str, message: str, *,
         )
 
     before = str(board.stage_field(entry, "draw")).strip()
-    verdict = qwen.structured(
+    verdict = gemini.structured(
         _chat_messages(board, entry, message), CHAT_SCHEMA,
         # Warmer than a review's 0.1 for the reason the other two conversations are: this is
         # writing a prompt rather than checking one, and a near-deterministic decode answers a
         # second attempt at the same note with the same words, which reads as not having listened.
         temperature=0.4,
-        model=config.QWEN_VISION_MODEL,
+        model=config.VISION_MODEL,
     )
     corrected = " ".join(str(verdict.get("draw") or "").split()).strip()
     reply = " ".join(str(verdict.get("reply") or "").split()).strip()
@@ -373,7 +373,7 @@ def converse(board: board_mod.Board, entry_id: str, message: str, *,
 
     remember(board, entry_id, "user", message)
     spoken = remember(
-        board, entry_id, "qwen",
+        board, entry_id, "gemini",
         reply or ("Rewrote the prompt." if changed else "Nothing to change."),
         prompt=corrected if changed else None,
         regenerated=regenerate or None,
@@ -501,5 +501,5 @@ def _chat_messages(board: board_mod.Board, entry: dict, message: str) -> list[di
     return [
         {"role": "system", "content": SYSTEM},
         {"role": "user", "content": "\n\n".join(parts),
-         "images": [qwen.encode(board.stage_path(entry_id))]},
+         "images": [gemini.encode(board.stage_path(entry_id))]},
     ]

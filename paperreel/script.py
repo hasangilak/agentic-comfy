@@ -1,6 +1,6 @@
 """Adopting a script that was written outside the studio.
 
-The other way in asks the local model for a script from a one-line concept. That is free, but
+The other way in asks the model for a script from a one-line concept. That is one turn, but
 it is also the model's idea of the film. Someone who has already written the shot list elsewhere
 -- by hand, or by walking an AI through `prompts/40s-paper-cutout-script.md` -- is holding
 exactly what the planner would have produced, from exactly the same brief, and should not have

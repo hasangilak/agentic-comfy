@@ -1,6 +1,6 @@
 """The conversation that drives the board.
 
-The model runs locally through Ollama and it calls tools, so a turn is a real loop rather
+The model is Gemini and it calls tools, so a turn is a real loop rather
 than a single structured answer: it can edit a beat, read the board back to see what that
 did, edit another, and ask the image server for the stills it now needs -- all inside one
 turn, with every step visible in the job log.
@@ -8,11 +8,13 @@ turn, with every step visible in the job log.
 That loop is what the Antigravity CLI could not do. `agy -p` was one non-interactive shot,
 so every turn had to ask for a reply plus a batch of board operations and hope the batch was
 internally consistent; there was no way for the model to look at the result of its own first
-edit before making the second. Locally there is, and turns are unmetered, so it can.
+edit before making the second. Over the API there is, and a round costs a few thousand tokens
+rather than a slot in a five-hour window, so it can.
 
-Deliberately absent: any tool that spends money. The model can write, rewrite, reorder and
-re-time every beat, and it can ask the local image server for stills, but rendering video on
-a GPU stays a button a human presses.
+Deliberately absent: any tool that spends real money. Words and stills are both metered
+now, but a still is cents and a reel is dollars: the model can write, rewrite, reorder and
+re-time every beat, and it can ask the image server for stills, but rendering video on a GPU
+stays a button a human presses.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from __future__ import annotations
 from typing import Callable
 
 from . import board as board_mod
-from . import config, papercut, planner, qwen, script, stills as stills_mod
+from . import config, gemini, papercut, planner, script, stills as stills_mod
 
 # The board operations, by name. Each one is also a tool the model can call, and `apply_one`
 # below is the single place any of them is carried out -- the HTTP layer applies the same ops
@@ -40,14 +42,14 @@ OPS = [
 # the field name as a verb, which is what it means in every other tool it has ever seen. Told
 # what each field holds, in the same words the system prompt uses, it answers in one call.
 TOOLS = [
-    qwen.tool(
+    gemini.tool(
         "read_board",
         "Read the current board back: every beat with its state, length, join, scene and "
         "action. Call this when you need to see the effect of an edit you just made, or when "
         "the board may have changed since the digest you were given.",
         {},
     ),
-    qwen.tool(
+    gemini.tool(
         "set_script",
         "Set the reel's title and/or its style bible. The style bible is the one paragraph "
         "that fixes what the characters and the set LOOK like, and it goes into every image "
@@ -60,7 +62,7 @@ TOOLS = [
             },
         },
     ),
-    qwen.tool(
+    gemini.tool(
         "set_beat",
         "Change one existing beat. Send only the fields you are changing; anything you leave "
         "out is kept as it is.",
@@ -92,7 +94,7 @@ TOOLS = [
         },
         ["n"],
     ),
-    qwen.tool(
+    gemini.tool(
         "add_beat",
         "Insert a new beat. Everything from that position on shifts down, with its stills and "
         "clips. Use n = one past the last beat to append.",
@@ -108,13 +110,13 @@ TOOLS = [
         },
         ["n"],
     ),
-    qwen.tool(
+    gemini.tool(
         "remove_beat",
         "Delete a beat and everything rendered for it. The beats after it move up.",
         {"n": {"type": "integer", "description": "which beat, 1-based"}},
         ["n"],
     ),
-    qwen.tool(
+    gemini.tool(
         "set_source",
         "Change where a beat's frames come from -- the single most important choice on the "
         "board, because it decides whether the beat is a cut or a continuation.",
@@ -133,13 +135,13 @@ TOOLS = [
         },
         ["n", "source"],
     ),
-    qwen.tool(
+    gemini.tool(
         "set_caption",
         "Replace the Instagram caption for the whole reel.",
         {"caption": {"type": "string", "description": "the caption text, hashtags included"}},
         ["caption"],
     ),
-    qwen.tool(
+    gemini.tool(
         "set_reel",
         "Change a board-wide setting: the default beat length, or the sampler step count.",
         {
@@ -148,7 +150,7 @@ TOOLS = [
             "steps": {"type": "integer", "description": "sampler steps; 8 is the measured default"},
         },
     ),
-    qwen.tool(
+    gemini.tool(
         "generate_stills",
         "Ask the local image server to render the opening stills for these beats, then look "
         "at what came back. Gemini is metered and roughly tens of seconds per still, so ask "
@@ -360,11 +362,11 @@ def turn(board: board_mod.Board, message: str, *, selection: list[int] | None = 
     applied: list[dict] = []
     reply = ""
     for round_number in range(1, config.AGENT_MAX_ROUNDS + 1):
-        assistant = qwen.chat(messages, tools=TOOLS)
+        assistant = gemini.chat(messages, tools=TOOLS)
         spoken = str(assistant.get("content") or "").strip()
         if spoken:
             reply = spoken
-        calls = qwen.calls_of(assistant)
+        calls = gemini.calls_of(assistant)
         if not calls:
             break
         results: list[tuple[str, str]] = []
@@ -375,11 +377,11 @@ def turn(board: board_mod.Board, message: str, *, selection: list[int] | None = 
             )
             results.append((name, outcome))
             applied += summaries
-        messages += qwen.answered(assistant, results)
+        messages += gemini.answered(assistant, results)
         if round_number == config.AGENT_MAX_ROUNDS:
             # Not an error: whatever landed is real and the board shows it. But the turn is
             # over, and saying so beats a reply that reads as though more was coming.
-            log(f"[qwen] stopped after {config.AGENT_MAX_ROUNDS} tool rounds")
+            log(f"[gemini] stopped after {config.AGENT_MAX_ROUNDS} tool rounds")
 
     if not reply:
         # A model that spent its whole turn on tools and then said nothing still owes the user
@@ -388,7 +390,7 @@ def turn(board: board_mod.Board, message: str, *, selection: list[int] | None = 
                  else "Nothing to change.")
     chat = board.data.setdefault("chat", [])
     chat.append({"role": "user", "text": message, "selection": selection or []})
-    chat.append({"role": "qwen", "text": reply, "ops": applied})
+    chat.append({"role": "gemini", "text": reply, "ops": applied})
     board.save()
     return {"reply": reply, "ops": applied}
 
@@ -423,7 +425,7 @@ def _run_tool(board: board_mod.Board, name: str, arguments: dict, *,
     if announce is not None:
         announce()
     for summary in summaries:
-        log(f"[qwen] {summary['summary']}")
+        log(f"[gemini] {summary['summary']}")
     return "; ".join(summary["summary"] for summary in summaries), summaries
 
 
@@ -450,14 +452,14 @@ def _generate_stills(board: board_mod.Board, arguments: dict, *,
             announce()
         made = stills_mod.generate(board, beats, log=log, progress=progress,
                                    announce=announce, cancelled=cancelled)
-    except (stills_mod.StillsError, papercut.PapercutError, qwen.OllamaError) as refused:
+    except (stills_mod.StillsError, papercut.PapercutError, gemini.GeminiError) as refused:
         # All three are ordinary states, not faults: a board that supplies its own stills, an
         # image server that is not running, a model that went away mid-turn. The model is told
         # in the same words the user would be, and gets to say so in its reply.
-        log(f"[qwen] stills: {refused}")
+        log(f"[gemini] stills: {refused}")
         return str(refused)
     except Exception as failed:  # noqa: BLE001 -- the image server is a separate process
-        log(f"[qwen] stills failed: {failed}")
+        log(f"[gemini] stills failed: {failed}")
         return f"the image server could not do it: {failed}"
     missing = [n for n in beats if n not in made]
     return (f"stills rendered for beats {made}"
@@ -600,7 +602,7 @@ REVISE_FIELDS = {
     ),
 }
 
-# `text` before `reply`, because Ollama decodes in schema-property order: the model commits to
+# `text` before `reply`, because the decode follows schema-property order: the model commits to
 # the line first and then describes what it did, rather than announcing a change and writing a
 # different one. Same lesson as `stills.CHAT_SCHEMA` and `planner.REVIEW_SCHEMA`.
 REVISE_SCHEMA = {
@@ -654,7 +656,7 @@ def revise(board: board_mod.Board, n: int, field: str, message: str, *,
         raise ValueError(f"there is nothing called {field!r} to rewrite")
     beat = board.beat(n)
     before = str(beat.get(field) or "").strip()
-    verdict = qwen.structured(
+    verdict = gemini.structured(
         _revise_messages(board, beat, field, message), REVISE_SCHEMA,
         # The same warmth `stills.converse` uses, and for the same reason: this writes prose
         # rather than checking it, and a near-deterministic decode answers a second attempt at
@@ -670,16 +672,16 @@ def revise(board: board_mod.Board, n: int, field: str, message: str, *,
     lost = config.lost_mentions(before, text) if changed else []
     ops = apply_ops(board, [{"op": "set_beat", "n": n, field: text}]) if changed else []
     if changed:
-        log(f"[qwen] beat {n} {field} -> {text}")
+        log(f"[gemini] beat {n} {field} -> {text}")
     if lost:
-        log(f"[qwen] beat {n} {field}: the rewrite dropped {', '.join(lost)}")
+        log(f"[gemini] beat {n} {field}: the rewrite dropped {', '.join(lost)}")
     if not reply:
         reply = f"Rewrote the {field}." if changed else "Nothing to change."
     if lost:
         reply += f" (This dropped {', '.join(lost)} -- put it back if it mattered.)"
     chat = board.data.setdefault("chat", [])
     chat.append({"role": "user", "text": f"({field} of beat {n}) {message}", "selection": [n]})
-    chat.append({"role": "qwen", "text": reply, "ops": ops})
+    chat.append({"role": "gemini", "text": reply, "ops": ops})
     board.save()
     return {"field": field, "beat": n, "text": text or before, "reply": reply,
             "changed": changed, "ops": ops}
@@ -746,7 +748,7 @@ def create(concept: str, beats: int, seconds: float, *,
     The joins are the model's to choose, which they were not before. They used to be
     overwritten with "beat 1 is a cut, everything after it chains", because a cut cost one
     image from a five-per-five-hours quota and a chained reel needed exactly one image no
-    matter how long it was. Stills are local and free now, so the shape of the film can be
+    matter how long it was. A still is now one ordinary API request, so the shape of the film can be
     decided by the shape of the story -- which is what section 2 of the brief is about.
     """
     plan = planner.plan(concept, beats, seconds, log=log)
@@ -768,7 +770,7 @@ def create(concept: str, beats: int, seconds: float, *,
         log(f"[plan] {note}")
     document["chat"] = [
         {"role": "user", "text": concept, "selection": []},
-        {"role": "qwen",
+        {"role": "gemini",
          "text": (f'Wrote "{document["title"]}" as {len(document["beats"])} beats in '
                   f'{len(cuts)} shot{"" if len(cuts) == 1 else "s"}. '
                   + (f'Beats {", ".join(map(str, stills))} need a still of their own; the '
@@ -790,7 +792,7 @@ def caption(board: board_mod.Board) -> str:
         "no markdown, output the caption text only.\n\n"
         f"{board_digest(board)}"
     )
-    text = qwen.text([{"role": "user", "content": prompt}], temperature=0.7).strip()
+    text = gemini.text([{"role": "user", "content": prompt}], temperature=0.7).strip()
     board.data["caption"] = text
     board.save()
     return text

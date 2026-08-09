@@ -145,7 +145,7 @@ export function CanvasToolbar() {
 function Phases({ job }: { job: Job }) {
   if (job.kind !== "render") {
     const labels: Record<string, string> = {
-      chat: "qwen thinking",
+      chat: "the model is thinking",
       plan: "writing the script",
       asset: "generating a still",
       still_chat: "looking at the still",

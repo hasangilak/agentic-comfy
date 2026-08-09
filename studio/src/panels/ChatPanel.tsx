@@ -55,11 +55,11 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
           }`}
           title={
             studio.model.ready
-              ? "runs on this machine through Ollama — nothing metered, nothing leaves"
-              : "Ollama is not answering, or the model is not pulled. `make qwen` pulls it."
+              ? "the script, the board edits and the still review — through the Google API"
+              : "no Google API key, or it was refused. Put X-GOOG-API-KEY=… in .env."
           }
         >
-          {studio.model.ready ? studio.model.model || "local model" : "model offline"}
+          {studio.model.ready ? studio.model.model || "gemini" : "model offline"}
         </span>
         <button
           onClick={onCollapse}

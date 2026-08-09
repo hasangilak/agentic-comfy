@@ -1,9 +1,9 @@
 """Paper-cutout Reels: concept -> script -> stills -> chained clips -> 1080x1920 MP4.
 
-Stages are separable on purpose. Everything up to the video is local and unmetered -- the
-script and the board edits come from a model on Ollama (`qwen.py`), the opening stills from
-Papercut Studio next door (`papercut.py`, `stills.py`) -- and only rendering touches a GPU.
-Iterate on the script for free, then pay once.
+Stages are separable on purpose. Everything up to the video goes through Google's API --
+the script and the board edits from Gemini (`gemini.py`), the opening stills from Papercut
+Studio next door (`papercut.py`, `stills.py`) -- and only rendering touches a GPU. Words are
+cents, stills are cents, a reel is dollars: iterate cheaply, then pay once.
 
     from paperreel import config, planner, pipeline
 
@@ -12,6 +12,6 @@ Iterate on the script for free, then pay once.
     print(result.reel, result.cost)
 """
 
-from . import comfy, config, media, pipeline, planner, qwen, script, stills
+from . import comfy, config, gemini, media, pipeline, planner, script, stills
 
-__all__ = ["comfy", "config", "media", "pipeline", "planner", "qwen", "script", "stills"]
+__all__ = ["comfy", "config", "gemini", "media", "pipeline", "planner", "script", "stills"]
