@@ -254,6 +254,28 @@ export const api = {
       body: JSON.stringify({ ids }),
     }).then((r) => r.board),
 
+  /**
+   * Have the local model write the shot grammar for the reel: shot size, angle, camera move per
+   * scene. Free, and the default is every scene rather than the blank ones — the sizes are judged
+   * against each other, so a pass over one scene cannot see the four wide shots before it.
+   */
+  writePanels: (slug: string, beats?: number[]) =>
+    post<{ job: Job }>(`/api/reels/${slug}/panels/text`, { beats }).then((r) => r.job),
+
+  /** Draw the panels: the scenes named, or every scene with text and no sketch yet. */
+  drawPanels: (slug: string, beats?: number[]) =>
+    post<{ job: Job }>(`/api/reels/${slug}/panels`, { beats }).then((r) => r.job),
+
+  /** Draw or redraw one scene's panel, optionally saving new shot grammar for it first. */
+  drawPanel: (slug: string, n: number, panel?: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/panel`, { panel }).then((r) => r.job),
+
+  /** Throw one panel away. Nothing is conditioned on it, so nothing downstream changes. */
+  removePanel: (slug: string, n: number) =>
+    call<{ board: Board }>(`/api/reels/${slug}/beats/${n}/panel`, { method: "DELETE" }).then(
+      (r) => r.board,
+    ),
+
   uploadReference: (slug: string, file: File) => {
     const form = new FormData();
     form.append("file", file);

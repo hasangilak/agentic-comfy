@@ -6,6 +6,7 @@ import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, Button, STATE_LOOK, inputClass } from "../ui";
 import { AddPicture } from "./AddPicture";
+import { Panel } from "./Panel";
 import { StillChat } from "./StillChat";
 
 /**
@@ -507,6 +508,11 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             is the whole conversation. Manual-stills reels can still refine an uploaded picture;
             the manual switch only removes batch/new-image generation. */}
         {carrying || !beat.asset ? null : <StillChat beat={beat} />}
+
+        {/* The storyboard sketch of this shot, above the pictures it is NOT one of: a panel reaches
+            no renderer, so it belongs next to what the shot is rather than next to what conditions
+            it. Absent entirely until this board has a storyboard. */}
+        <Panel beat={beat} />
 
         {/* The extra pictures. Its own row rather than sharing the one above, because a still and
             a reference answer different questions -- one is where this shot opens, the others are

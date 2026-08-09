@@ -373,6 +373,35 @@ differently, and a number typed into prose is persisted derived state.
 Free, all of it, apart from the Gemini requests that draw the sheets. Deleting a design takes its
 sheet, every binding to it, and rewrites every `@stage:` naming it into what it was for.
 
+### The storyboard — seeing the whole film before drawing any of it
+
+Everything above is about pictures a render uses. A **panel** is the opposite: a rough grey sketch
+of one shot, drawn to be looked at and nothing else. It conditions nothing, no model is ever handed
+one, and drawing or deleting one changes no scene's state — which is what makes it safe to press on
+a reel that is already rendered and paid for.
+
+Two rows in the sidebar. **Write the shots** hands the whole script to the local model in one turn
+and gets back a line per scene the board has never held: shot size, angle, camera move, where the
+subject sits in the frame, what the arrows point at. One turn for the reel rather than one per
+scene, because shot sizes only mean anything judged against each other — a model shown one beat
+cannot tell it has just written five wide shots in a row. Free. **Draw the panels** renders each
+line on Nano Banana 2 Lite at 1K, the cheapest of the three, and stitches the results into
+`reels/<slug>/storyboard_sheet.png` — three across, numbered, with each scene's length and join
+under it. That sheet is the point of the feature: the film read at once, and a file you can send
+someone.
+
+The sketch is deliberately *not* paper cutout. A cheap version of the real medium is a bad preview
+of that medium and reads as a finished still, and a storyboard is about framing rather than
+texture. Nothing conditions a panel either, for the reason a prop sheet is drawn from words alone
+one section up — a model shown the cast reference comes back with the cast, in the cast's medium.
+The consequence is worth knowing rather than discovering: two panels of the same fox are two
+readings of one sentence, so a panel is a record of *framing*, never of continuity.
+
+Each node grows a panel row once the board has a storyboard: the sketch, the line it was drawn
+from, ✦ to redraw and ✕ to throw away. The expanded scene view has the line as an editable field.
+There is no conversation about a panel and no automatic review — there is nothing for a verdict to
+be about.
+
 ### The reference join — nine pictures instead of a keyframe, and the default cut
 
 A keyframe is one image. This join is a different checkpoint rather than a different wiring:
@@ -486,10 +515,13 @@ use the Vite URL — it proxies the API through.
 uv run storyboard.py --concept "a paper pig finds a hidden pond" --beats 4 --seconds 10
 uv run storyboard.py --script story.json        # or adopt your own, no planner turn
 
-# 2. opening stills — free; needs `make images` running, and reviews what it renders
+# 2. storyboard — free; a rough sketch per shot on the cheapest model, plus a contact sheet
+uv run storyboard.py --name <slug> --panels
+
+# 3. opening stills — free; needs `make images` running, and reviews what it renders
 uv run storyboard.py --name <slug> --assets
 
-# 3. render — the only paid stage; deploys, renders, stitches, stops
+# 4. render — the only paid stage; deploys, renders, stitches, stops
 uv run storyboard.py --name <slug> --render
 ```
 
@@ -498,6 +530,12 @@ rewrite a beat's action or drop in your own `beat1_asset.png` and re-run; comple
 work is skipped.
 
 Add `--draft` for a cheap 5 s-per-beat approval pass before committing.
+
+`--panels` is the stage you stop at and look at, which is why it is deliberately not part of
+`--all`. It writes the shot grammar for any scene that has none — shot size, angle, camera move,
+where the subject sits — then draws each one as a rough grey sketch and stitches them into
+`reels/<slug>/storyboard_sheet.png`. Nothing it makes is rendered from: a panel is not a still, it
+conditions nothing, and it changes no beat's state. Re-running skips what is drawn.
 
 `--assets` on a board that names a source per beat — an imported script, or one built in the
 studio — generates exactly the stills it needs, which is every beat but a plain continuation.
@@ -587,6 +625,7 @@ paperreel/papercut.py   stills from image/, over HTTP on this machine
 paperreel/stills.py     rendering stills, then looking at them
 paperreel/pictures.py   a beat's reference pictures, drawn as well as uploaded
 paperreel/staging.py    the reel's cast and sets, designed once and bound to scenes
+paperreel/panels.py     the storyboard: a rough sketch per shot, and the contact sheet
 paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/script.py     adopting a script written outside the studio
 paperreel/pipeline.py   app lifecycle + chained batch rendering
@@ -628,6 +667,15 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   two design sheets holds its cast better than one conditioned on the cast reference alone —
   which is the entire claim the feature makes. The set-sheet suffix and its 9:16 shape are
   reasoned from the prop-sheet failure one level down, not measured.
+- **No storyboard panel has been drawn against a live model either.** The machinery is exercised:
+  the routes answer, both job kinds run, a panel follows its scene through a delete-and-renumber,
+  the contact sheet builds, and every beat's fingerprint is verified *byte identical* before and
+  after a panel appears — so this cannot mark a rendered reel stale. What nobody has seen is a
+  sketch. Three claims are therefore reasoned, not measured: that the panel style actually comes
+  back as grey pencil rather than the paper cutout it explicitly negates, that Lite at 1K is
+  legible enough to judge framing by, and that a sketch is a useful read of a shot that will be
+  made of paper. Whether the local model varies its shot sizes across a reel rather than writing
+  five medium shots in a row is the fourth, and the contact sheet is exactly where that shows.
 - **Nothing arbitrates between a design and a beat's own picture.** Bind a wolf and upload a
   picture of the same wolf to one scene and the render is handed both, described twice. The slot
   budget notices; nothing else does.

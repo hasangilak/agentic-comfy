@@ -77,6 +77,7 @@ paperreel/qwen.py       Ollama transport: structured output, tool calls, vision
 paperreel/stills.py     rendering stills, then LOOKING at them; the still-job rules
 paperreel/pictures.py   reference pictures as drawable assets; NO review pass, deliberately
 paperreel/staging.py    the reel's cast and sets, designed once and bound to beats
+paperreel/panels.py     the storyboard: a rough sketch per shot; reaches NO renderer
 paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/script.py     adopting a script written outside the studio
 paperreel/agent.py      the tool loop -> board operations; `revise`, one line at a time
@@ -268,6 +269,53 @@ pass, ever** — same reason, one level up: a design sheet is *supposed* to diff
 `papercut.NO_BEAT` is how a reel-level render rides the beat-keyed scene path. `_gemini_settings`
 answers "nothing stored" for a frame that is not a beat rather than raising, which is what lets
 one scene body serve a still, a reference picture and a design sheet.
+
+### Storyboard panels
+
+A storyboard in the film sense is a sheet of rough panels — one drawing per shot, showing framing,
+angle, and with arrows on the panel how the subject and camera move. `panels.py` is that pass, and
+it is the only module here that puts a picture on disk **which reaches no renderer**: a panel
+conditions nothing, is handed to H3 never, and is in no fingerprint. Written by qwen into a new
+per-beat `panel` field (free, one turn for the whole reel), drawn by `gemini-3.1-flash-lite-image`
+at 1K, and stitched into `reels/<slug>/storyboard_sheet.png`.
+
+That "reaches no renderer" is the whole design, and four things fall out of it:
+
+- **It is not in `own_fingerprint`, `render_fingerprint` or `frame_ids_for`** — not conditionally,
+  as `staging_digest` is, but *never*. An unconditional part would mark every beat of every existing
+  board `stale` at once and re-price a paid render over a sketch. The absence is commented where the
+  digest ends, because a later hand will otherwise "fix" the omission.
+- **The sketch is deliberately not the film's medium.** `config.PANEL_STYLE_SUFFIX` asks for
+  graphite and grey marker and explicitly negates paper cutout. A Lite 1K version of the real
+  medium is a bad preview *of* that medium and reads on the canvas as a finished still, which is the
+  one confusion this feature must not create.
+- **Nothing conditions a panel** (`pictures=[]`, so `_scene_body` composes `"none"`).
+  `pictures.py`'s measured lesson one level further out: a model shown the cast reference draws the
+  cast, in the cast's medium. The subject travels as words. The cost is that consistency across
+  panels is nil — two panels of the same fox are two readings of one sentence — and that is
+  acceptable in a storyboard and the reason a panel must never be promoted into conditioning.
+- **There is no review pass and no conversation**, and for a third reason again: `stills.review`
+  holds a still to the cast, `pictures.py`/`staging.py` skip that because a design is supposed to
+  differ from the cast, and here there is nothing for a verdict to be *about*. A wrong panel is
+  redrawn, or its one line is edited by hand.
+
+`config.PANEL_MODEL` / `PANEL_IMAGE_SIZE` are passed explicitly and therefore beat the beat's own
+`gemini_model` (`papercut.draw` does `gemini_model or beat_model`), so a board whose stills are Pro
+at 2K still gets Lite 1K panels — a storyboard drawn on the expensive model is not a storyboard.
+`PANEL_ASPECT` is `9:16` (640×1152), not `PAPERCUT_ASPECT`: that grid exists only so a *still* is
+not cover-cropped by `media.fit_frame`, and a panel is never a frame. `gemini_options` is
+deliberately **not** wired to any panel route.
+
+**`paperreel/papercut.py` needed no change at all.** `draw` already took `style`, `aspect`,
+`out_path`, `label` and the two Gemini settings, which is exactly a panel — the payoff of
+`staging.py` having generalised it.
+
+`Board.panel_path` is in `media_makers()` despite reaching no renderer, because `renumber()`
+renames through that tuple: a panel left out would hand beat 2 the sketch of the beat that used to
+be there. `sheet()` is PIL rather than ffmpeg's `tile` filter — `tile` cannot caption each cell
+without a font path and a `drawtext` escape dance, and a panel with no beat number under it is not
+a storyboard sheet. Job kinds `panel_write` and `panel_draw`; the controls are `RailRow`s in
+`panels/Sidebar.tsx`, **not** `CanvasToolbar`, which is the money bar.
 
 ### `@`-mentions
 
@@ -660,11 +708,23 @@ byte-identical on a board that binds nothing, which is what keeps every existing
 `stale`. What has NOT happened is one sheet being drawn: nobody has rendered a character sheet,
 redrawn one from a note, or compared a scene conditioned on two design sheets against the same
 scene on the cast reference alone — which is the entire claim. `SET_DRAW_STYLE_SUFFIX` and the
-9:16 set shape are reasoned from `pictures.py`'s prop-sheet failure, not measured. The panel and
-the bind toggles have not been clicked in a browser either.
+9:16 set shape are reasoned from `pictures.py`'s prop-sheet failure, not measured. `StagingPanel`
+and the bind toggles have not been clicked in a browser either.
 
 **Nothing arbitrates between a bound design and a beat's own picture of the same thing.** Both go
 over, described twice. `ref_budget` notices the slot; nothing notices the duplication.
+
+**No storyboard panel has been drawn against a live Gemini.** What is verified is the machinery
+around it: the routes answer, the two job kinds run on the worker, `panel_path` renumbers with its
+beat, the sheet builds from panels on disk, and both fingerprints are byte-identical before and
+after a panel appears — which is what keeps every rendered board out of `stale`. What nobody has
+seen is a sketch. So three claims are reasoned rather than measured: that `PANEL_STYLE_SUFFIX`
+actually gets a grey pencil panel rather than the paper cutout it negates, that Lite at 1K is
+legible enough to judge framing by, and that a panel is a useful read of a shot that will be made of
+paper — the point where preview and product diverge most. Whether qwen writes shot grammar that
+*varies* across the reel, rather than five medium shots in a row, is the other one, and the contact
+sheet is where to look: that is what it is for. The node row, the modal field and the sidebar rows
+have not been clicked in a browser.
 
 **`@`-mentions have never been typed in a browser.** The grammar, the two expansions, the
 degrade-to-role path and the rewrite-on-delete are exercised against a real board; the menu, the

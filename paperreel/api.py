@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (agent, board as board_mod, comfy, config, papercut, pictures, qwen, render,
+from . import (agent, board as board_mod, comfy, config, panels, papercut, pictures, qwen, render,
                script, staging as staging_mod, stills as stills_mod)
 from .jobs import Job, Runner, runner
 
@@ -281,6 +281,44 @@ def handle_stage_chat(job: Job, run: Runner) -> dict:
     )
 
 
+def handle_panel_write(job: Job, run: Runner) -> dict:
+    """Write the shot grammar for the whole reel in one model turn.
+
+    Its own kind rather than a variant of `revise`: that one rewrites a story field of one beat
+    from a note, and this writes a field the story does not have, for every beat at once, because
+    the shot sizes have to vary across the film. Free -- local model, no image.
+    """
+    board = load(job.slug)
+    run.log(job, "[qwen] writing the storyboard panels")
+    written = panels.write(
+        board, job.detail.get("beats"),
+        log=lambda line: run.log(job, line),
+        announce=lambda: run.publish_board(board.slug),
+    )
+    run.publish_board(board.slug)
+    return {"beats": written}
+
+
+def handle_panel_draw(job: Job, run: Runner) -> dict:
+    """Draw storyboard panels, then rebuild the contact sheet.
+
+    Its own kind for the reason `stage_draw` is not a variant of `ref_draw`: it addresses a
+    different thing. A panel is a sketch of the shot that reaches no renderer, so this handler runs
+    no review and touches no fingerprint -- and the canvas needs to be able to say which node's
+    panel is being drawn.
+    """
+    board = load(job.slug)
+    made = panels.draw_all(
+        board, job.detail.get("beats"),
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run, label="panel"),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )
+    run.publish_board(board.slug)
+    return {"beats": made}
+
+
 def handle_revise(job: Job, run: Runner) -> dict:
     """Rewrite one beat's scene or action from a note about it.
 
@@ -315,6 +353,7 @@ for kind, handler in (
     ("still_chat", handle_still_chat), ("revise", handle_revise),
     ("ref_draw", handle_ref_draw), ("ref_chat", handle_ref_chat),
     ("stage_draw", handle_stage_draw), ("stage_chat", handle_stage_chat),
+    ("panel_write", handle_panel_write), ("panel_draw", handle_panel_draw),
     ("caption", handle_caption), ("render", handle_render),
 ):
     runner.register(kind, handler)
@@ -418,7 +457,10 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
         beat = board.beat(n)
     except KeyError:
         raise HTTPException(404, f"beat {n} not in {slug}")
-    for key in ("scene", "action", "asset_prompt"):
+    # `panel` is in here with the story fields even though it is not one: it is the shot grammar
+    # the storyboard sketch is drawn from, hand-editable exactly as the others are. Editing it
+    # changes no fingerprint, because a panel reaches no renderer.
+    for key in ("scene", "action", "asset_prompt", "panel"):
         if key in body:
             beat[key] = str(body[key])
     if "gemini_model" in body:
@@ -1119,6 +1161,89 @@ def bind_staging(slug: str, n: int, body: dict = Body(...)) -> dict:
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board), "staging": bound}
+
+
+# ## Storyboard panels
+#
+# The one set of routes here that spends nothing the board can lose. A panel reaches no renderer,
+# so none of these can make a rendered beat stale, and `gemini_options` is deliberately NOT wired
+# to any of them: the whole point of the pass is the cheapest model, and letting the canvas pass
+# Pro through would quietly undo it. See `panels.py`.
+
+
+@app.post("/api/reels/{slug}/panels/text")
+def write_panels(slug: str, body: dict = Body(default={})) -> dict:
+    """Have the local model write the shot grammar for every beat, or for the ones named.
+
+    Free: one Ollama turn, no image. The default is the whole reel rather than the beats with no
+    panel yet, because the shot sizes are judged against each other -- a pass over beat 4 alone
+    cannot see that beats 1 to 3 are already three wide shots.
+    """
+    load(slug)  # 404 before a job is queued
+    beats = body.get("beats")
+    if beats is not None and not isinstance(beats, list):
+        raise HTTPException(422, "send the scenes to write as `beats`")
+    job = runner.submit("panel_write", safe_slug(slug), {
+        "beats": None if beats is None else [int(n) for n in beats],
+    })
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/panels")
+def draw_panels(slug: str, body: dict = Body(default={})) -> dict:
+    """Draw the panels: the named beats, or every beat with text and no panel drawn yet."""
+    board = load(slug)
+    beats = body.get("beats")
+    if beats is not None and not isinstance(beats, list):
+        raise HTTPException(422, "send the scenes to draw as `beats`")
+    wanted = None if beats is None else [int(n) for n in beats]
+    if wanted is not None:
+        for n in wanted:
+            try:
+                panels.drawable(board, n)
+            except panels.PanelsError as refused:
+                raise HTTPException(refused.status, str(refused))
+    job = runner.submit("panel_draw", safe_slug(slug), {"beats": wanted})
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/panel")
+def draw_panel(slug: str, n: int, body: dict = Body(default={})) -> dict:
+    """Draw or redraw one beat's panel.
+
+    Refuses up front when nothing has been written for it, rather than queueing a job that will
+    only be able to say the same thing a minute later.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    if "panel" in body:
+        board.beat(n)["panel"] = str(body["panel"])
+        board.save()
+        runner.publish_board(slug)
+    try:
+        panels.drawable(board, n)
+    except panels.PanelsError as refused:
+        raise HTTPException(refused.status, str(refused))
+    job = runner.submit("panel_draw", safe_slug(slug), {"beats": [n]})
+    return {"job": job.to_json()}
+
+
+@app.delete("/api/reels/{slug}/beats/{n}/panel")
+def remove_panel(slug: str, n: int) -> dict:
+    """Throw one panel away and rebuild the sheet without it.
+
+    Synchronous, and with none of the guards `DELETE /beats/{n}/refs/{index}` carries: there is no
+    position to renumber (`panel_path` is keyed by the beat number) and nothing downstream is
+    conditioned on the file, so the worst a queued draw can do is put the panel back.
+    """
+    board = load(slug)
+    try:
+        panels.remove(board, n)
+    except panels.PanelsError as refused:
+        raise HTTPException(refused.status, str(refused))
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
 
 
 @app.post("/api/reels/{slug}/reference")

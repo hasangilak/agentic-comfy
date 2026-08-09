@@ -52,6 +52,17 @@ export interface Beat {
   asset_aspect: number | null;
   /** The conversation about this still — the director's notes and the review's verdicts. */
   asset_chat: AssetTurn[];
+  /**
+   * The shot grammar this scene's storyboard panel is drawn from — shot size, angle, camera move,
+   * where the subject sits. Written by the local model in one pass over the whole reel, then
+   * hand-editable.
+   *
+   * It reaches no renderer, so editing it marks nothing stale. That is the whole difference
+   * between a panel and everything else on this beat that holds a prompt.
+   */
+  panel: string;
+  /** The panel itself: a rough grey sketch of the shot, drawn on the cheapest model. */
+  panel_url: string | null;
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
   frame: string | null;
   /** And, on a bridge, the frame it was told to arrive at. Null on every other join. */
@@ -227,6 +238,11 @@ export interface Board {
   stage_kinds: StageKind[];
   max_staging: number;
   beats: Beat[];
+  /**
+   * Every drawn panel on one numbered contact sheet — the whole film read at once, which is what a
+   * storyboard is. Null until one has been built. Rebuilt from scratch whenever a panel changes.
+   */
+  panel_sheet: string | null;
   canvas: { nodes?: Record<string, { x: number; y: number }> };
   reel: string | null;
   /** What "render everything that needs it" would cover, chain cascade included. */
@@ -270,6 +286,10 @@ export interface Job {
     | "stage_draw"
     /** One turn about one design sheet, its redraw included. */
     | "stage_chat"
+    /** Write the shot grammar for the whole reel. Local model, no image, free. */
+    | "panel_write"
+    /** Draw storyboard panels and rebuild the sheet. `detail.beats` is null for "all of them". */
+    | "panel_draw"
     | "caption"
     | "render";
   slug: string;

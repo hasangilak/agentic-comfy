@@ -452,6 +452,46 @@ STAGING_PREFIX = "Also already designed and not to be reinterpreted: "
 STAGE_CHAT_HISTORY = int(os.environ.get("PAPERREEL_STAGE_CHAT_HISTORY", "10"))
 STAGE_CHAT_MEMORY = int(os.environ.get("PAPERREEL_STAGE_CHAT_MEMORY", "40"))
 
+# ## Storyboard panels: the reel read as pictures before anything is paid for
+#
+# A storyboard in the film sense is a sheet of rough panels -- one drawing per shot, showing the
+# framing, the angle and, with arrows on the panel, how the subject and the camera move. It is
+# drawn cheap and read fast, and it exists so the sequence is judged before money goes out.
+#
+# Everything else in this file describes a picture that reaches a renderer. A panel does not: it
+# conditions nothing, is handed to H3 never, and is in no fingerprint. It is a planning artifact,
+# which is what makes the cheapest model the right one rather than a compromise.
+PANEL_MODEL = os.environ.get("PAPERREEL_PANEL_MODEL", "gemini-3.1-flash-lite-image")
+# Lite is 1K-only, which the image server enforces itself and `api.gemini_options` rejects early.
+# Stated here so a change of PANEL_MODEL has the pair to change in one place.
+PANEL_IMAGE_SIZE = os.environ.get("PAPERREEL_PANEL_IMAGE_SIZE", "1K")
+# `9:16` (640x1152), NOT PAPERCUT_ASPECT. The `9:16-reel` grid exists for exactly one reason -- a
+# STILL is handed to H3 as a frame, and anything off that grid is cover-cropped by
+# `media.fit_frame`. A panel is never a frame, so the cheaper vertical preset is free to use: ~0.63x
+# the pixels of the reel grid, which is ~0.63x the wall clock.
+PANEL_ASPECT = "9:16"
+
+# What a panel is asked for, in place of the board's style bible -- `papercut.draw` overrides the
+# scene style, which is the whole reason a panel can be a different kind of picture at all.
+#
+# The paper cutout is negated ON PURPOSE, and it is the one instruction here that looks like a
+# mistake. Two reasons. A Lite 1K version of the real medium is a bad preview OF that medium and
+# reads on the canvas as a finished still, which is the confusion this feature must not create. And
+# a storyboard is about framing rather than texture: the whole value of the pass is that a panel
+# cannot be mistaken for the shot.
+#
+# Nothing conditions a panel (`pictures=[]`, so `_scene_body` composes "none"), which is
+# `pictures.py`'s measured lesson applied one level further out: a model shown the cast reference
+# draws the cast, in the cast's medium. Handed the cutout still, a sketch panel comes back a
+# cutout. The subject travels as words instead -- `panels.write` puts it in the panel text.
+PANEL_STYLE_SUFFIX = (
+    "Rough black-and-white storyboard panel: soft graphite pencil and grey marker on off-white "
+    "paper, loose confident construction lines, flat tonal blocking, no colour. Arrows drawn "
+    "directly on the frame for camera and subject movement. Not paper cutout, no paper-cutout "
+    "layers, no paper grain, no collage, no photographic texture -- this is a sketch of a shot, "
+    "not the shot. No lettering, no captions, no watermarks, no signature."
+)
+
 # ## Prompt scaffold
 #
 # H3 holds a paper-cutout look far better when the instruction pins down what must

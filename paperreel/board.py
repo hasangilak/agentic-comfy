@@ -223,6 +223,27 @@ class Board:
     def video_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}.mp4"
 
+    def panel_path(self, n: int) -> Path:
+        """This beat's storyboard panel -- a sketch of the shot, drawn to be looked at and nothing else.
+
+        The one per-beat image that reaches no renderer: it is not conditioning, it is not a
+        keyframe, and it is in no fingerprint. See `panels.py` and `config.PANEL_STYLE_SUFFIX`.
+
+        Directly in the reel directory like every other per-beat file, because `api.media_file`
+        serves only files whose parent IS that directory -- a panel in a subfolder would render
+        and then never be visible.
+        """
+        return self.workdir / f"beat{n}_panel.png"
+
+    def sheet_path(self) -> Path:
+        """The whole reel's panels stitched into one numbered contact sheet.
+
+        Reel-level rather than per-beat, and named without a beat number for that reason. Rebuilt
+        by `panels.sheet` after any panel changes, so it is derived state that happens to be a
+        file -- deleting it costs nothing but a redraw of the sheet.
+        """
+        return self.workdir / "storyboard_sheet.png"
+
     def carry_path(self, n: int) -> Path:
         """The tail of the previous clip, cut for use as this beat's reference video.
 
@@ -588,8 +609,12 @@ class Board:
             (lambda n, index=index: self.ref_path(n, index))
             for index in range(1, config.MAX_REF_IMAGES + 1)
         )
+        # The panel is in here despite reaching no renderer, and for exactly the reason the
+        # docstring gives: `renumber` renames through this tuple, so a panel left out would hand
+        # beat 2 the sketch of the beat that used to be there -- and a panel is read by eye, which
+        # is the one kind of orphan nothing else would catch.
         return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path,
-                self.carry_path, *refs)
+                self.carry_path, self.panel_path, *refs)
 
     def reference_path(self) -> Path | None:
         """The still that fixes what the characters look like, for generating a new scene.
@@ -1387,6 +1412,11 @@ class Board:
         staging = self.staging_digest(beat["n"])
         if staging:
             parts.append(staging)
+        # Deliberately absent: `panel` and the panel image. A storyboard panel is a sketch of the
+        # shot that reaches no renderer, so nothing about the render changes when one is redrawn --
+        # and putting it in here would mark every beat of every existing board `edited` at once and
+        # re-price a paid render over a drawing nobody rendered from. Same reasoning that keeps
+        # `staging_digest` conditional, one step stronger: this part is never added at all.
         return fingerprint(*parts)
 
     def pending(self, *, rendering: set[int] | None = None) -> list[int]:
@@ -1483,6 +1513,12 @@ class Board:
                 # it is the record of how the picture got to be what it is, which is why it
                 # lives on the beat rather than being recomputed.
                 "asset_chat": beat.get("asset_chat") or [],
+                # The shot grammar this beat's storyboard panel is drawn from -- shot size, angle,
+                # camera move -- and the panel itself. Shown on every join, unlike the reference
+                # pictures: a panel is a sketch of the shot rather than an input to it, so no join
+                # can make one unreachable.
+                "panel": beat.get("panel", ""),
+                "panel_url": self.media_url(self.panel_path(n)),
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
                 "frame": self.media_url(self.frame_path(n)),
@@ -1615,6 +1651,9 @@ class Board:
             "stage_kinds": list(config.STAGE_KINDS),
             "max_staging": config.MAX_STAGE_SHEETS,
             "beats": beats,
+            # The whole reel's panels on one numbered sheet, or None until one has been built.
+            # Reel-level because that is what a storyboard is -- the sequence read at once.
+            "panel_sheet": self.media_url(self.sheet_path()),
             "canvas": self.data.get("canvas", {}),
             "reel": self.media_url(self.existing_reel()),
             "pending": pending,

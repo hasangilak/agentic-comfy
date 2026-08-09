@@ -252,6 +252,18 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
     void studio.guard(() => api.patchBeat(board.slug, beat.n, { asset_prompt: next })),
   );
 
+  // The shot grammar the storyboard panel is drawn from. A plain field rather than a `ReviseField`:
+  // `revise` is a story edit and its prompt knows nothing about shot sizes, so pointing it at this
+  // would rewrite camera language from a brief about staging. Editing this marks nothing stale —
+  // no renderer ever sees it.
+  const panelText = useDraft(beat.panel ?? "", (next) =>
+    void studio.guard(() => api.patchBeat(board.slug, beat.n, { panel: next })),
+  );
+  const drawingPanel = useBusy(
+    "panel_draw",
+    (detail) => !Array.isArray(detail.beats) || detail.beats.includes(beat.n),
+  );
+
   const upload = (chosen: FileList | File[] | null | undefined) => {
     const file = (chosen ? Array.from(chosen) : [])[0];
     if (!file) return;
@@ -653,6 +665,48 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                   never moves"
                 hint="“slower, one movement only”, “make it read as continuing from the last shot”"
               />
+            </div>
+
+            {/* The storyboard panel: the sketch, and the shot grammar it is drawn from. Below the
+                two lines that get rendered because it is about none of them — a panel is a drawing
+                of this shot for a human to look at, and nothing downstream reads it. Which is also
+                why there is no review, no conversation and no staleness attached to it. */}
+            <div className="space-y-2 border-t border-edge pt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wide text-zinc-500">panel</span>
+                <span className="text-[10px] text-zinc-400">
+                  shot size, angle, camera — a rough sketch, on the cheapest model. Nothing is
+                  rendered from it
+                </span>
+                <Button
+                  onClick={() => void studio.guard(() => api.drawPanel(board.slug, beat.n))}
+                  disabled={drawingPanel || !panelText.draft.trim()}
+                  title={
+                    panelText.draft.trim()
+                      ? "draw this panel"
+                      : "say what the panel shows first, or write the storyboard from the sidebar"
+                  }
+                  className="ml-auto"
+                >
+                  {drawingPanel ? "drawing…" : beat.panel_url ? "✦ redraw panel" : "✦ draw panel"}
+                </Button>
+              </div>
+              <div className="flex gap-3">
+                <textarea
+                  value={panelText.draft}
+                  onChange={(event) => panelText.change(event.target.value)}
+                  onBlur={panelText.flush}
+                  placeholder="medium shot, low angle, the fox at frame left, arrow right"
+                  className={`${inputClass} h-24 flex-1`}
+                />
+                {beat.panel_url ? (
+                  <img
+                    src={beat.panel_url}
+                    alt=""
+                    className="h-24 rounded border border-edge bg-ink object-contain"
+                  />
+                ) : null}
+              </div>
             </div>
 
             {beat.render && beat.state === "rendered" ? (

@@ -44,6 +44,25 @@ export function Sidebar() {
     (job) => job.kind === "plan" && job.state === "running",
   );
 
+  // The storyboard's two counts, off the board rather than tracked here: how many scenes have a
+  // shot written and how many have a sketch drawn. Both are what the rows below say, and neither is
+  // state this component owns.
+  const board = studio.board;
+  const panelBeats = (board?.beats ?? [])
+    .filter((beat) => beat.panel?.trim())
+    .map((beat) => beat.n);
+  const written = panelBeats.length;
+  const drawn = (board?.beats ?? []).filter((beat) => beat.panel_url).length;
+  const busy = (kind: "panel_write" | "panel_draw") =>
+    Object.values(studio.jobs).some(
+      (job) =>
+        job.kind === kind &&
+        job.slug === board?.slug &&
+        (job.state === "queued" || job.state === "running"),
+    );
+  const writingPanels = busy("panel_write");
+  const drawingPanels = busy("panel_draw");
+
   const create = () => {
     const trimmed = concept.trim();
     if (!trimmed) return;
@@ -284,6 +303,56 @@ export function Sidebar() {
           }
         />
       </div>
+
+      {/* The storyboard: the whole reel as rough sketches, before anything a render uses exists.
+          Here rather than in `CanvasToolbar` on purpose -- that toolbar is the money bar, the two
+          controls that spend the GPU, and a panel spends none of it. Nothing here can mark a beat
+          stale either, which is what makes it safe to press on a reel that is already rendered. */}
+      {board ? (
+        <div className="mt-4 space-y-0.5 px-3">
+          <div className="px-2.5 pb-1 text-[11px] font-medium text-zinc-400">Storyboard</div>
+          <RailRow
+            icon="✎"
+            label={written ? "rewrite the shots" : "write the shots"}
+            value={writingPanels ? "writing…" : `${written}/${board.beats.length}`}
+            onClick={() => void studio.guard(() => api.writePanels(board.slug))}
+            title={
+              "the local model writes the shot size, angle and camera move for every scene at " +
+              "once -- it has to see them together to vary them. Free, and it rewrites every " +
+              "scene, including the ones already written"
+            }
+          />
+          <RailRow
+            icon="▦"
+            label={drawn ? "redraw the panels" : "draw the panels"}
+            value={drawingPanels ? "drawing…" : `${drawn}/${board.beats.length}`}
+            tone={written ? "quiet" : "warn"}
+            onClick={() =>
+              void studio.guard(() =>
+                // Every scene with a shot written, rather than only the ones with no sketch: the
+                // button says "redraw" once there are panels, and that is what redraw means.
+                api.drawPanels(board.slug, drawn ? panelBeats : undefined),
+              )
+            }
+            title={
+              written
+                ? "one rough sketch per scene on the cheapest model, then a contact sheet of all " +
+                  "of them. Nothing is rendered from a panel, so this changes no beat's state"
+                : "write the shots first -- there is nothing for a panel to be a drawing of yet"
+            }
+          />
+          {board.panel_sheet ? (
+            <RailRow
+              icon="🗇"
+              label="open the sheet"
+              value={`${drawn} up`}
+              onClick={() => window.open(board.panel_sheet!, "_blank")}
+              title="every panel on one numbered sheet -- the film read at once, and a file you
+                can send someone"
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mt-5 px-4 pb-1.5 text-[11px] font-medium text-zinc-400">Recent reels</div>
 

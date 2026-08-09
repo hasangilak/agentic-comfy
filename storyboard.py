@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from paperreel import board as board_mod
-from paperreel import config, papercut, pipeline, planner, script as script_mod
+from paperreel import config, panels, papercut, pipeline, planner, qwen, script as script_mod
 from paperreel import stills as stills_mod
 
 
@@ -42,6 +42,10 @@ def main() -> None:
                         help="a script you wrote yourself (JSON); skips the planner entirely")
     parser.add_argument("--beats", type=int, default=4)
     parser.add_argument("--seconds", type=float, default=10.0, help="per beat")
+    parser.add_argument("--panels", action="store_true",
+                        help="write and draw the storyboard: one rough sketch per shot, plus a "
+                             "contact sheet. The cheapest model, and nothing it makes is rendered "
+                             "from")
     parser.add_argument("--assets", action="store_true", help="generate the still frames")
     parser.add_argument("--render", action="store_true", help="the paid stage")
     parser.add_argument("--all", action="store_true", help="plan + assets + render")
@@ -66,10 +70,13 @@ def main() -> None:
         parser.error("--concept and --script both write the storyboard; pick one")
 
     do_plan = bool(args.concept)
+    do_panels = args.panels
     do_assets = args.assets or args.all
     do_render = args.render or args.all
-    if not (do_plan or args.script or do_assets or do_render):
-        parser.error("give --concept or --script, and/or --assets / --render / --all")
+    # Deliberately not part of --all. A storyboard is a stage you stop at and look at, and folding
+    # it into the one flag that also pays for a render would have it drawn on the way past.
+    if not (do_plan or args.script or do_panels or do_assets or do_render):
+        parser.error("give --concept or --script, and/or --panels / --assets / --render / --all")
 
     # Read and check the supplied script before anything makes a directory for it, so a
     # typo in the JSON does not leave an empty reel behind.
@@ -127,6 +134,25 @@ def main() -> None:
         if not board_path.exists():
             raise SystemExit(f"no storyboard at {board_path}; run with --concept first")
         board = json.loads(board_path.read_text())
+
+    if do_panels:
+        # Before the stills, because that is the order the stage exists for: the sequence is
+        # judged as sketches, and only then is anything drawn that a paid render will use. Panels
+        # are written for every beat that has none and drawn for every one that has text and no
+        # sketch, so re-running is cheap and skips what is done -- same promise as the rest of this
+        # script.
+        live = board_mod.Board(slug=name, path=board_path, data=board)
+        blank = [b["n"] for b in live.ordered_beats() if not str(b.get("panel") or "").strip()]
+        try:
+            if blank:
+                panels.write(live, blank, log=print)
+            else:
+                print("[panel] every scene already has its shot written; drawing")
+            panels.draw_all(live, log=print)
+        except (panels.PanelsError, papercut.PapercutError, qwen.OllamaError) as gone:
+            raise SystemExit(f"[panel] {gone}")
+        sheet = live.sheet_path()
+        print(f"[panel] {sheet}" if sheet.is_file() else "[panel] no panels drawn")
 
     if do_assets:
         # A board that names a source per beat -- one written in the studio, or an adopted
