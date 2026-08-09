@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { sceneList } from "../staging";
 import {
   DEFAULT_GEMINI_IMAGE_MODEL,
   DEFAULT_GEMINI_IMAGE_SIZE,
@@ -48,7 +49,7 @@ export function StagingPanel() {
   return <Bible board={board} />;
 }
 
-const KIND_LOOK: Record<StageKind, { label: string; icon: string; hint: string }> = {
+export const KIND_LOOK: Record<StageKind, { label: string; icon: string; hint: string }> = {
   character: {
     label: "character",
     icon: "🦊",
@@ -233,13 +234,6 @@ function Bible({ board }: { board: Board }) {
   );
 }
 
-/** Which scenes bind this design, as "scenes 2, 5" — or nothing, said plainly. */
-function sceneList(board: Board, id: string): string {
-  const scenes = board.beats.filter((beat) => beat.staging?.includes(id)).map((beat) => beat.n);
-  if (!scenes.length) return "in no scene yet";
-  return `${scenes.length === 1 ? "scene" : "scenes"} ${scenes.join(", ")}`;
-}
-
 /**
  * One design, at a size where you can see it: what it is, what it is drawn from, and the
  * conversation about it.
@@ -251,8 +245,22 @@ function sceneList(board: Board, id: string): string {
  * reaches neither: it produces a sheet, and the sheet's own hash is already in the fingerprint.
  * "A fox side-on against flat black" is a good draw prompt and a terrible end to the sentence
  * "<Picture 3> is …".
+ *
+ * Exported because the Storyboard stage shows the same thing inline, in a column beside the
+ * panels — a second view of one design, never a second copy of it. The overlay this file also
+ * exports survives for the Studio stage, where `BeatModal`'s chips link to it.
  */
-function Design({ board, entry }: { board: Board; entry: StageEntry }) {
+export function Design({
+  board,
+  entry,
+  layout = "wide",
+}: {
+  board: Board;
+  entry: StageEntry;
+  // "wide" is the overlay: the sheet at full height with the fields beside it. "column" is the
+  // Storyboard's right-hand rail, where the width belongs to the panel grid.
+  layout?: "wide" | "column";
+}) {
   const studio = useStudio();
   const picker = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState(false);
@@ -296,9 +304,14 @@ function Design({ board, entry }: { board: Board; entry: StageEntry }) {
     void studio.guard(() => api.removeStage(board.slug, entry.id));
   };
 
+  const column = layout === "column";
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 items-center justify-center bg-ink p-4">
+    <div className={`flex min-h-0 flex-1 ${column ? "flex-col" : ""}`}>
+      <div
+        className={`flex items-center justify-center bg-ink p-4 ${
+          column ? "h-56 shrink-0" : "min-w-0 flex-1"
+        }`}
+      >
         {entry.sheet ? (
           <img
             src={entry.sheet}
@@ -316,7 +329,11 @@ function Design({ board, entry }: { board: Board; entry: StageEntry }) {
         )}
       </div>
 
-      <div className="thin w-80 shrink-0 space-y-2.5 overflow-y-auto border-l border-edge p-3">
+      <div
+        className={`thin space-y-2.5 overflow-y-auto border-edge p-3 ${
+          column ? "min-h-0 flex-1 border-t" : "w-80 shrink-0 border-l"
+        }`}
+      >
         <div className="flex items-center gap-2">
           <input
             className={`${inputClass} py-1`}

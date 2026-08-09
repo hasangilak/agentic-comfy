@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { api } from "./api";
+import { buildRoute, parseRoute, resolveStage, type Stage } from "./route";
 import type { Board, ChatTurn, Container, Job, ReelSummary, StudioEvent } from "./types";
 
 const COLD: Container = {
@@ -17,21 +18,13 @@ const COLD: Container = {
   session_cost: 0,
 };
 
-const reelPath = (slug: string) => `/reels/${encodeURIComponent(slug)}`;
-
-function reelFromLocation(): string | null {
-  const match = window.location.pathname.match(/^\/reels\/([^/]+)\/?$/);
-  if (!match) return null;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return null;
-  }
-}
-
 export function useStudioState() {
   const [reels, setReels] = useState<ReelSummary[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
+  // Which stage the URL asked for, or null when it only named the reel. Kept separate from the
+  // resolved stage below so that `/reels/x` keeps meaning "wherever this reel is up to" as the
+  // board changes underneath it, rather than freezing on whatever it meant at first paint.
+  const [stage, setStage] = useState<Stage | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [chat, setChat] = useState<ChatTurn[]>([]);
   const [jobs, setJobs] = useState<Record<string, Job>>({});
@@ -110,39 +103,112 @@ export function useStudioState() {
     [refreshBoard],
   );
 
-  const openReel = useCallback(
-    async (target: string) => {
-      const path = reelPath(target);
-      if (window.location.pathname !== path) window.history.pushState({}, "", path);
-      await selectReel(target);
+  const clearReel = useCallback(() => {
+    setSlug(null);
+    slugRef.current = null;
+    setStage(null);
+    setBoard(null);
+    setChat([]);
+    setSelection([]);
+    setRenderSelection([]);
+    setExpanded(null);
+    setStagingOpen(false);
+    setStagingPick(null);
+  }, []);
+
+  /**
+   * Go somewhere. The one navigation call: it pushes the URL and moves the store to match.
+   *
+   * Omitting `stage` is meaningful and is not the same as passing `"script"` -- it addresses
+   * the reel rather than a stage of it, and `resolveStage` answers from the board.
+   */
+  const go = useCallback(
+    async (target: string | null, next?: Stage) => {
+      if (!target) {
+        if (window.location.pathname !== "/") window.history.pushState({}, "", "/");
+        clearReel();
+        return;
+      }
+      const path = buildRoute({ at: "reel", slug: target, stage: next ?? null, shot: null });
+      if (window.location.pathname + window.location.search !== path) {
+        window.history.pushState({}, "", path);
+      }
+      setStage(next ?? null);
+      if (target !== slugRef.current) await selectReel(target);
     },
-    [selectReel],
+    [clearReel, selectReel],
+  );
+
+  /** Move between stages of the reel already open. No refetch: the board is already here. */
+  const goStage = useCallback(
+    (next: Stage) => {
+      if (!slugRef.current) return;
+      void go(slugRef.current, next);
+    },
+    [go],
+  );
+
+  // Kept for every call site that only ever meant "open this reel". Landing on no stage is
+  // deliberate: a reel opened from the rail should show whatever it is waiting on.
+  const openReel = useCallback(
+    async (target: string, next?: Stage) => {
+      await go(target, next);
+    },
+    [go],
   );
 
   // A board is an addressable page, not transient picker state. Restore it on a direct
-  // visit/refresh and keep the canvas in sync with browser back and forward navigation.
+  // visit/refresh and keep the studio in sync with browser back and forward navigation.
   useEffect(() => {
     const followLocation = () => {
-      const target = reelFromLocation();
-      if (target) {
-        void selectReel(target);
+      const route = parseRoute(window.location);
+      if (route.at !== "reel") {
+        clearReel();
         return;
       }
-      setSlug(null);
-      slugRef.current = null;
-      setBoard(null);
-      setChat([]);
-      setSelection([]);
-      setRenderSelection([]);
-      setExpanded(null);
-      setStagingOpen(false);
-      setStagingPick(null);
+      setStage(route.stage);
+      if (route.slug !== slugRef.current) {
+        void selectReel(route.slug).then(() => setExpanded(route.shot));
+        return;
+      }
+      setExpanded(route.shot);
     };
 
     followLocation();
     window.addEventListener("popstate", followLocation);
     return () => window.removeEventListener("popstate", followLocation);
-  }, [selectReel]);
+  }, [clearReel, selectReel]);
+
+  /**
+   * The expanded scene is addressable, so a link to one survives a reload -- but it is not a
+   * page: `replaceState`, not `pushState`, or closing the modal would need a Back press and
+   * the browser's history would fill up with every scene anyone glanced at.
+   */
+  const openShot = useCallback((n: number | null) => {
+    setExpanded(n);
+    const route = parseRoute(window.location);
+    if (route.at !== "reel") return;
+    window.history.replaceState({}, "", buildRoute({ ...route, shot: n }));
+  }, []);
+
+  /**
+   * Beat numbers are positional IDs: insert or remove a scene and every number after it means a
+   * different scene. Anything holding one has to let go.
+   *
+   * Here rather than in `Canvas` because the canvas is one stage of four now, and the modal it
+   * used to guard can be opened from three of them -- a guard that only fires while React Flow
+   * is mounted is a guard that silently stops working.
+   */
+  const beatCount = useRef<number | null>(null);
+  useEffect(() => {
+    const count = board?.beats.length ?? null;
+    if (beatCount.current !== null && count !== null && beatCount.current !== count) {
+      setSelection([]);
+      setRenderSelection([]);
+      openShot(null);
+    }
+    beatCount.current = count;
+  }, [board, openShot]);
 
   // ## The single event stream
   //
@@ -169,7 +235,9 @@ export function useStudioState() {
           if (event.job.kind === "plan" && event.job.state === "done") {
             const created = (event.job.result as { slug?: string } | null)?.slug;
             void refreshReels();
-            if (created) void openReel(created);
+            // Onto the next stage rather than onto the reel: the script it just wrote is the
+            // thing that was asked for, and what to do with it is storyboard it.
+            if (created) void openReel(created, "storyboard");
           }
           if (event.job.state === "error") setError(event.job.error);
           break;
@@ -248,6 +316,9 @@ export function useStudioState() {
   return {
     reels,
     slug,
+    stage,
+    /** What the shell should actually render: the URL's stage, or the board's own answer. */
+    resolvedStage: stage ?? resolveStage(board),
     board,
     chat,
     jobs,
@@ -267,10 +338,14 @@ export function useStudioState() {
     model,
     setSelection,
     setRenderSelection,
-    setExpanded,
+    // The URL-syncing one, deliberately under the plain setter's name: every call site means
+    // "show this scene", and every one of them should be linkable.
+    setExpanded: openShot,
     setStagingOpen,
     setStagingPick,
     setError,
+    go,
+    goStage,
     openReel,
     refreshBoard,
     refreshReels,

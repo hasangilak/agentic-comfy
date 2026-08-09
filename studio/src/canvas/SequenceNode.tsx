@@ -4,10 +4,8 @@ import { api, clock, money } from "../api";
 import { slotsLeft, videoPictures } from "../beat";
 import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
-import { Badge, Button, STATE_LOOK, inputClass } from "../ui";
-import { AddPicture } from "./AddPicture";
+import { Badge, STATE_LOOK, inputClass } from "../ui";
 import { Panel } from "./Panel";
-import { StillChat } from "./StillChat";
 
 /**
  * The four joins, in the order the button walks them: the free continuation, the one that also
@@ -62,7 +60,6 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   // them is how a picture of the cast ends up as the frame the shot opens on. The media area and
   // the "opening still" row use `picker`; the picture strip has its own.
   const picker = useRef<HTMLInputElement>(null);
-  const refPicker = useRef<HTMLInputElement>(null);
   const look = STATE_LOOK[beat.state];
   const renderSelected = studio.renderSelection.includes(beat.n);
   const canSelectForRender = !["planned", "needs_asset", "rendering"].includes(beat.state);
@@ -114,15 +111,6 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
 
   const job = studio.activeJob;
   const isRendering = beat.state === "rendering";
-  const assetJob = Object.values(studio.jobs).find(
-    (candidate) =>
-      candidate.kind === "asset" &&
-      candidate.slug === board.slug &&
-      (candidate.state === "queued" || candidate.state === "running") &&
-      Array.isArray(candidate.detail.beats) &&
-      candidate.detail.beats.includes(beat.n),
-  );
-  const isGenerating = Boolean(assetJob);
   const structureBusy = Object.values(studio.jobs).some(
     (candidate) =>
       candidate.slug === board.slug &&
@@ -302,17 +290,6 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             event.target.value = "";
           }}
         />
-        <input
-          ref={refPicker}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          multiple
-          className="hidden"
-          onChange={(event) => {
-            uploadRefs(event.target.files);
-            event.target.value = "";
-          }}
-        />
         {thumb ? (
           <img src={thumb} alt="" className="h-full w-full object-contain opacity-90" />
         ) : (pictures.length || stranded.length) ? (
@@ -453,112 +430,38 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       ) : null}
 
       <div className="space-y-2 p-2.5">
-        {/* Asset preparation is available on every node, regardless of whether it currently
-            continues from the previous clip or already has media, and never needs a video
-            render to become available. On a bridge the still is the frame the scene lands on,
-            so both actions leave the join alone; on any other join they make it a clean cut. */}
-        {/* The still, on every join that has somewhere to put one. A scene carrying the previous
-            clip is the exception: it opens where that one ended, so neither control applies and
-            both are absent rather than disabled -- a greyed button still reads as the way this is
-            meant to work. */}
+        {/* The still, the pictures it is drawn from and the conversation about them all
+            moved to the Assets stage, where there is room to look at a picture and to see what
+            it was actually conditioned on. What is left here is the fact and the way there: the
+            canvas is about the chain, and a 240px card was never where a still got judged. */}
         {carrying ? null : (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
-              {isBridge ? "closing still" : "opening still"}
+          <button
+            onClick={() => studio.goStage("assets")}
+            className="nodrag flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left
+              text-[10px] leading-snug hover:bg-soft"
+            title={
+              isBridge
+                ? "the still this scene has to land on, and what it is drawn from"
+                : "the still this scene opens on, and what it is drawn from"
+            }
+          >
+            <span className={beat.asset ? "text-zinc-500" : "text-warm"}>
+              {beat.asset ? "◫" : "○"}
             </span>
-            <Button
-              tone="ghost"
-              className="ml-auto"
-              disabled={uploading}
-              onClick={() => picker.current?.click()}
-              title={
-                isBridge
-                  ? "use your own image as the frame this scene lands on"
-                  : "use your own image as the composition this scene opens on"
-              }
-            >
-              {uploading ? "uploading…" : beat.asset ? "⤒ replace" : "⤒ upload"}
-            </Button>
-            {/* Absent, not disabled, when the reel supplies its own stills: the switch back is on
-                the script node, next to the count of what is missing. */}
-            {board.manual_stills ? null : (
-              <Button
-                tone="ghost"
-                disabled={isGenerating}
-                onClick={() => void studio.guard(() => api.assets(board.slug, [beat.n]))}
-                title={
-                  isBridge
-                    ? "generate the still this scene has to land on, keeping the continuation — " +
-                      "the cast is matched to the reference on the script node"
-                    : board.reference
-                      ? "generate the still this scene opens on — the cast is matched to the " +
-                        "reference on the script node, so only the setting changes"
-                      : "generate the still this scene opens on — this is the first still, so it " +
-                        "will become the reel's cast reference"
-                }
-              >
-                {isGenerating ? "generating…" : beat.asset ? "✦ regenerate" : "✦ generate"}
-              </Button>
-            )}
-          </div>
+            <span className="min-w-0 flex-1 truncate text-zinc-500">
+              {beat.asset
+                ? `${isBridge ? "closing" : "opening"} still` +
+                  (refs.length ? ` · ${refs.length} picture${refs.length === 1 ? "" : "s"}` : "")
+                : `needs ${isBridge ? "the still it lands on" : "an opening still"}`}
+            </span>
+            <span className="shrink-0 text-zinc-400">→</span>
+          </button>
         )}
-
-        {/* Talking to the still it already has. Absent until there is a picture, because the
-            model is being asked what is wrong with something it can see — before that, ✦ generate
-            is the whole conversation. Manual-stills reels can still refine an uploaded picture;
-            the manual switch only removes batch/new-image generation. */}
-        {carrying || !beat.asset ? null : <StillChat beat={beat} />}
 
         {/* The storyboard sketch of this shot, above the pictures it is NOT one of: a panel reaches
             no renderer, so it belongs next to what the shot is rather than next to what conditions
             it. Absent entirely until this board has a storyboard. */}
         <Panel beat={beat} />
-
-        {/* The extra pictures. Its own row rather than sharing the one above, because a still and
-            a reference answer different questions -- one is where this shot opens, the others are
-            what things look like everywhere.
-
-            Shown on EVERY join, not only the reference one it used to be gated on. Adding a
-            picture is how a scene moves ONTO that join, so hiding the control until it was
-            already there made it unreachable from the two joins a scene most often starts on --
-            and left a director on a keyframe cut with no picture UI anywhere at all. `AddPicture`
-            says what the move costs before it happens. */}
-        <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
-              references {isReference ? pictures.length : refs.length}/{board.max_refs}
-              {/* The still renderer takes a handful, not nine, so which pictures reach it is not
-                  something the numbering above can be read off. `still_refs` is counted on the
-                  server, from the first upload down. */}
-              {beat.still_refs ? (
-                <span
-                  className="text-zinc-400"
-                  title={
-                    `the first ${beat.still_refs} also condition this scene's own still, not ` +
-                    "just the clip — so the frame it opens on is drawn from the same pictures"
-                  }
-                >
-                  {" "}
-                  · {beat.still_refs} in the still
-                </span>
-              ) : null}
-              {stranded.length ? (
-                <span
-                  className="text-warm"
-                  title={
-                    `this scene is on the ${beat.source} join, where reference pictures reach ` +
-                    "neither the still nor the clip. Move it back to the reference join, or " +
-                    "remove them"
-                  }
-                >
-                  {" "}
-                  · not used on this join
-                </span>
-              ) : null}
-            </span>
-            <div className="ml-auto">
-              <AddPicture beat={beat} />
-            </div>
-        </div>
 
         {/* Which of the film's designs are in this shot. Read-only here and edited in the
             expanded view: at 240px the node can say WHICH, and a row of toggles for a bible of
@@ -617,47 +520,6 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               ) : null}
             </span>
           </label>
-        ) : null}
-
-        {/* One line per picture, numbered as the prompt numbers it. This is what stops the model
-            rendering a reference as a second copy of the character: shown a picture with no
-            explanation it assumes the picture IS the scene.
-
-            The automatic slots are shown too, and read-only. They already carry a role -- "the
-            composition this shot opens on", "this reel's locked cast reference" -- and showing it
-            is what makes the numbering below make sense: the director's first upload is
-            <Picture 3>, not <Picture 1>, and a note attached to the wrong number describes the
-            wrong picture. */}
-        {isReference && pictures.length ? (
-          <div className="space-y-1">
-            {pictures.map((picture, index) =>
-              picture.index === null ? (
-                <div key={`auto-${index}`} className="flex items-start gap-1.5">
-                  <span
-                    className="w-4 shrink-0 text-center text-[10px] text-zinc-500"
-                    title={`the prompt calls this <Picture ${index + 1}>`}
-                  >
-                    {index + 1}
-                  </span>
-                  <span className="text-[10px] leading-snug text-zinc-400">{picture.note}</span>
-                </div>
-              ) : (
-                <ReferenceNote
-                  key={picture.url ?? `ref-${picture.index}`}
-                  slug={board.slug}
-                  n={beat.n}
-                  index={picture.index}
-                  label={index + 1}
-                  value={picture.note}
-                />
-              ),
-            )}
-            <p className="text-[10px] leading-snug text-zinc-400">
-              The prompt calls these <code>&lt;Picture 1&gt;</code>…
-              <code>&lt;Picture {pictures.length}&gt;</code>. Say what each one you added is FOR —
-              “the same single Moth that performs the action”, “the set only, no puppet”.
-            </p>
-          </div>
         ) : null}
 
         <input

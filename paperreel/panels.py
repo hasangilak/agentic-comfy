@@ -135,6 +135,19 @@ def _digest(board: board_mod.Board, beats: list[int]) -> str:
     new setup or the same shot continuing, and the model gets that wrong in both directions when it
     has to infer it from the prose. Same lesson as `board_digest` spelling out its "waiting on"
     lists rather than leaving them to be read off the join names.
+
+    The bound designs are on it for the same reason, and only their NAMES. A binding is the one
+    piece of per-beat structured knowledge the board holds about who is in this shot, and prose
+    often does not carry it -- "she turns" does not say the wolf is in frame, and a panel that
+    names the wrong subject is the failure `_messages` opens by trying to prevent. Names, not
+    `role`, not `note`, not the sheet: `SYSTEM` ends "never mention paper, cutouts, grain, colour
+    or lighting", and a name is neither a material nor a palette, so the ban holds.
+
+    **This changes what a re-run produces and marks nothing stale**: a panel is excluded from
+    `own_fingerprint` unconditionally and permanently (see the comment where that digest ends).
+    That is what makes this the safest prompt change in the repo, and it is exactly why it must
+    not be copied into `config.build_prompt` or `stills.py`, where the same edit WOULD be a
+    fingerprint change and would re-price a paid render.
     """
     lines = []
     for beat in board.ordered_beats():
@@ -142,10 +155,12 @@ def _digest(board: board_mod.Board, beats: list[int]) -> str:
         if n not in beats:
             continue
         source = board.source_for(beat)
+        names = [board.stage_name(entry) for entry in board.bound_staging(n)]
         lines.append(
             f'beat {n} -- {board.seconds_for(beat):g}s, join: {source}'
             + (" (the same shot as the beat before it, continuing)"
                if board_mod.chains(source) else " (a new shot)")
+            + (f'\n  in shot: {", ".join(names)}' if names else "")
             + f'\n  scene: {beat.get("scene") or "(nothing written)"}'
             + f'\n  action: {beat.get("action") or "(nothing written)"}'
         )

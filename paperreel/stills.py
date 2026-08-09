@@ -305,6 +305,12 @@ def _rejected(board: board_mod.Board, beats: list[int], *,
     # director reads that panel to find out why a picture looks the way it does, and "the
     # reviewer rewrote your prompt between the render you asked for and the one you got" is
     # exactly the kind of thing that is baffling anywhere else and obvious there.
+    #
+    # Each carries `verdict` -- "pass", "kept" or "rewritten" -- so the Assets stage can put a
+    # pip beside a scene without reading the copy. Sniffing for "Kept: " client-side would work
+    # today and break silently the first time somebody improves the wording. One optional key on
+    # an existing transcript object: it reaches no renderer, it is in no fingerprint, and a board
+    # written before this simply has turns without it.
     touched = False
     for n in beats:
         if cancelled is not None and cancelled():
@@ -317,7 +323,8 @@ def _rejected(board: board_mod.Board, beats: list[int], *,
         touched = True
         if verdict.get("consistent"):
             log(f"[stills] beat {n}: matches the reel")
-            remember(board, n, "gemini", "Checked this against the reel — it matches.")
+            remember(board, n, "gemini", "Checked this against the reel — it matches.",
+                     verdict="pass")
             continue
         problems = [str(p).strip() for p in verdict.get("problems") or [] if str(p).strip()]
         corrected = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
@@ -328,14 +335,14 @@ def _rejected(board: board_mod.Board, beats: list[int], *,
         if not corrected or corrected == (board.beat(n).get("asset_prompt") or "").strip():
             log(f"[stills] beat {n}: kept, the review had no different prompt to offer")
             remember(board, n, "gemini", "Kept: " + ("; ".join(problems) or "nothing to change")
-                     + ", but no different prompt to render from.")
+                     + ", but no different prompt to render from.", verdict="kept")
             continue
         board.beat(n)["asset_prompt"] = corrected
         failed.append(n)
         log(f"[stills] beat {n}: prompt rewritten -> {corrected}")
         remember(board, n, "gemini",
                  "; ".join(problems) or "This did not match the reel.", prompt=corrected,
-                 regenerated=True)
+                 regenerated=True, verdict="rewritten")
     if failed or touched:
         board.save()
     return failed

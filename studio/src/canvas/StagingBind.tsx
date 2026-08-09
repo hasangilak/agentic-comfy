@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { nextBinding } from "../staging";
 import type { Beat, Board } from "../types";
 import { useStudio } from "../useStudio";
 
@@ -21,12 +22,11 @@ export function StagingBind({ board, beat }: { board: Board; beat: Beat }) {
   const studio = useStudio();
   const bound = beat.staging ?? [];
 
-  const toggle = (id: string) => {
-    // Appended at the end when it goes in, so binding a design never renumbers the ones already
-    // there — the same reason `uploadRefs` appends.
-    const next = bound.includes(id) ? bound.filter((other) => other !== id) : [...bound, id];
-    void studio.guard(() => api.bindStage(board.slug, beat.n, next));
-  };
+  // `nextBinding` is shared with the storyboard grid, which binds one design across the whole
+  // reel at once. The append-on-add rule it holds — a design goes on the END, so binding one
+  // never renumbers the pictures already there — is the reason it is not written out twice.
+  const toggle = (id: string) =>
+    void studio.guard(() => api.bindStage(board.slug, beat.n, nextBinding(bound, id)));
 
   if (!board.staging.length) {
     return (

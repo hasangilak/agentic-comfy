@@ -8,8 +8,9 @@ export function ReelNode() {
   const studio = useStudio();
   const board = studio.board!;
   const seconds = board.beats.reduce((sum, beat) => sum + beat.actual_seconds, 0);
-  const rendered = board.beats.filter((beat) => beat.video).length;
-  const complete = rendered === board.beats.length && board.beats.length > 0;
+  const missing = board.beats.filter((beat) => !beat.video).map((beat) => beat.n);
+  const rendered = board.beats.length - missing.length;
+  const complete = missing.length === 0 && board.beats.length > 0;
 
   const caption = useDraft(board.caption, (next) =>
     void studio.guard(() => api.patchBoard(board.slug, { caption: next })),
@@ -26,7 +27,17 @@ export function ReelNode() {
       <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
         <span className="text-sm">🎬</span>
         <span className="text-[10px] uppercase tracking-wide text-zinc-500">reel</span>
-        <span className="ml-auto text-[10px] text-zinc-500">
+        <span
+          className="ml-auto text-[10px] text-zinc-500"
+          title={
+            // The ledger, per scene: what this film actually cost, which is the last question a
+            // Reels tool has to answer. Off `beat.render.cost`, stamped at render time.
+            board.beats
+              .filter((beat) => beat.render)
+              .map((beat) => `scene ${beat.n}: ${money(beat.render!.cost)}`)
+              .join("\n") || "nothing rendered yet"
+          }
+        >
           {seconds.toFixed(1)}s · {money(board.spent)} spent
         </span>
       </div>
@@ -41,12 +52,32 @@ export function ReelNode() {
           />
         ) : (
           <div
-            className="flex h-52 items-center justify-center rounded-xl bg-ink
-              text-center text-[10px] leading-relaxed text-zinc-400"
+            className="flex h-52 flex-col items-center justify-center gap-1.5 rounded-xl bg-ink
+              px-3 text-center text-[10px] leading-relaxed text-zinc-400"
           >
-            {complete
-              ? "render again to stitch"
-              : `${rendered} of ${board.beats.length} beats rendered`}
+            {complete ? (
+              "render again to stitch"
+            ) : (
+              <>
+                <span>
+                  {rendered} of {board.beats.length} scenes rendered
+                </span>
+                {/* Which ones, by number and clickable. "3 of 5" leaves the director counting
+                    the nodes to find the two that are missing, and the answer is right here. */}
+                <span className="flex flex-wrap justify-center gap-1">
+                  {missing.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => studio.setExpanded(n)}
+                      className="nodrag rounded bg-soft px-1.5 py-0.5 text-warm hover:bg-softer"
+                      title={`scene ${n} has no clip yet`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </span>
+              </>
+            )}
           </div>
         )}
 

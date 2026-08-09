@@ -22,8 +22,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (agent, board as board_mod, comfy, config, gemini, panels, papercut, pictures, render,
-               script, staging as staging_mod, stills as stills_mod)
+from . import (agent, board as board_mod, comfy, config, develop, gemini, panels, papercut,
+               pictures, planner, render, script, staging as staging_mod, stills as stills_mod)
 from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
@@ -136,6 +136,25 @@ def handle_plan(job: Job, run: Runner) -> dict:
     job.slug = board.slug  # the slug only exists once the title does
     run.log(job, f'[plan] "{board.data.get("title")}" -> {board.slug}')
     return {"slug": board.slug}
+
+
+def handle_develop(job: Job, run: Runner) -> dict:
+    """One turn of the interview that becomes a script.
+
+    Unlike `plan`, the board already exists when this runs -- the route created it so the
+    browser could navigate to the conversation before the model had said anything. So there is
+    no slug to discover here, and a failed turn leaves a board with a transcript on it rather
+    than nothing at all.
+    """
+    board = load(job.slug)
+    run.log(job, f'[develop] {job.detail["message"]}')
+    result = develop.turn(
+        board, job.detail["message"],
+        log=lambda line: run.log(job, line),
+        announce=lambda: run.update(job, phase="writing the script"),
+    )
+    run.publish_board(board.slug)
+    return result
 
 
 def handle_chat(job: Job, run: Runner) -> dict:
@@ -349,7 +368,8 @@ def handle_render(job: Job, run: Runner) -> dict:
 
 
 for kind, handler in (
-    ("plan", handle_plan), ("chat", handle_chat), ("asset", handle_asset),
+    ("plan", handle_plan), ("develop", handle_develop),
+    ("chat", handle_chat), ("asset", handle_asset),
     ("still_chat", handle_still_chat), ("revise", handle_revise),
     ("ref_draw", handle_ref_draw), ("ref_chat", handle_ref_chat),
     ("stage_draw", handle_stage_draw), ("stage_chat", handle_stage_chat),
@@ -377,6 +397,52 @@ def create_reel(body: dict = Body(...)) -> dict:
     job = runner.submit("plan", board_mod.slugify(concept),
                         {"concept": concept, "beats": beats, "seconds": seconds})
     return {"job": job.to_json()}
+
+
+@app.get("/api/brief")
+def authoring_brief() -> dict:
+    """The script-authoring prompt itself, so the studio can show what it is interviewing about.
+
+    Costs nothing and calls nothing. It exists because the alternative -- paraphrasing the rules
+    in the UI -- is the second copy of the specification this codebase keeps refusing to have.
+    """
+    try:
+        return {"markdown": planner.template()}
+    except planner.NoTemplate as missing:
+        raise HTTPException(404, str(missing))
+
+
+# Declared before the `/api/reels/{slug}` routes, exactly as `import` is: FastAPI matches in
+# declaration order, so "develop" would otherwise be read as the name of a reel.
+@app.post("/api/reels/develop")
+def develop_reel(body: dict = Body(...)) -> dict:
+    """Begin a film by talking about it.
+
+    Answers synchronously with a board that has no beats yet, so the browser can navigate to
+    the conversation before the model has said a word -- and so the transcript is durable from
+    the first message rather than living in a tab until it is worth keeping.
+    """
+    try:
+        board = develop.start(str(body.get("message") or ""))
+    except develop.DevelopError as refused:
+        raise HTTPException(refused.status, str(refused))
+    job = runner.submit("develop", board.slug, {"message": str(body.get("message") or "")})
+    runner.publish_board(board.slug)
+    return {"slug": board.slug, "board": board_json(board), "job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/develop")
+def develop_turn(slug: str, body: dict = Body(...)) -> dict:
+    """One more turn of the interview, on a board that already carries it."""
+    board = load(slug)
+    message = str(body.get("message") or "").strip()
+    if not message:
+        raise HTTPException(422, "say something")
+    try:
+        develop.developable(board)
+    except develop.DevelopError as refused:
+        raise HTTPException(refused.status, str(refused))
+    return {"job": runner.submit("develop", board.slug, {"message": message}).to_json()}
 
 
 @app.post("/api/reels/import")
@@ -1478,8 +1544,14 @@ def media_file(slug: str, name: str) -> FileResponse:
 DIST = config.ROOT / "studio" / "dist"
 if DIST.is_dir():
     @app.get("/reels/{slug}", include_in_schema=False)
-    def reel_page(slug: str) -> FileResponse:
-        """Serve the SPA entry point for an addressable canvas board."""
+    @app.get("/reels/{slug}/{stage}", include_in_schema=False)
+    def reel_page(slug: str, stage: str = "") -> FileResponse:
+        """Serve the SPA entry point for an addressable board, at any of its four stages.
+
+        The second route is not optional decoration. Vite's dev server falls back to index.html
+        for any unmatched path, so `/reels/x/storyboard` works in development whatever this
+        says -- and 404s in the built app, which is the shape a missing SPA route always takes.
+        """
         load(slug)  # Preserve a real 404 for malformed or missing board URLs.
         return FileResponse(DIST / "index.html")
 

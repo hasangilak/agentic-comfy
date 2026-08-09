@@ -172,6 +172,12 @@ export interface AssetTurn {
   prompt?: string;
   /** Whether that turn ended in the still being drawn again. */
   regenerated?: boolean;
+  /**
+   * What the automatic review made of the still, on a turn the reviewer wrote. Absent on a
+   * director's turn, and absent on every turn of a board written before `stills.remember`
+   * started stamping it — which reads as "not reviewed", the truth about those.
+   */
+  verdict?: "pass" | "kept" | "rewritten";
   /** Why it was not, when it should have been — the image server being down, usually. */
   error?: string;
 }
@@ -253,6 +259,12 @@ export interface Board {
   spent: number;
   /** Every beat short of the still it renders from, whichever join it is on. */
   assets_needed: number[];
+  /**
+   * What is thin about this script — a missing style bible, a cut with no prompt. Advice, not
+   * errors: every one of them is fixable for free. Derived on every read, so it clears itself
+   * as the gaps are filled rather than being a message that was true once.
+   */
+  notes: string[];
   /** The model's hard cap on pictures per beat: nine. Per-beat `ref_slots` is what a node shows. */
   max_refs: number;
   /**
@@ -275,6 +287,8 @@ export interface Job {
   id: string;
   kind:
     | "plan"
+    /** One turn of the interview that becomes a script. The board exists from turn one. */
+    | "develop"
     | "chat"
     | "asset"
     | "still_chat"

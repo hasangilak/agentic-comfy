@@ -218,7 +218,7 @@ def plan(concept: str, beats: int, seconds: float, *,
     """
     instructions = brief(concept, beats, seconds)
     log(f"[plan] briefing {config.TEXT_MODEL} from {TEMPLATE_PATH.name}")
-    draft = _numbered(gemini.structured(
+    draft = numbered(gemini.structured(
         [{"role": "user", "content": instructions}], PLAN_SCHEMA,
         think=config.PLAN_THINK, temperature=config.PLAN_TEMPERATURE,
     ))
@@ -233,8 +233,20 @@ def plan(concept: str, beats: int, seconds: float, *,
     return draft
 
 
+# What the review may not touch, on the path where a form settled it. The other path's copy is
+# `develop.SETTLED_BY_INTERVIEW`, and the two are siblings about SCOPE rather than about the
+# rules of the medium -- which are in the brief, once, and are not restated in either.
+SETTLED_BY_FORM = (
+    "Items 1, 2, 3 and 12 are already settled and are NOT yours to fix: the director fixed the "
+    "beat count and gave every beat the same length in section 0, so the lengths cannot vary "
+    "and the total is whatever that comes to. Do not change a single beat length, and do not "
+    "add or remove a beat.\n\n"
+)
+
+
 def review(draft: dict, instructions: str, *,
-           log: Callable[[str], None] = print) -> dict:
+           log: Callable[[str], None] = print,
+           settled: str = SETTLED_BY_FORM) -> dict:
     """Run the brief's own self-check against the draft and return the corrected script.
 
     The whole brief goes back in, not a summary of it. Section 11 is a numbered list of 22
@@ -244,16 +256,16 @@ def review(draft: dict, instructions: str, *,
     A failed review is not a failed plan. The draft is already usable and every fault the
     review would have caught is fixable for free on the canvas, so a model that answers with
     something unparseable loses its correction, not the user's script.
+
+    `settled` is the one paragraph that differs between the two ways a script gets written --
+    see `SETTLED_BY_FORM`. Everything else about this pass is identical on both, deliberately.
     """
     prompt = (
         "Below is the brief you were given, and then the script that was written from it.\n\n"
         "Work through the self-check in section 11, item by item, against that script. Fix "
         "everything that fails and change nothing that passes -- you are correcting this "
         "script, not rewriting the film, so keep the same story and the same number of beats.\n\n"
-        "Items 1, 2, 3 and 12 are already settled and are NOT yours to fix: the director fixed "
-        "the beat count and gave every beat the same length in section 0, so the lengths cannot "
-        "vary and the total is whatever that comes to. Do not change a single beat length, and "
-        "do not add or remove a beat.\n\n"
+        f"{settled}"
         "Spend the effort on the checks that are invisible on the page and obvious in the "
         "finished render: a chained beat whose action does not pick up in the exact end-state "
         "of the beat before it, a chained beat whose scene line differs from its shot's first "
@@ -286,10 +298,10 @@ def review(draft: dict, instructions: str, *,
         log(f"[plan] fixed: {line}")
     if not changes:
         log("[plan] self-check found nothing to fix")
-    return _numbered({**draft, **{k: v for k, v in reviewed.items() if k != "changes"}})
+    return numbered({**draft, **{k: v for k, v in reviewed.items() if k != "changes"}})
 
 
-def _numbered(plan: dict) -> dict:
+def numbered(plan: dict) -> dict:
     """Beat numbers from the array order rather than from what the model wrote.
 
     `script.normalise` does this again on the way into a board, but the review prompt shows

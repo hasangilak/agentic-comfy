@@ -1669,6 +1669,13 @@ class Board:
                 b["n"] for b in self.ordered_beats()
                 if self.needs_still(b) and not self.asset_path(b["n"]).exists()
             ],
+            # What is thin about this script -- a missing style bible, a cut with no prompt. It
+            # was already computed once, at import, and shown as a strip that vanished; a board
+            # document IS a plan document, so the same function answers for one at any age.
+            #
+            # Derived, never persisted, and in no fingerprint: it is a reading of the beats, not
+            # an input to anything. The import is local because `script` imports this module.
+            "notes": self.script_notes(),
             # The node grows one upload slot per picture and stops here. Per-beat `ref_slots` is
             # the number that actually matters on a node; this is the model's hard cap.
             "max_refs": config.MAX_REF_IMAGES,
@@ -1677,6 +1684,31 @@ class Board:
             # one, which `papercut.max_references` honours -- this is the ceiling, not a promise.
             "max_still_refs": config.MAX_STILL_REFS,
         }
+
+    def script_notes(self) -> list[str]:
+        """What is thin about this script, from the same function the import path uses.
+
+        `script.notes` was written against a freshly normalised plan, where every beat carries a
+        `source`. A board on disk may not: `source_for` is what resolves the default, and a beat
+        written before that field existed simply has no key. So the beats go over as a view with
+        the join resolved -- which is the same answer `notes` would have got from a plan, and is
+        what keeps this one function answering for a script at any age.
+
+        The import is local because `script.py` imports this module; at the top it is a cycle.
+        """
+        if not self.beats:
+            return []
+        from . import script
+
+        return script.notes({
+            "style_bible": self.data.get("style_bible", ""),
+            "beats": [
+                {"n": beat["n"],
+                 "source": self.source_for(beat),
+                 "asset_prompt": beat.get("asset_prompt", "")}
+                for beat in self.ordered_beats()
+            ],
+        })
 
     def cost_of_at(self, beats: list[int], seconds: float) -> dict:
         frames = [config.frame_count(seconds) for _ in beats]

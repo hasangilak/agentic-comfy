@@ -222,20 +222,48 @@ exactly that reason, and it marks the beat for re-rendering just as typing the c
 turn lands in the board's transcript too, so the next thing you say to the chat panel knows the
 line moved.
 
-### Bring your own script
+### Three ways to start a film
 
-`+ new` offers two ways in. **write it for me** turns a one-line concept into a shot list,
-which is the fastest way to have something on the canvas. **paste a script** adopts one that
-already exists — hand-written, or written with an AI somewhere else — verbatim: beat order,
-per-beat lengths and which beats are cuts all arrive as written, and no model turn happens.
-Talking a model into a script you have already finished is slower and loses detail on the way.
+**talk it through** is the default and the one that asks you anything. It puts the reel on disk
+from your first message — with no beats yet — and then interviews you: how the 40 seconds is
+split, how many camera setups, who is in it, what the last frame leaves you with. Those four
+questions are not the studio's; they are section 0 of the authoring brief below, which opens
+"STOP — interview the director first". Say *defaults* at any point and it picks. When it has
+answers it writes the script, marks it against the brief's own self-check, and the reel you were
+already looking at fills in — the URL never moves, and the interview stays in the board's
+transcript as the first half of every later conversation about it.
 
-Both paths are written against the *same* brief. `prompts/40s-paper-cutout-script.md` is the
-prompt that gets an AI to write a script — and it is also, verbatim, what the model is
-handed by **write it for me**, with only its opening interview replaced by the beat count and
-length the studio already asked you for. There is deliberately no second, shorter copy of those
-rules inside `planner.py`: a summary that drifts from the document would have the two ways into
-a board quietly writing to different specifications.
+**write it for me** is the one-shot path: a concept, a beat count, one length for every beat,
+and a finished shot list a few minutes later with no questions asked.
+
+**paste a script** adopts one that already exists — hand-written, or written with an AI
+somewhere else — verbatim: beat order, per-beat lengths and which beats are cuts all arrive as
+written, and no model turn happens. Talking a model into a script you have already finished is
+slower and loses detail on the way.
+
+All three are written against the *same* brief. `prompts/40s-paper-cutout-script.md` is the
+prompt that gets an AI to write a script — and it is also, verbatim, what the model is handed by
+the other two: **talk it through** sends it whole, and **write it for me** replaces only its
+opening interview with the beat count and length you already gave. There is deliberately no
+second, shorter copy of those rules inside `planner.py` or `develop.py`: a summary that drifts
+from the document would have the three ways into a board quietly writing to different
+specifications.
+
+### The four stages
+
+The studio is a sequence, and each stage is a page with its own URL:
+
+**Script** — the conversation above, the style bible, and every scene as prose. **Storyboard** —
+the cast, the sets and the props, then a rough grey panel per shot and the whole reel as one
+contact sheet; picking a design turns the grid into a checklist, so one character is bound
+across seven shots in seven clicks. **Assets** — the still each shot opens on, beside the list
+of what it is *actually* drawn from, in the order Gemini gets it and with anything past the cap
+greyed out and explained. **Studio** — the canvas: the joins, the chain, the price and the
+render.
+
+Nothing gates a stage. The rail says what each one is waiting on and every stage is one click
+away at any time — the pipeline genuinely is separable, and a reel that supplies its own stills
+skips the third stage entirely. Only the last one spends money, and the price is on the button.
 
 Then the model marks its own work. The brief ends in a 22-point self-check, so a second pass
 hands the whole brief back with the draft and asks it to run that list — which catches the
@@ -661,6 +689,16 @@ hourly rate. Kept for reference; the pipeline above does not use it.
 - **The CLI can still ask for 15 s beats**, which have failed once on this card. The studio
   cannot — `config.BEAT_LENGTHS` caps it at 243 frames — but `storyboard.py --seconds 15`
   bypasses that and only logs a warning.
+- **Two of the four stage pages have never been seen in a browser.** The shell is exercised —
+  every stage URL is served from the built bundle, a bad slug still 404s, and one whole
+  interview ran against a live model: the four questions, then *defaults*, then a six-beat
+  script with mixed lengths that survived the self-check, on the same reel it started on.
+  Nobody has clicked the Storyboard grid's binding gesture or the Assets stage's "drawn from"
+  strip, so both are reasoned rather than seen. Every existing board's state is unchanged by
+  all of it — the fully-rendered reel still reads `rendered` on all five beats.
+- **An abandoned conversation leaves a reel behind.** Starting one puts the board on disk
+  before there is a script, which is what makes the interview survive a reload; a reel you
+  never finished shows in the rail as `draft` and is deleted from the same place as any other.
 - **Staging has never been drawn against a live model.** The server side is exercised end to
   end: entries mint, bind, renumber the pictures below them, reach the clip as `<Picture N>` and
   the still as words, and deleting one takes its sheet, its bindings and rewrites every

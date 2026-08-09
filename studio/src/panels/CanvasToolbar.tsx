@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, clock, money } from "../api";
-import type { Estimate, Job } from "../types";
+import type { Estimate } from "../types";
 import { useStudio } from "../useStudio";
 import { Button } from "../ui";
+import { JobStrip } from "./JobStrip";
 
 /**
  * The money bar, floating over the work.
@@ -79,7 +80,7 @@ export function CanvasToolbar() {
         </span>
         <span className="text-zinc-200">|</span>
 
-        {job ? <Phases job={job} /> : null}
+        {job ? <JobStrip job={job} /> : null}
 
         {canRender ? (
           <>
@@ -111,7 +112,16 @@ export function CanvasToolbar() {
                 ? `${selected.length} selected`
                 : `${renderCount} ${renderCount === 1 ? "beat" : "beats"}`}{" "}
               · {renderCost === undefined ? "…" : money(renderCost)}
+              {renderSeconds === undefined ? "" : ` · ~${clock(renderSeconds)}`}
             </Button>
+            {/* What is NOT in that price. `pending` is every beat that needs rendering, so on a
+                part-rendered board the number on the button is smaller than the reel and the
+                difference is worth stating rather than leaving to be worked out. */}
+            {!selected.length && renderCount < board.beats.length ? (
+              <span className="px-1 text-[10px] text-zinc-400">
+                of {board.beats.length} · the rest are already rendered
+              </span>
+            ) : null}
             {selected.length ? (
               <button
                 onClick={() => studio.setRenderSelection([])}
@@ -134,50 +144,6 @@ export function CanvasToolbar() {
           </Button>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-/**
- * The phase strip. Stages differ in length by an order of magnitude, so one bar across all
- * of them would misrepresent progress; this shows which stage, and what already succeeded.
- */
-function Phases({ job }: { job: Job }) {
-  if (job.kind !== "render") {
-    const labels: Record<string, string> = {
-      chat: "the model is thinking",
-      plan: "writing the script",
-      asset: "generating a still",
-      still_chat: "looking at the still",
-      revise: "rewriting the line",
-      ref_draw: "drawing a picture",
-      ref_chat: "looking at the picture",
-      caption: "writing the caption",
-    };
-    return (
-      <span className="px-1 text-[11px] text-warm">{labels[job.kind] ?? job.phase}…</span>
-    );
-  }
-  const stages = ["deploying", "booting", "rendering", "stitching"];
-  const at = stages.indexOf(job.phase);
-  return (
-    <div className="flex items-center gap-1.5 px-1 text-[10px]">
-      {stages.map((stage, index) => (
-        <span
-          key={stage}
-          className={
-            index < at ? "text-live" : index === at ? "text-warm" : "text-zinc-300"
-          }
-        >
-          {index < at ? "✓" : index === at ? "◐" : "○"} {stage}
-        </span>
-      ))}
-      {job.beat_total ? (
-        <span className="text-zinc-500">
-          beat {job.beat_index}/{job.beat_total}
-          {job.step_max ? ` · step ${job.step}/${job.step_max}` : ""}
-        </span>
-      ) : null}
     </div>
   );
 }

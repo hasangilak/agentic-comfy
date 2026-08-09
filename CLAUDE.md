@@ -79,6 +79,7 @@ paperreel/pictures.py   reference pictures as drawable assets; NO review pass, d
 paperreel/staging.py    the reel's cast and sets, designed once and bound to beats
 paperreel/panels.py     the storyboard: a rough sketch per shot; reaches NO renderer
 paperreel/planner.py    the authoring brief -> a script, then its own self-check
+paperreel/develop.py    the same brief WITH its interview: a script talked into existence
 paperreel/script.py     adopting a script written outside the studio
 paperreel/agent.py      the tool loop -> board operations; `revise`, one line at a time
 paperreel/jobs.py       one worker thread, one job queue, one event stream
@@ -86,7 +87,55 @@ paperreel/api.py        FastAPI routes + SSE
 paperreel/media.py      ffmpeg: cutout, compose, fit, last-frame, tail, stitch
 comfyui_minimax_h3.py   the Modal GPU app (ComfyUI on RTX-PRO-6000)
 studio/src/             React 19 + @xyflow/react canvas, Tailwind 4, Vite
+studio/src/route.ts     the ONLY place that reads or writes window.location
+studio/src/stages/      the four stage pages; the canvas is one of them
 ```
+
+### The four stages
+
+The studio is a sequence now, not one page with four features layered on it:
+
+```
+/                            no reel open — the three ways in, at page size
+/reels/:slug/script          the interview, the style bible, the scenes as prose
+/reels/:slug/storyboard      the cast and sets, then a panel per shot
+/reels/:slug/assets          the still each shot opens on, and what it is drawn from
+/reels/:slug/studio          the canvas: the chain, the price, the render
+/reels/:slug                 → resolved from the board, never from a stored "last visited"
+```
+
+**`resolveStage` derives the default** — no beats → script; no panel written → storyboard;
+`assets_needed` → assets; otherwise studio. Four reads of fields `to_json` already publishes,
+so a hand-edited `storyboard.json` cannot disagree with it and nothing new is persisted. Same
+for `StageRail`'s readouts. **No stage is ever gated**: `storyboard.py` stops at any stage, an
+imported script may arrive with its stills made, and a `manual_stills` board skips stage 3
+entirely — a locked rail would be the studio lying about a design whose claim is that the
+stages are separable. What replaces a gate is the "waiting on" strip at the top of each page.
+
+**No router dependency**, but all location knowledge is in `route.ts` — `parseRoute`,
+`buildRoute`, `resolveStage`, `STAGES`, `STAGE_JOBS`. The route space is two path params and
+one search key against a three-dependency `package.json`; what a router would have bought is
+not worth a second authority on `window.location`, and the extraction is what makes swapping
+one in later a one-file change. `?shot=n` syncs to `studio.expanded` through `replaceState`,
+not `pushState` — closing the modal must not need a Back press.
+
+**Stage navigation is in the left rail, not a bar across the top.** The top bar was killed for
+spending a row of the window on state; this is navigation rather than state, so `RailRow`'s
+"ours has nothing to navigate to" no longer holds — but the Storyboard grid and the Assets
+still both want that height, so it stays in the column.
+
+Two guards moved when the canvas became one stage of four, and both would silently stop working
+if moved back: the **structure-changed reset** (clear selection / render selection / open scene
+when `beats.length` moves) is in `useStudioState`, because `BeatModal` is opened from three
+stages and a guard that only fires while React Flow is mounted is no guard; and the SPA
+fallback in `api.py` now answers `/reels/{slug}/{stage}` as well, because Vite's dev server
+falls back for any path and the built app 404s.
+
+`ChatPanel` is on **storyboard and studio only**. On Script the transcript IS the page; on
+Assets it is deliberately absent, because the board agent cannot see a picture and
+`stills.converse` can — two conversations about one still, one of them blind, is worse than
+one. Its "N scenes without a still" strip now navigates to Assets rather than firing the batch:
+a batch you cannot watch is the thing that stage exists to fix.
 
 ### The two projects
 
@@ -427,12 +476,49 @@ things a graph framework would bring are already owned: durable serial execution
 be a *second* store of the same state, which is exactly the drift the derived-state design
 exists to prevent.
 
+### Two ways the model writes a script, one specification
+
+`planner.plan` is the one-shot path: `planner.brief()` splices section 0 of
+`prompts/40s-paper-cutout-script.md` out and replaces it with `ANSWERS`, because the studio's
+form had already settled the beat count and one length for every beat.
+
+`develop.py` is the conversational one, and it exists because section 0 **is a four-question
+interview** — "STOP, interview the director first… Only after you have answers do you write the
+script." So this path splices out nothing: `develop.brief()` is `planner.template()` whole,
+with the concept filled in. There is still exactly one copy of the specification, and nothing in
+`develop.py` restates a rule of the medium. Differences worth knowing:
+
+- **The board exists from the first message**, with `beats: []` — `POST /api/reels/develop`
+  answers synchronously so the browser can stand on the conversation before the model speaks.
+  Verified representable end to end: `states()` is `{}`, `pending()` is `[]`, `cost_of([])` is
+  zero, and `summaries()` reads `beats: 0`, which the rail shows as `draft`. The payoff is that
+  `data["chat"]` is the transcript, so the interview and every later board conversation are one
+  history — the thing `agent.create` fakes by writing two synthetic turns after the fact.
+- **One tool, `write_script`,** derived from `PLAN_SCHEMA` plus a per-beat `seconds`. Required,
+  not optional: section 0's first question is about *mixed* lengths, which the one-shot path
+  cannot express. `seconds` is a `number` with the two legal values in its **description** — a
+  numeric `enum` on a function declaration answers 400 and takes the call with it.
+- **The self-check is `planner.review`, unchanged**, with one parameter: `settled`. Its
+  paragraph about what the review may not touch is the only thing that differs between the two
+  paths (`SETTLED_BY_FORM` / `develop.SETTLED_BY_INTERVIEW`), and both are about *scope*, not
+  about the medium. `planner._as_json` does not show the review `seconds`, so `develop`
+  re-attaches them by position afterwards — safe because `review` rejects a result whose beat
+  count moved.
+- **`develop.adopt` merges onto the board rather than creating one.** `script.adopt` would mint
+  a new slug and move the page out from under a director mid-sentence.
+- **One guard, and it guards money**: a board with any `render` record refuses the rewrite (409),
+  because a new script would orphan paid clips. Scene-by-scene editing is still open.
+- One model call per turn, not a loop: the tool's effect is the board, and the board is what the
+  page is showing.
+
 ### `reels/<slug>/storyboard.json` is the only database
 
 There is no other store. Everything else — beat state, staleness, cost, what needs
 rendering — is **derived** from the JSON plus what is on disk (`board.py`, "Derived state").
 Nothing derived is ever persisted. That is what lets the CLI, a hand edit, and the canvas
-coexist without drifting.
+coexist without drifting. `Board.script_notes` is the newest of them: `script.notes` answering
+for a board at any age, with the joins resolved through `source_for` because a beat on disk may
+predate the field.
 
 Consequence: if you add something a render depends on, it must go into
 `Board.own_fingerprint` / `render_fingerprint`, or the canvas will show `rendered` on a beat
@@ -636,11 +722,15 @@ the right column for one. Four pieces exist so that neither view owns a copy of 
   whole Enter arbitration — and because it calls `stopPropagation`, the first Escape closes the
   menu and the second closes the modal, rather than one doing both.
 
-The node's references row is shown on **every** join now. It used to be gated on `isReference`,
-which made it unreachable from the two joins a scene most often starts on — adding a picture is
-how a scene moves *onto* that join. A beat cycled back off it shows its pictures marked
-"not used on this join" rather than hiding them, because they reach no renderer and that is worth
-saying rather than concealing.
+**What a scene node no longer holds.** The still's upload/generate row, `StillChat`, the
+references row with `AddPicture` and the numbered `ReferenceNote` list all moved to the Assets
+stage — a 240 px card was never where a picture got judged, and what a still is *conditioned on*
+cannot be read at that size at all. In their place is one row saying whether the still exists and
+linking to the stage. `ScriptNode` went the same way: the style bible to Script, the cast
+reference and `FillStills` to Assets, leaving a header card with `＋ add scene at end`, which is
+structure. Every one of those controls still works and each is a second *view* of the same
+endpoint, never a second copy — `ReferenceNote` is still exported from `SequenceNode` for
+`BeatModal`, which is unchanged and remains the full-screen scene.
 
 `agent.MEDIUM` is the one copy of the rules of the medium, shared by `SYSTEM` (the tool loop) and
 `REVISE_SYSTEM` (`agent.revise`, job kind `revise`, `POST /api/reels/{slug}/beats/{n}/text`,
@@ -655,10 +745,11 @@ story edit, and the next conversational turn reading a board that changed for no
 see is the drift `transcript()` exists to prevent.
 
 `prompts/40s-paper-cutout-script.md` is **the** specification of what a script for this pipeline
-has to be, and both ways into a board are written against it: a human pastes it into an outside
-AI, and `planner.brief()` hands the same file to the local model with only its opening interview
-(section 0) spliced out for the beat count and length the studio already asked for. `script.py`
-normalises whatever comes back, from either path.
+has to be, and all three ways into a board are written against it: a human pastes it into an
+outside AI; `planner.brief()` hands the same file over with only its opening interview (section
+0) spliced out, for the beat count and length the studio already asked for; and `develop.brief()`
+hands it over with section 0 *intact*, because that section is the interview. `script.py`
+normalises whatever comes back, from any path.
 
 So: change the brief, not a copy of it. There is deliberately no summary of those rules inside
 `planner.py` — there was one, and a summary that drifts from the document has the two paths
@@ -746,13 +837,52 @@ after a panel appears — which is what keeps every rendered board out of `stale
 seen is a sketch. So three claims are reasoned rather than measured: that `PANEL_STYLE_SUFFIX`
 actually gets a grey pencil panel rather than the paper cutout it negates, that Lite at 1K is
 legible enough to judge framing by, and that a panel is a useful read of a shot that will be made of
-paper — the point where preview and product diverge most. Whether the model writes shot grammar that
-*varies* across the reel, rather than five medium shots in a row, is the other one, and the contact
-sheet is where to look: that is what it is for. The node row, the modal field and the sidebar rows
-have not been clicked in a browser.
+paper — the point where preview and product diverge most. One of the four is now measured, though:
+`panels.write` on a five-beat board came back wide / medium-close-up / extreme close-up /
+close-up / extreme wide, so the model does vary shot size across a reel rather than writing five
+medium shots in a row.
+
+**`panels._digest` names the bound designs, and that is the one prompt change in the stage
+work.** Verified on a real board: `in shot: Vera, the clearing` appears on the beats that bind
+something and nothing at all on the beats that do not. Names only — `SYSTEM` bans materials and
+colour, and `role` carries both. It changes what a re-run produces and marks nothing stale
+because a panel is in no fingerprint *at all*; the same edit in `config.build_prompt` or
+`stills.py` would be a fingerprint change. **What is NOT measured is whether the names improve
+the panels** — no A/B exists, and the panels above were written on a board whose two designs
+were bound to two of five beats.
 
 **`@`-mentions have never been typed in a browser.** The grammar, the two expansions, the
 degrade-to-role path and the rewrite-on-delete are exercised against a real board; the menu, the
 caret restore, the Escape arbitration and the legend are not. Nor is the thing they exist to
 prevent: no model has yet been observed dropping a token, so `config.lost_mentions` has caught
 nothing and is unproven in the only case that matters.
+
+**The four stages exist; two of the four pages have never been seen in a browser.** What is
+exercised end to end is the shell and the conversation. `make serve` answers every stage URL from
+the built bundle (`/`, and all four `/reels/:slug/:stage`), a missing slug still 404s, and one
+whole interview ran against a live model: the four section 0 questions came back on the first
+turn, `defaults` produced the brief's own `2 × 10s + 4 × 5s` split, the self-check fixed seven
+items, the mixed lengths survived the review, and the slug never moved. Every board's `states()`
+is unchanged afterwards — the fully-rendered reel still reads `rendered` on all five beats, which
+is the fingerprint check.
+
+What has NOT happened: nobody has clicked the Storyboard grid's binding gesture, the contact
+sheet, the Assets stage's conditioning strip, or the cast-first two-step. So four things are
+reasoned rather than seen:
+
+- that binding one design across seven shots by ticking panel cards is actually better than
+  seven trips through `BeatModal` — the arithmetic is shared with `StagingBind` through
+  `staging.ts`, but only one of the two has been driven;
+- that the "drawn from" strip reads as an explanation rather than as more furniture. It is
+  `beat.ts`'s `stillPictures` rendered directly, so it cannot disagree with what Gemini is
+  handed — but "cannot be wrong" and "is useful" are different claims;
+- that the two-step cast approval is worth the extra click. It is strictly cheaper than the
+  batch it replaces (`stills.generate` already renders and reviews that beat alone), and it has
+  not been run;
+- that `verdict` pips are legible. Every existing board's review turns predate the key, so they
+  all read "not reviewed" — which is true of them, and means the pips are only exercised by a
+  new stills pass.
+
+**The interview's per-turn latency is not the API's**, same caveat as everywhere else here: the
+one measured run took minutes for the writing turn on this machine's network path. Do not tune a
+timeout against it.

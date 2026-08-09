@@ -1,11 +1,13 @@
-import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useState } from "react";
 import { BeatModal } from "./canvas/BeatModal";
-import { Canvas } from "./canvas/Canvas";
 import { StagingPanel } from "./canvas/StagingPanel";
-import { CanvasToolbar } from "./panels/CanvasToolbar";
 import { ChatPanel } from "./panels/ChatPanel";
 import { Sidebar } from "./panels/Sidebar";
+import { Assets } from "./stages/Assets";
+import { Script } from "./stages/Script";
+import { Start } from "./stages/Start";
+import { Storyboard } from "./stages/Storyboard";
+import { Studio } from "./stages/Studio";
 import { StudioContext, useStudio, useStudioState } from "./useStudio";
 
 /**
@@ -15,10 +17,22 @@ import { StudioContext, useStudio, useStudioState } from "./useStudio";
  * across the top. It is gone: those readouts live in the rail, and the controls that spend
  * money float over the board they would spend it on. What is left is one sheet of paper per
  * column.
+ *
+ * The middle column is one of four stage pages now rather than always the canvas. Stage
+ * navigation is in the rail with the readouts, NOT in a bar across the top: that bar was killed
+ * for spending a row of the window on state, and the Storyboard grid and the Assets still both
+ * want the height back.
  */
 export default function App() {
   const studio = useStudioState();
   const [chatOpen, setChatOpen] = useState(true);
+
+  // The Assets stage deliberately has no board conversation: the agent cannot see a picture and
+  // `stills.converse` can, so two conversations about one still -- one of them blind -- is worse
+  // than one. On the Script stage the transcript IS the page, so a second copy in the rail would
+  // be the same conversation twice.
+  const stage = studio.resolvedStage;
+  const showChat = Boolean(studio.board) && (stage === "storyboard" || stage === "studio");
 
   // A file dropped anywhere but a node would otherwise make the browser navigate to it,
   // throwing away the whole session. Nodes stop propagation by handling their own drop.
@@ -42,20 +56,13 @@ export default function App() {
           <ErrorBanner />
 
           <div className="lift relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-edge bg-panel">
-            {studio.board ? (
-              <ReactFlowProvider>
-                <CanvasToolbar />
-                <Canvas />
-              </ReactFlowProvider>
-            ) : (
-              <Empty />
-            )}
+            <StageView />
           </div>
 
           <LogDrawer />
         </main>
 
-        {studio.board ? (
+        {showChat ? (
           chatOpen ? (
             <ChatPanel onCollapse={() => setChatOpen(false)} />
           ) : (
@@ -79,19 +86,23 @@ export default function App() {
   );
 }
 
-function Empty() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="max-w-sm text-center">
-        <p className="mb-3 text-3xl">🎞</p>
-        <p className="text-sm text-zinc-600">Pick a reel, or start one on the left.</p>
-        <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
-          Writing the script and the stills is free. Only rendering costs money, and the price is
-          always on the button before you press it.
-        </p>
-      </div>
-    </div>
-  );
+/**
+ * Which stage page the URL is asking for. No board means the start screen -- there is no
+ * boardless dead end any more, because the boardless state IS the first stage.
+ */
+function StageView() {
+  const studio = useStudio();
+  if (!studio.board) return <Start />;
+  switch (studio.resolvedStage) {
+    case "script":
+      return <Script />;
+    case "storyboard":
+      return <Storyboard />;
+    case "assets":
+      return <Assets />;
+    case "studio":
+      return <Studio />;
+  }
 }
 
 function AuthWarning() {

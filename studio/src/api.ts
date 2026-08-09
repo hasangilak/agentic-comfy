@@ -52,6 +52,27 @@ export const api = {
   createReel: (concept: string, beats: number, seconds: number) =>
     post<{ job: Job }>("/api/reels", { concept, beats, seconds }).then((r) => r.job),
 
+  /**
+   * Begin a film by talking about it. The reel exists when this answers — with no beats yet —
+   * so the browser can be standing on the conversation before the model has said a word.
+   *
+   * The interview is section 0 of the authoring brief, run the way that document says it
+   * should be: the one-shot path is the one that splices it out.
+   */
+  developReel: (message: string) =>
+    post<{ slug: string; board: Board; job: Job }>("/api/reels/develop", { message }),
+
+  /** One more turn of that interview. 409 once any beat has been rendered. */
+  develop: (slug: string, message: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/develop`, { message }).then((r) => r.job),
+
+  /**
+   * The authoring brief itself. Shown beside the conversation so the director can read what
+   * they are being interviewed about — from the file, so there is no second copy of the rules
+   * anywhere in this studio.
+   */
+  brief: () => call<{ markdown: string }>("/api/brief").then((r) => r.markdown),
+
   /** Adopt a script written outside the studio. No model turn, so the reel exists on return. */
   importReel: (script: string, manualStills: boolean) =>
     post<{ slug: string; board: Board; notes: string[] }>("/api/reels/import", {

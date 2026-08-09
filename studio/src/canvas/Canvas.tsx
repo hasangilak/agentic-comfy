@@ -102,7 +102,6 @@ function buildEdges(board: Board): Edge[] {
 
 export function Canvas() {
   const studio = useStudio();
-  const setSelection = studio.setSelection;
   const board = studio.board!;
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
@@ -112,19 +111,16 @@ export function Canvas() {
     // Beat numbers are positional IDs. After insertion/removal they may refer to different
     // scenes, so discard the old on-screen positions and let the server-cleared layout
     // reflow the one-dimensional chain without overlaps.
+    //
+    // Only the node half of that guard is here. Everything else it used to clear -- the chat
+    // selection, the render selection, the open scene -- moved into `useStudioState`, because
+    // this component is one stage of four now and those three outlive it.
     const structureChanged =
       beatCount.current !== null && beatCount.current !== board.beats.length;
     setNodes((existing) => buildNodes(board, structureChanged ? [] : existing));
     setEdges(buildEdges(board));
-    if (structureChanged) {
-      setSelection([]);
-      studio.setRenderSelection([]);
-      // Beat numbers are positional, so the scene behind the open modal is not the one that
-      // was opened any more -- closing it beats silently swapping what is on screen.
-      studio.setExpanded(null);
-    }
     beatCount.current = board.beats.length;
-  }, [board, setNodes, setEdges, setSelection]);
+  }, [board, setNodes, setEdges]);
 
   // Absorb React Flow's own changes (dimensions, selection, drag) first, or it re-emits
   // them forever waiting to be acknowledged.
