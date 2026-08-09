@@ -1,14 +1,14 @@
-import type { Beat } from "./types";
+import type { Beat, StageEntry } from "./types";
 
 /**
  * The two pictures lists a beat has, and the one place either numbering is worked out.
  *
  * There are two because the server has two, and they are ordered differently. The VIDEO model
  * is given `Board.pictures_for` — this beat's own still, then the reel's cast reference, then
- * the director's uploads — and addresses them as `<Picture N>`. The STILL model is given
- * `Board.still_pictures` — cast reference FIRST, then the uploads, capped at four — and is
- * given no tags at all. The same picture is a different number in each, and in the two fields
- * that feed them.
+ * the designs this scene binds, then the director's uploads — and addresses them as
+ * `<Picture N>`. The STILL model is given `Board.still_pictures` — cast reference FIRST, then
+ * the bound designs that are not sets, then the uploads, capped at four — and is given no tags
+ * at all. The same picture is a different number in each, and in the two fields that feed them.
  *
  * This module mirrors those two methods and must not drift from them; `board.py` is the
  * authority, and every guard below quotes the line it is mirroring. Before this existed the
@@ -33,17 +33,33 @@ export interface PictureRef {
   unavailable?: string;
 }
 
+/**
+ * How a design's id is written wherever picture ids and design ids share one namespace — this
+ * module's `PictureRef.id`, and the server's `Board.mentions` dict. Mirrors
+ * `config.STAGE_MENTION_PREFIX`.
+ *
+ * They are minted independently — a beat's `ref_ids` and the reel's designs are two lists with
+ * no shared counter — so a bare six-character body could name either, and a design that happened
+ * to collide with a picture on scene 3 would resolve onto whichever was seen last.
+ */
+export const STAGE_PREFIX = "stage:";
+export const stageId = (id: string) => `${STAGE_PREFIX}${id}`;
+
 /** The literal a field stores to name one picture. Mirrors `config.mention_token`. */
 export function mentionToken(id: string): string {
-  return id === "cast" ? "@cast" : `@ref:${id}`;
+  if (id === "cast") return "@cast";
+  if (id.startsWith(STAGE_PREFIX)) return `@stage:${id.slice(STAGE_PREFIX.length)}`;
+  return `@ref:${id}`;
 }
 
 /** Mirrors `config.MENTION_RE`. Kept in sync by hand; there is no shared schema. */
-export const MENTION_RE = /@(?:ref:([0-9a-f]{4,12})|(cast))(?![\w:])/g;
+export const MENTION_RE = /@(?:ref:([0-9a-f]{4,12})|stage:([0-9a-f]{4,12})|(cast))(?![\w:])/g;
 
-/** Every picture named in a text, in order, duplicates kept. */
+/** Every picture named in a text, in order, duplicates kept. Namespaced as `mentionToken` reads. */
 export function mentionsIn(text: string): string[] {
-  return [...(text ?? "").matchAll(MENTION_RE)].map((m) => m[1] ?? "cast");
+  return [...(text ?? "").matchAll(MENTION_RE)].map((m) =>
+    m[1] ?? (m[2] ? stageId(m[2]) : "cast"),
+  );
 }
 
 /**
@@ -75,13 +91,42 @@ function uploads(beat: Beat): PictureRef[] {
 }
 
 /**
+ * The designs this scene binds that reach THIS render as pictures. Mirrors
+ * `Board.staging_pictures`, whose `for_still` argument is the one asymmetry: a set sheet is a
+ * picture for the clip and prose for the still, because four slots (one already the cast) do not
+ * hold three characters and a clearing.
+ *
+ * A design with no sheet drawn yet is skipped here and reaches both renders as words instead,
+ * which is what makes writing the bible useful before anything has been drawn.
+ */
+function stagePictures(beat: Beat, staging: StageEntry[], forStill: boolean): PictureRef[] {
+  const byId = new Map(staging.map((entry) => [entry.id, entry]));
+  return (beat.staging ?? [])
+    .map((id) => byId.get(id))
+    .filter((entry): entry is StageEntry => Boolean(entry?.sheet))
+    .filter((entry) => !(forStill && entry.kind === "environment"))
+    .map((entry) => ({
+      index: null,
+      id: stageId(entry.id),
+      url: entry.sheet,
+      note: entry.role,
+      tag: "",
+      label: entry.name,
+      token: mentionToken(stageId(entry.id)),
+    }));
+}
+
+/**
  * What the VIDEO model is given, in `<Picture N>` order. Mirrors `Board.pictures_for`.
  *
  * Empty off the reference join, exactly as the server's `uses_refs` guard makes it
  * (`board.py`, `pictures_for`). A picture on a chained or keyframe beat conditions nothing, and
  * a menu that offered it would be promising the model something it never sees.
+ *
+ * `staging` is the reel's whole bible; this picks out what THIS scene binds. Passed in rather
+ * than reached for, so the numbering and the list it numbers come from one board read.
  */
-export function videoPictures(beat: Beat): PictureRef[] {
+export function videoPictures(beat: Beat, staging: StageEntry[] = []): PictureRef[] {
   if (beat.source !== "reference") return [];
   const autos: PictureRef[] = (beat.auto_refs ?? []).map((auto, at) => ({
     index: null,
@@ -94,19 +139,19 @@ export function videoPictures(beat: Beat): PictureRef[] {
     label: at === 0 && beat.opens_on ? "opening still" : "cast reference",
     token: auto.url === beat.asset ? null : "@cast",
   }));
-  return [...autos, ...uploads(beat)]
+  return [...autos, ...stagePictures(beat, staging, false), ...uploads(beat)]
     .map((picture, at) => ({ ...picture, tag: `<Picture ${at + 1}>` }));
 }
 
 /**
  * What the STILL model is given. Mirrors `Board.still_pictures`, including its asymmetry.
  *
- * The cast reference is in **unconditionally**; the director's uploads are in **only** on a
- * reference join. Getting that backwards would have the @-menu naming pictures Gemini is never
- * handed. Everything past `still_refs` stays in the list but is marked unavailable — hiding it
- * would make the menu disagree with the tray you are looking at.
+ * The cast reference is in **unconditionally**; the bound designs and the director's uploads are
+ * in **only** on a reference join. Getting that backwards would have the @-menu naming pictures
+ * Gemini is never handed. Everything past the cap stays in the list but is marked unavailable —
+ * hiding it would make the menu disagree with the tray you are looking at.
  */
-export function stillPictures(beat: Beat): PictureRef[] {
+export function stillPictures(beat: Beat, staging: StageEntry[] = []): PictureRef[] {
   const cast = castRef(beat);
   const found: PictureRef[] = cast
     ? [{
@@ -119,11 +164,17 @@ export function stillPictures(beat: Beat): PictureRef[] {
         token: "@cast",
       }]
     : [];
-  if (beat.source === "reference") found.push(...uploads(beat));
+  if (beat.source === "reference") {
+    found.push(...stagePictures(beat, staging, true), ...uploads(beat));
+  }
+  // How many of this list the still renderer actually gets. Counted off the three numbers the
+  // server publishes rather than off `max_still_refs`, because the image server may report a
+  // lower cap than ours and those three are what it decided.
+  const reaching = (cast ? 1 : 0) + beat.staging_still_refs + beat.still_refs;
   return found.map((picture, at) => ({
     ...picture,
     tag: `the ${ordinal(at + 1)} reference image`,
-    ...(picture.index !== null && picture.index > beat.still_refs
+    ...(at >= reaching
       ? { unavailable: "past the still renderer's cap — this one reaches the clip only" }
       : {}),
   }));

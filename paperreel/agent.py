@@ -253,6 +253,23 @@ def board_digest(board: board_mod.Board) -> str:
     """
     lines = [f'TITLE: {board.data.get("title", "")}',
              f'STYLE BIBLE: {board.data.get("style_bible", "")}']
+    # The design bible, when there is one, straight after the style bible it makes more precise.
+    # Named and listed rather than summarised, because a beat line below says which designs that
+    # scene binds -- and a model shown "scene 2 binds Vera" with no list of what Vera is answers
+    # about a character it has invented. Editing these is not a tool the agent has: they carry
+    # drawn sheets, so a rename from a conversation would move what every bound scene renders.
+    if board.staging:
+        lines.append(
+            "STAGING -- the designs this film is made of. Each is drawn as a sheet and shown to "
+            "every scene that contains it, so it is the same wolf in every shot rather than a "
+            "fresh reading of a sentence:\n"
+            + "\n".join(
+                f'  {board.stage_name(entry)} [{board.stage_kind(entry)}'
+                + ("" if board.stage_path(str(entry.get("id"))).is_file() else ", not drawn yet")
+                + f']: {board.stage_role(entry)}'
+                for entry in board.staging
+            )
+        )
     # Once, not once per beat: every call to states() hashes every conditioning image on the
     # board, and this loop used to ask for one beat at a time.
     states = board.states()
@@ -264,11 +281,15 @@ def board_digest(board: board_mod.Board) -> str:
         # count that left them out would read as "this scene has nothing".
         if board_mod.uses_refs(source):
             source += f" ({len(board.pictures_for(beat['n']))} pictures)"
+        bound = board.bound_staging(beat["n"])
         lines.append(
             f'BEAT {beat["n"]} [{states[beat["n"]]}, {board.seconds_for(beat):.0f}s, '
             f'frames from {source}]\n'
             f'  scene: {beat.get("scene", "")}\n'
             f'  action: {beat.get("action", "")}'
+            # Only when there is one, so a board with no design bible composes the digest it
+            # always did -- the same promise every other addition here has made.
+            + (f'\n  staging: {", ".join(board.stage_name(e) for e in bound)}' if bound else "")
         )
     if board.data.get("caption"):
         lines.append(f'CAPTION: {board.data["caption"]}')

@@ -171,7 +171,7 @@ export function PicturePanel({
             value={draw.draft}
             onChange={draw.change}
             onBlur={draw.flush}
-            options={stillPictures(beat)}
+            options={stillPictures(beat, board.staging ?? [])}
             placeholder="what this picture shows — the prop, the costume, the set, on a plain ground"
             title="the prompt Gemini draws this picture from. Not what the picture is FOR — that is
               the note below, and it is what the video model is told. Type @ to name another of

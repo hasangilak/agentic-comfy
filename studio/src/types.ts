@@ -101,6 +101,31 @@ export interface Beat {
    * reference — so this is usually smaller than `refs.length`.
    */
   still_refs: number;
+  /**
+   * Which of the reel's designs this scene contains, in the order they are numbered. Ids into
+   * `Board.staging`, not copies: the designs themselves are reel-level, and a second copy per
+   * beat is a second thing to keep in step.
+   */
+  staging: string[];
+  /**
+   * How many of those actually reach the clip, and the still, as PICTURES. They sit between
+   * `auto_refs` and `refs` in the numbering, which is why `ref_offset` counts them.
+   *
+   * The two differ on purpose: the still renderer takes four pictures where the video model
+   * takes nine, so a set sheet is dropped from the still and reaches it as prose instead. A
+   * node that showed the binding without showing that would be claiming something untrue.
+   */
+  staging_refs: number;
+  staging_still_refs: number;
+  /**
+   * What the designs this render was NOT handed as pictures say instead, as the model gets it.
+   *
+   * Two, because the two renders answer differently and that difference is the whole design: the
+   * clip has nine picture slots and usually needs no prose at all, while the still has four and
+   * hands the sets over as words.
+   */
+  staging_text: string;
+  staging_still_text: string;
   /** Whether this beat's still is wired as the composition it opens on. */
   opens_on: boolean;
   /**
@@ -139,6 +164,37 @@ export interface AssetTurn {
   error?: string;
 }
 
+/**
+ * What kind of thing a design is. It is not decoration — it decides what the sheet is drawn as,
+ * what shape it is drawn at, and whether it reaches the still renderer as an image or as words.
+ * An environment is the one that differs on all three.
+ */
+export type StageKind = "character" | "environment" | "prop";
+
+/**
+ * One entry in the reel's design bible: named, written down, drawn once, bound to the scenes
+ * that contain it.
+ *
+ * The layer between the style bible (one paragraph, reel-wide, words only) and a beat's own
+ * reference pictures (images, one beat). Reel-scoped is the whole difference: a picture uploaded
+ * to scene 3 cannot be used by scene 7 without being uploaded again.
+ */
+export interface StageEntry {
+  id: string;
+  kind: StageKind;
+  /** What the prompts call it. Always leads `role`, so the model can tie it to the action line. */
+  name: string;
+  /** What it IS, in the director's words. Reaches both renderers — editing it marks beats stale. */
+  note: string;
+  /** What Gemini is asked for when the sheet is drawn. Reaches neither renderer. */
+  draw: string;
+  chat: AssetTurn[];
+  /** The design sheet itself. Null until it has been drawn or uploaded. */
+  sheet: string | null;
+  /** The sentence the prompts are actually told, name included. `name` + `note`, derived. */
+  role: string;
+}
+
 export interface Estimate {
   predicted_seconds: number;
   predicted_cost: number;
@@ -166,6 +222,10 @@ export interface Board {
   reference: string | null;
   /** False when it is only beat 1's own still standing in. */
   reference_explicit: boolean;
+  /** The reel's cast and sets, designed once and bound to the scenes that use them. */
+  staging: StageEntry[];
+  stage_kinds: StageKind[];
+  max_staging: number;
   beats: Beat[];
   canvas: { nodes?: Record<string, { x: number; y: number }> };
   reel: string | null;
@@ -206,6 +266,10 @@ export interface Job {
     | "ref_draw"
     /** One turn about one reference picture, its redraw included. */
     | "ref_chat"
+    /** Draw one of the reel's design sheets. `detail.id` names it. */
+    | "stage_draw"
+    /** One turn about one design sheet, its redraw included. */
+    | "stage_chat"
     | "caption"
     | "render";
   slug: string;

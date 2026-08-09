@@ -7,6 +7,7 @@ import type {
   Job,
   ReelSummary,
   Source,
+  StageKind,
 } from "./types";
 
 type GeminiOptions = { model?: GeminiImageModel; imageSize?: GeminiImageSize };
@@ -191,6 +192,66 @@ export const api = {
   removeRef: (slug: string, n: number, index: number) =>
     call<{ board: Board }>(`/api/reels/${slug}/beats/${n}/refs/${index}`, {
       method: "DELETE",
+    }).then((r) => r.board),
+
+  // ## Staging — the reel's cast and sets
+  //
+  // Reel-scoped, which is what makes these different from every route above: no beat number,
+  // and one binding call that says which scenes contain what.
+
+  /** Mint one design. Free and synchronous — it creates an entry, it does not draw a sheet. */
+  addStage: (slug: string, body: { kind: StageKind; name: string; note?: string; draw?: string }) =>
+    post<{ board: Board; id: string }>(`/api/reels/${slug}/staging`, body),
+
+  /**
+   * Rename a design, say what it IS, or say what it should be drawn as.
+   *
+   * `name` and `note` reach the render — together they are the sentence every prompt is told
+   * about this design — so editing either marks every scene that binds it stale. `draw` does
+   * not, for the same reason `describeRef`'s does not: it produces a sheet, and the sheet's own
+   * content hash is already in the fingerprint.
+   */
+  describeStage: (
+    slug: string,
+    id: string,
+    body: { kind?: StageKind; name?: string; note?: string; draw?: string },
+  ) => patch<{ board: Board }>(`/api/reels/${slug}/staging/${id}`, body).then((r) => r.board),
+
+  /** Draw or redraw one sheet. `prompt` lets an uploaded sheet be edited in one action. */
+  drawStage: (slug: string, id: string, options?: DrawOptions) =>
+    post<{ job: Job }>(`/api/reels/${slug}/staging/${id}/draw`, options ?? {}).then((r) => r.job),
+
+  /** Say what should be different about one sheet. No attachments: the sheet IS the subject. */
+  stageChat: (slug: string, id: string, message: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/staging/${id}/chat`, { message }).then((r) => r.job),
+
+  uploadStageSheet: (slug: string, id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<{ board: Board }>(`/api/reels/${slug}/staging/${id}/sheet`, {
+      method: "POST",
+      body: form,
+    }).then((r) => r.board);
+  },
+
+  /** Drop a design, its sheet, every binding to it, and every @-mention of it. */
+  removeStage: (slug: string, id: string) =>
+    call<{ board: Board }>(`/api/reels/${slug}/staging/${id}`, { method: "DELETE" }).then(
+      (r) => r.board,
+    ),
+
+  /**
+   * Say which designs one scene contains, in the order they are numbered. Replaces rather than
+   * appends — the control is a set of toggles, and that is one answer.
+   *
+   * Unlike adding a picture this never moves the join, so there is nothing to warn about: a
+   * picture only reaches a render through the reference join, while a bound design reaches every
+   * join — as <Picture i> where there are picture slots, and as a sentence everywhere else.
+   */
+  bindStage: (slug: string, n: number, ids: string[]) =>
+    call<{ board: Board; staging: string[] }>(`/api/reels/${slug}/beats/${n}/staging`, {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
     }).then((r) => r.board),
 
   uploadReference: (slug: string, file: File) => {

@@ -107,9 +107,24 @@ def style_for(board: board_mod.Board) -> str:
 Pictures = list[tuple[Path, str]]
 
 
+# The frame key for something this board renders that is not one of its beats: a reel-level
+# staging sheet. Everything below keys frames by beat number -- for grouping, for progress, for
+# the log line -- and a design sheet has no beat to be numbered by. Zero rather than None so the
+# lists stay `list[int]` and the two lookups that read a beat can simply not find one.
+NO_BEAT = 0
+
+
 def _gemini_settings(board: board_mod.Board, n: int) -> tuple[str | None, str | None]:
-    """The image settings stored on one beat, used to keep unlike frames separate."""
-    beat = board.beat(n)
+    """The image settings stored on one beat, used to keep unlike frames separate.
+
+    Answers "nothing stored" for a frame that is not a beat (see `NO_BEAT`), which is what lets
+    one scene body serve a still, a reference picture and a staging sheet. Raising instead would
+    make the caller thread a second flag through five functions to say the same thing.
+    """
+    try:
+        beat = board.beat(n)
+    except KeyError:
+        return None, None
     return beat.get("gemini_model"), beat.get("gemini_image_size")
 
 
@@ -196,9 +211,19 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
         for _path, note in pictures if note.strip()
     ]
     notes = [note for note in notes if note]
-    if not notes:
-        return prompt
-    return f"{prompt} The reference images show: {'; '.join(notes)}.".strip()
+    if notes:
+        prompt = f"{prompt} The reference images show: {'; '.join(notes)}.".strip()
+    # And the bound design sheets this still was NOT handed, as words. On the still side that is
+    # normally the sets: four slots, one of them already the cast, do not hold three characters
+    # and a clearing -- so `still_pictures` spends them on the cast and the clearing arrives as a
+    # sentence. Computed against the very list being conditioned on, so a sheet is never both an
+    # unnamed reference image and a description of a second one of it.
+    staged = " ".join(config.expand_mentions(
+        board.staging_text(n, pictures), mentions, prose=True
+    ).split()).strip().rstrip(".")
+    if staged:
+        prompt = f"{prompt} {config.STAGING_PREFIX}{staged}.".strip()
+    return prompt
 
 
 def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
@@ -326,13 +351,19 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
                   consistency: str | None = None,
                   style: str | None = None,
                   gemini_model: str | None = None,
-                  gemini_image_size: str | None = None) -> list[int]:
+                  gemini_image_size: str | None = None,
+                  label: Callable[[int], str] | None = None) -> list[int]:
     """Create, render and collect one scene. Returns the beats whose frames landed.
 
     `out_paths` says where each frame goes, positionally. Without it every frame lands on its
     beat's still, which is what this module was written to do and what `generate` still wants;
     with it, `draw` puts a frame on a reference picture instead.
+
+    `label` names each frame in the log. Only a caller rendering something that is not a beat
+    needs it -- a staging sheet is keyed `NO_BEAT`, and "beat 0: done in 11s" is a worse line
+    than no line at all.
     """
+    name = label or (lambda n: f"beat {n}")
     created = client.post("/api/scenes", json=_scene_body(
         board, beats, pictures, seed, texts=texts, aspect=aspect, consistency=consistency,
         style=style, gemini_model=gemini_model, gemini_image_size=gemini_image_size))
@@ -367,7 +398,7 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
             _download(client, frame["url"],
                       out_paths[index] if out_paths else board.asset_path(n))
             made.append(n)
-            log(f"[stills] beat {n}: done in {frame.get('elapsed', 0)}s")
+            log(f"[stills] {name(n)}: done in {frame.get('elapsed', 0)}s")
             # Announced per still, not per batch: a nine-beat run is minutes long, and the
             # canvas showing beat 2's picture while beat 3 renders is the whole reason the
             # progress is streamed at all.
@@ -448,7 +479,10 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
          cancelled: Callable[[], bool] | None = None,
          seed: int | None = None, url: str | None = None,
          gemini_model: str | None = None,
-         gemini_image_size: str | None = None) -> bool:
+         gemini_image_size: str | None = None,
+         style: str | None = None,
+         aspect: str | None = None,
+         label: str | None = None) -> bool:
     """Render one picture that is not a beat's still, straight into `out_path`.
 
     Deliberately not routed through `generate`: `_runs` groups beats by `still_pictures` and
@@ -472,6 +506,12 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
 
     `out_path` is also `referencePaths[0]` when editing, and that is safe: Papercut resolves its
     conditioning at render start and `_download` only fires once the frame reports done.
+
+    `style`, `aspect` and `label` default to a beat's reference picture -- the prop-sheet suffix,
+    the square, and "beat {n}". They exist for `staging.py`, which draws the same KIND of thing
+    at reel level: a set sheet needs the opposite suffix (it is nothing but scenery) and the
+    reel's own vertical shape, and it has no beat to be named after. Defaulted rather than made
+    required so a reference-picture draw composes the byte-identical scene it always did.
     """
     reported = health(url)
     if reported is None:
@@ -484,18 +524,21 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
         log("[picture] this image server predates the `edit` mode, so the redraw is anchored "
             "instead -- it keeps the reference and may re-pose the subject")
     refs = pictures[:max_references(reported)]
-    log(f"[picture] beat {n}: drawing {out_path.name}"
+    named = label or f"beat {n}"
+    log(f"[picture] {named}: drawing {out_path.name}"
         + (f", from {', '.join(path.name for path, _note in refs)}" if refs
            else " (from the words alone)"))
+    beat_model, beat_size = _gemini_settings(board, n)
     with httpx.Client(base_url=url or config.PAPERCUT_URL, timeout=30.0) as client:
         made = _render_scene(
             client, board, [n], refs, log=log, progress=progress, on_still=None,
             cancelled=cancelled, seed=seed, texts=[text], out_paths=[out_path],
-            aspect=config.PAPERCUT_REF_ASPECT, consistency=mode,
-            gemini_model=gemini_model or board.beat(n).get("gemini_model"),
-            gemini_image_size=gemini_image_size or board.beat(n).get("gemini_image_size"),
+            aspect=aspect or config.PAPERCUT_REF_ASPECT, consistency=mode,
+            gemini_model=gemini_model or beat_model,
+            gemini_image_size=gemini_image_size or beat_size,
             # The medium, and NOT the board's style bible -- see `_scene_body`. A prop sheet
             # shares the paper with the film, not the cast.
-            style=config.REF_DRAW_STYLE_SUFFIX,
+            style=style or config.REF_DRAW_STYLE_SUFFIX,
+            label=lambda _n: named,
         )
     return bool(made)

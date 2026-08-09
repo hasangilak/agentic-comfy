@@ -197,6 +197,11 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # Names <Picture 1> as this shot's opening composition rather
                                 # than as one more design reference.
                                 opens_on=opens_on,
+                                # The bound design sheets this beat did NOT get as pictures --
+                                # a set, or anything past the cap -- as words. Computed against
+                                # the very list being handed over, so a sheet is never both a
+                                # numbered picture and a sentence about a second one.
+                                staging=board.staging_text(n, pictures),
                                 # Swaps "compose the opening frame yourself" for "open on the
                                 # moment <Video 1> ends and carry it on".
                                 ref_videos=1 if carry else 0,

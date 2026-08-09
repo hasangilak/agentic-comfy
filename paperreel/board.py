@@ -81,6 +81,18 @@ CARRY_UPSTREAM = "upstream"
 # a cut is conditioned on it, which is what keeps the same characters across a scene change.
 REFERENCE_NAME = "character.png"
 
+# Everything a staging entry stores, and what a missing key reads as. One tuple rather than four
+# `.get(key, default)` calls scattered through the module, for the reason `REF_SLOT_KEYS` is one
+# tuple: a hand-edited storyboard, an older board and a freshly created entry must all present
+# the same shape, and a fifth field added later must not need finding in six places.
+STAGE_FIELDS: tuple[tuple[str, object], ...] = (
+    ("kind", config.STAGE_CHARACTER),
+    ("name", ""),
+    ("note", ""),    # what it IS, in the director's words -- reaches both prompts
+    ("draw", ""),    # the Gemini prompt the sheet was drawn from -- reaches neither
+    ("chat", None),  # the conversation about it; None means "a fresh list each time"
+)
+
 # Node states, in the order the UI paints them.
 PLANNED = "planned"          # prompt only
 NEEDS_ASSET = "needs_asset"  # wants its own still, hasn't got one
@@ -529,6 +541,39 @@ class Board:
         cast = self.reference_for(n)
         if cast is not None:
             found[config.CAST_MENTION] = (where.get(cast), config.CAST_MENTION_ROLE)
+        # Every staging entry the reel has, not only the ones this beat binds. A token naming an
+        # unbound sheet is not a mistake to punish: it resolves to a position of None and
+        # degrades to what the design IS, which is exactly "the wardrobe, tall and lacquered
+        # black" spliced into the sentence -- the director named a design without spending one of
+        # nine picture slots on it, which is a reasonable thing to want.
+        for entry in self.staging:
+            body = config.STAGE_MENTION_PREFIX + str(entry.get("id"))
+            found[body] = (where.get(self.stage_path(str(entry.get("id")))),
+                           self.stage_role(entry))
+        return found
+
+    def stage_mentions(self, pictures: list[tuple[Path, str]]) -> dict[str, tuple[int | None, str]]:
+        """Resolve the @-tokens in a REEL-level text -- a staging sheet's own draw prompt.
+
+        The staging entries and the cast, and deliberately not `@ref:`. A beat's picture is
+        beat-scoped, and a design sheet has no beat: a token naming one here could only ever mean
+        a picture from some other shot, so it degrades to nothing rather than quietly resolving
+        onto one.
+
+        `@cast` is in, with no position ever. It is beat 1's own still -- a composed shot -- and
+        conditioning a design sheet on it is the failure `pictures.draw_text` records, where "a
+        single iron-grey club" against a fox reference came back as the fox. So naming it here
+        gets the words and never the image, which is exactly right for "the same orange as
+        @cast".
+        """
+        where = {path: position for position, (path, _note) in enumerate(pictures, start=1)}
+        found: dict[str, tuple[int | None, str]] = {
+            config.CAST_MENTION: (None, config.CAST_MENTION_ROLE),
+        }
+        for entry in self.staging:
+            body = config.STAGE_MENTION_PREFIX + str(entry.get("id"))
+            found[body] = (where.get(self.stage_path(str(entry.get("id")))),
+                           self.stage_role(entry))
         return found
 
     def media_makers(self) -> tuple:
@@ -583,6 +628,293 @@ class Board:
         if reference is not None and reference == self.asset_path(n):
             return None
         return reference
+
+    # ## Staging -- the reel's cast and sets, designed once and bound to the beats that use them
+    #
+    # The layer between the style bible (one paragraph, reel-wide, words only) and a beat's own
+    # reference pictures (images, one beat). A staging entry is named, written down, drawn once
+    # as a design sheet, and bound to whichever beats it appears in -- so the same wolf reaches
+    # every shot it is in as the same image rather than as another reading of the same sentence.
+    #
+    # Reel-scoped on purpose, which is what makes it different from everything above it. A
+    # picture on beat 3 cannot be used by beat 7 without being uploaded again; the whole point of
+    # a bible is that it is the same one everywhere.
+
+    def stage_path(self, entry_id: str) -> Path:
+        """The design sheet for one staging entry.
+
+        Directly in the reel directory rather than in a subfolder, and that is a constraint
+        rather than a preference: `api.media_file` serves only files whose parent IS the reel
+        directory (a prefix check alone would let a name climb out with ".."), so a sheet in
+        `staging/` would exist, render and never be visible on the canvas.
+
+        Named by id, not by position or name: an entry can be renamed and the bible reordered,
+        and neither may move a file that a bound beat and an @-mention both point at.
+        """
+        return self.workdir / f"stage_{entry_id}.png"
+
+    @property
+    def staging(self) -> list[dict]:
+        """The design bible, for reading. Never `setdefault`, unlike `beats`.
+
+        Reading a board must not write to it. `beats` gets away with defaulting in place because
+        every board has some; a bible is optional, and a property that materialised an empty list
+        would put `"staging": []` into every storyboard.json on the next save of every reel that
+        has never used the feature. Same rule `_store_ref_slots` follows for the per-picture
+        lists, and for the same reason: the document stays readable, and "no bible" and "an empty
+        bible" never have to mean different things.
+
+        The two mutators reach for the stored list through `_staging`.
+        """
+        return self.data.get("staging") or []
+
+    def _staging(self) -> list[dict]:
+        """The stored list, created on demand. For the two methods that actually change it."""
+        return self.data.setdefault("staging", [])
+
+    def stage_entry(self, entry_id: str) -> dict:
+        for entry in self.staging:
+            if str(entry.get("id")) == entry_id:
+                return entry
+        raise KeyError(f"no staging entry {entry_id!r} in {self.slug}")
+
+    def stage_field(self, entry: dict, key: str):
+        """One field of a staging entry, with the shape a missing key reads as.
+
+        Every read goes through here so a hand-edited board, an entry written by an older
+        version and a fresh one are indistinguishable to everything downstream.
+        """
+        blank = dict(STAGE_FIELDS)[key]
+        value = entry.get(key)
+        if key == "chat":
+            return list(value or [])
+        if value in (None, ""):
+            return blank
+        return value
+
+    def stage_kind(self, entry: dict) -> str:
+        kind = str(self.stage_field(entry, "kind"))
+        return kind if kind in config.STAGE_KINDS else config.STAGE_CHARACTER
+
+    def stage_name(self, entry: dict) -> str:
+        return " ".join(str(self.stage_field(entry, "name")).split()) or "an unnamed design"
+
+    def stage_role(self, entry: dict) -> str:
+        """What this sheet IS, as the phrase that follows "<Picture 3> is ".
+
+        The name always leads, whether or not the director wrote a note, and that is the whole
+        job of this method. Both prompts name the pictures by position and neither has any other
+        way to learn that <Picture 3> and the "Vera" the action line talks about are the same
+        animal -- so a role that read "the fox mother, warm orange" would describe the sheet
+        perfectly and still leave the model free to put a second fox on screen. That is the
+        two-of-the-same-character failure `ref_prompts` was written for, one level up.
+        """
+        name = self.stage_name(entry)
+        note = " ".join(str(self.stage_field(entry, "note")).split()).strip().rstrip(".")
+        if note:
+            return f"{name}, {note}"
+        return config.STAGE_ROLE[self.stage_kind(entry)].format(name=name)
+
+    def bound_staging(self, n: int) -> list[dict]:
+        """The staging entries beat `n` binds, in bind order, skipping ids that have gone.
+
+        Bind order is the director's: it is the order the sheets are numbered in, and reordering
+        is a real edit for the same reason reordering a beat's pictures is -- the prompt names
+        them by position.
+
+        A dangling id is dropped rather than raising. `remove_stage` unbinds as it deletes, so
+        this only fires on a hand-edited board, and a bible entry that is not there is not a
+        reason to refuse to render the beat.
+        """
+        try:
+            bound = self.beat(n).get("staging") or []
+        except KeyError:
+            return []
+        found = []
+        for entry_id in bound:
+            try:
+                found.append(self.stage_entry(str(entry_id)))
+            except KeyError:
+                continue
+        return found
+
+    def staging_pictures(self, n: int, *, for_still: bool) -> list[tuple[Path, str]]:
+        """The bound design sheets that go into THIS render as images, with their roles.
+
+        The two callers want different lists, and the difference is the one measured constraint
+        in the whole feature: the video model takes nine pictures and the still renderer takes
+        `config.MAX_STILL_REFS` (four, one of which is already the cast reference). Three
+        characters and a set do not fit on the still side, so something has to give -- and what
+        gives is the set, which reaches the still as words instead (`staging_text` picks up
+        whatever this list drops). Characters are what drift visibly between shots; a clearing
+        redrawn from a fixed sentence is survivable, a wolf that changes species is not.
+
+        A sheet with no file on disk is skipped here and picked up as text by `staging_text`, so
+        writing the bible is useful before a single sheet has been drawn.
+        """
+        found = []
+        for entry in self.bound_staging(n):
+            if for_still and self.stage_kind(entry) == config.STAGE_ENVIRONMENT:
+                continue
+            path = self.stage_path(str(entry.get("id")))
+            if path.is_file():
+                found.append((path, self.stage_role(entry)))
+        return found
+
+    def staging_text(self, n: int, shown: list[tuple[Path, str]]) -> str:
+        """What the bound sheets say, for the ones this render was NOT handed as pictures.
+
+        One rule, applied by both renderers: a sheet the model can see is described by position
+        in `ref_notes` / the still's notes clause, and a sheet it cannot see is described in
+        prose. Saying it both ways is the failure worth avoiding -- a model told "<Picture 2> is
+        the clearing" AND "also designed: the clearing, a moonlit ring of birches" reads two
+        clearings, and puts both in the shot.
+
+        `shown` is the picture list this particular render is being given, so the same board
+        answers differently for the clip and for the still it opens on. Matched on path rather
+        than on id, which is what lets a truncated list answer correctly without either caller
+        having to know where the truncation happened.
+        """
+        seen = {path for path, _role in shown}
+        lines = [
+            self.stage_role(entry) for entry in self.bound_staging(n)
+            if self.stage_path(str(entry.get("id"))) not in seen
+        ]
+        return "; ".join(line.rstrip(".") for line in lines if line)
+
+    def staging_digest(self, n: int) -> str:
+        """One hash of everything beat `n`'s staging contributes, or "" when it binds nothing.
+
+        Empty rather than a hash-of-nothing, and that is the point: every caller appends this to
+        a fingerprint only when it is non-empty, so a board built before staging existed keeps
+        the byte-identical fingerprint it had -- and its rendered beats stay `rendered` rather
+        than all going stale and re-pricing a paid render the moment this shipped.
+
+        Everything that reaches a prompt is in here: the order, the kind (which decides whether a
+        sheet is an image or a sentence on the still side), the role text, and the sheet's own
+        content hash. The draw prompt is deliberately absent, for the reason `ref_draws` is --
+        it produces an image, and the image is hashed.
+        """
+        bound = self.bound_staging(n)
+        if not bound:
+            return ""
+        return fingerprint(*(
+            part for entry in bound
+            for part in (str(entry.get("id")), self.stage_kind(entry), self.stage_role(entry),
+                         file_hash(self.stage_path(str(entry.get("id")))))
+        ))
+
+    def add_stage(self, *, kind: str, name: str, note: str = "", draw: str = "") -> dict:
+        """Mint one staging entry. No file: a sheet exists because it was drawn or uploaded.
+
+        Same rule as a beat's reference pictures, and for the same reason -- `ref_paths` is
+        file-existence based there, and here a bible entry with a placeholder image would be a
+        picture `staging_pictures` picks up and a render pays reference tokens for.
+        """
+        if kind not in config.STAGE_KINDS:
+            raise ValueError(f"kind must be one of {', '.join(config.STAGE_KINDS)}")
+        if len(self.staging) >= config.MAX_STAGE_SHEETS:
+            raise ValueError(
+                f"this reel already has {config.MAX_STAGE_SHEETS} designed things, which is the "
+                "ceiling. Remove one first."
+            )
+        entry = {
+            "id": self._mint_stage_id(),
+            "kind": kind,
+            "name": " ".join(str(name).split()),
+            "note": " ".join(str(note).split()),
+            "draw": " ".join(str(draw).split()),
+        }
+        self._staging().append(entry)
+        return entry
+
+    def _mint_stage_id(self) -> str:
+        """A short id no staging entry is using. Random for the reason `_mint_ref_id` is."""
+        import secrets
+
+        taken = {str(entry.get("id")) for entry in self.staging}
+        while True:
+            candidate = secrets.token_hex(3)
+            if candidate not in taken:
+                return candidate
+
+    def set_stage_chat(self, entry_id: str, turns: list[dict]) -> None:
+        """Write one sheet's transcript back. The trim to a memory length is the caller's.
+
+        Same split as `store_ref_chats`: how long a conversation is kept is a prompt-budget
+        decision and lives beside the other ones, in `staging.py`.
+        """
+        self.stage_entry(entry_id)["chat"] = list(turns)
+
+    def bind_stage(self, n: int, ids: list[str]) -> list[str]:
+        """Set exactly which sheets beat `n` uses, in the order they are to be numbered.
+
+        Replaces rather than appends, because the canvas control is a set of toggles and "which
+        of these does this shot contain" is one answer, not a series of additions. Unknown ids
+        are dropped and duplicates collapsed, so a stale tab cannot bind a sheet that has just
+        been deleted or number the same one twice.
+
+        Deliberately does NOT move the join. A beat's own uploads do (`api.store_refs`), because
+        an upload only reaches a render through the reference join and storing one otherwise
+        means nothing. A staging entry always reaches the render: as pictures on the reference
+        join, and as words on every other one. So there is nothing here to warn about and
+        nothing to silently change.
+        """
+        known = [str(entry.get("id")) for entry in self.staging]
+        wanted: list[str] = []
+        for entry_id in ids:
+            entry_id = str(entry_id)
+            if entry_id in known and entry_id not in wanted:
+                wanted.append(entry_id)
+        beat = self.beat(n)
+        if wanted:
+            beat["staging"] = wanted
+        else:
+            beat.pop("staging", None)
+        return wanted
+
+    def remove_stage(self, entry_id: str) -> None:
+        """Delete one staging entry, its sheet, every binding to it, and every mention of it.
+
+        All four move together or the board starts lying, exactly as in `remove_ref`. The
+        difference is reach: a picture is beat-scoped, so a token naming one could only ever be
+        valid on its own beat, while a staging entry is reel-scoped -- so the mention rewrite has
+        to walk every beat.
+
+        The token becomes what the entry WAS, which keeps the sentence readable, and nothing when
+        it was never described. Lossy and honest: a reference to a design that no longer exists
+        is not recoverable, only hideable.
+
+        The transcripts are deliberately untouched, for the reason `remove_ref` leaves them
+        alone: they are history, and editing what was already said is the drift `agent.transcript`
+        exists to prevent.
+        """
+        entry = self.stage_entry(entry_id)
+        role = self.stage_role(entry)
+        self.stage_path(entry_id).unlink(missing_ok=True)
+        remaining = self._staging()
+        remaining.remove(entry)
+        # Dropped rather than left as `[]`, so removing the last design leaves the document
+        # exactly as it was before there was a bible at all.
+        if not remaining:
+            self.data.pop("staging", None)
+        body = config.STAGE_MENTION_PREFIX + entry_id
+        for beat in self.beats:
+            bound = [str(i) for i in (beat.get("staging") or []) if str(i) != entry_id]
+            if bound:
+                beat["staging"] = bound
+            else:
+                beat.pop("staging", None)
+            for field in ("scene", "action", "asset_prompt"):
+                if beat.get(field):
+                    beat[field] = config.drop_mention(str(beat[field]), body, role)
+            for key in ("ref_prompts", "ref_draws"):
+                values = self._ref_slots(beat["n"], key, "")
+                if any(values):
+                    self._store_ref_slots(
+                        beat["n"], key,
+                        [config.drop_mention(str(value), body, role) for value in values],
+                    )
 
     @property
     def reel_path(self) -> Path:
@@ -788,11 +1120,23 @@ class Board:
         Truncated at the model's cap rather than raising: `next_ref_index` already refuses an
         upload that would not fit, so reaching the limit here means a hand-edited board, and
         rendering the first nine pictures beats refusing to render at all.
+
+        Three tiers, in this order and for this reason: the automatic slots (this shot's own
+        opening composition, then the cast) come first because they always did; the reel's bound
+        staging sheets come next, because they are the film's fixed designs and a beat cannot
+        change them; the director's own uploads come last, because they are this one shot's and
+        appending is what keeps a new upload from renumbering the ones already described.
+
+        Binding a sheet DOES renumber the uploads below it, and that is safe by construction
+        rather than by luck: this method returns (path, role) pairs, so every note travels with
+        its picture, and `mentions` resolves by path rather than by position.
         """
         if not uses_refs(self.source_for(self.beat(n))):
             return []
         uploaded = list(zip(self.ref_paths(n), self.ref_prompts(n)))
-        return (self.auto_pictures(n) + uploaded)[:config.MAX_REF_IMAGES]
+        return (
+            self.auto_pictures(n) + self.staging_pictures(n, for_still=False) + uploaded
+        )[:config.MAX_REF_IMAGES]
 
     def still_pictures(self, n: int, limit: int | None = None) -> list[tuple[Path, str]]:
         """What beat `n`'s STILL is drawn from, paired with what each picture is for.
@@ -816,23 +1160,36 @@ class Board:
         Pairs, like `pictures_for`, though the still prompt names nothing by number: the notes are
         the director's words about a specific picture, and a path list beside a note list that can
         slip by one is the bug that method exists to make impossible.
+
+        The bound staging sheets sit between the cast and the uploads, mirroring `pictures_for`
+        -- but only the ones that are images here. An environment sheet is dropped and picked up
+        by `staging_text` as prose instead, because four slots (one already the cast) do not hold
+        three characters and a set, and what a still must not get wrong is the cast. A set
+        redrawn from a fixed sentence in every shot is the failure this feature was built to
+        stop being unavoidable; it is not the failure it is worst at.
         """
         found: list[tuple[Path, str]] = []
         cast = self.reference_for(n)
         if cast is not None:
             found.append((cast, ""))
         if uses_refs(self.source_for(self.beat(n))):
+            found += self.staging_pictures(n, for_still=True)
             found += list(zip(self.ref_paths(n), self.ref_prompts(n)))
         cap = config.MAX_STILL_REFS if limit is None else min(limit, config.MAX_STILL_REFS)
         return found[:max(0, cap)]
 
     def ref_budget(self, n: int) -> int:
-        """How many pictures the director may upload to this beat, after the automatic ones.
+        """How many pictures the director may upload to this beat, after everything automatic.
 
-        Seven rather than nine on a beat that opens a shot. Read off `auto_pictures` so the two
-        can never disagree about how many slots are already spoken for.
+        Seven rather than nine on a beat that opens a shot, and fewer again once it binds
+        staging sheets. Read off the same two methods `pictures_for` composes from, so the budget
+        and the render can never disagree about how many slots are already spoken for -- an
+        upload the render would truncate away has to be refused, not stored.
         """
-        return max(0, config.MAX_REF_IMAGES - len(self.auto_pictures(n)))
+        spoken = len(self.auto_pictures(n))
+        if uses_refs(self.source_for(self.beat(n))):
+            spoken += len(self.staging_pictures(n, for_still=False))
+        return max(0, config.MAX_REF_IMAGES - spoken)
 
     def identity(self) -> str:
         """The style bible: what the characters and the set look like, never how they move.
@@ -864,7 +1221,17 @@ class Board:
         source = self.source_for(beat)
         if frame_ids is None:
             frame_ids = self.frame_ids_for(beat)
-        return fingerprint(
+        # Appended only when the beat binds something, which is what keeps every board built
+        # before staging existed on the byte-identical fingerprint it already had. Adding an
+        # unconditional part here would mark every rendered beat in every reel stale at once and
+        # re-price a paid render for a feature nobody had used yet.
+        #
+        # It overlaps `frame_ids.refs` on a reference beat, where the sheets are hashed as
+        # pictures too. Harmless -- both move together -- and it is what carries staging onto the
+        # three joins that have no picture list at all: a chained beat is given the same sheets
+        # as words, so rewriting one really does change what it would render as.
+        staging = self.staging_digest(beat["n"])
+        parts: list = [
             beat.get("action", ""),
             # The scene line is in the video prompt too, so rewriting where a shot happens
             # really does change what it would render as.
@@ -882,7 +1249,10 @@ class Board:
             frame_ids.asset,
             frame_ids.upstream,
             frame_ids.refs,
-        )
+        ]
+        if staging:
+            parts.append(staging)
+        return fingerprint(*parts)
 
     def frame_ids_for(self, beat: dict) -> FrameIds:
         """Content hashes of the images this beat is conditioned on, as things stand now.
@@ -1010,6 +1380,13 @@ class Board:
             ids = frame_ids if frame_ids is not None else self.frame_ids_for(beat)
             parts.append(ids.asset)
             parts.append(ids.refs)
+        # Reel-wide, like the style bible above, so redrawing a sheet marks every beat that binds
+        # it `edited` rather than `follows a change` -- correct, because you did edit it, and it
+        # is not something a beat inherits from the one before it. Conditional for the reason
+        # `render_fingerprint` gives: a board that binds nothing keeps the fingerprint it had.
+        staging = self.staging_digest(beat["n"])
+        if staging:
+            parts.append(staging)
         return fingerprint(*parts)
 
     def pending(self, *, rendering: set[int] | None = None) -> list[int]:
@@ -1137,10 +1514,33 @@ class Board:
                     {"url": self.media_url(path), "note": note}
                     for path, note in self.auto_pictures(n)
                 ],
-                # How far the director's pictures are pushed down the numbering by those. The
-                # prompt calls upload i <Picture ref_offset + i>, and the node has to show the
-                # same number the model is told or the notes describe the wrong picture.
-                "ref_offset": len(self.auto_pictures(n)),
+                # Which of the reel's design sheets this scene uses, in the order they are
+                # numbered. Ids rather than objects: the sheets themselves are published once at
+                # board level, and a second copy per beat is a second thing to keep in step.
+                "staging": [str(entry.get("id")) for entry in self.bound_staging(n)],
+                # How many of them actually reach the clip and the still as PICTURES. A set
+                # sheet is in the first and not the second by design, and a node that showed the
+                # binding without showing that would be claiming something untrue about the
+                # still -- see `staging_pictures`.
+                "staging_refs": len(self.staging_pictures(n, for_still=False)),
+                "staging_still_refs": len(self.staging_pictures(n, for_still=True)),
+                # What the sheets this render was not handed say instead, exactly as the model
+                # will be told it. Published rather than recomputed on the canvas so there is
+                # one answer to "does binding this set actually do anything here".
+                #
+                # Two of them, because the two renders answer differently and the difference is
+                # the whole design: the clip has nine picture slots and usually needs no prose at
+                # all, while the still has four and hands the sets over as words. One field
+                # showing the clip's empty answer beside "1 of 2 reach the still" reads as a bug.
+                "staging_text": self.staging_text(n, self.pictures_for(n)),
+                "staging_still_text": self.staging_text(n, self.still_pictures(n)),
+                # How far the director's pictures are pushed down the numbering by the automatic
+                # slots AND the bound sheets. The prompt calls upload i <Picture ref_offset + i>,
+                # and the node has to show the same number the model is told or the notes
+                # describe the wrong picture.
+                "ref_offset": len(self.auto_pictures(n)) + len(
+                    self.staging_pictures(n, for_still=False)
+                ) if uses_refs(self.source_for(beat)) else len(self.auto_pictures(n)),
                 # What is left of the model's nine after the automatic ones.
                 "ref_slots": self.ref_budget(n),
                 # How many of the director's pictures also condition the STILL, which takes far
@@ -1149,7 +1549,9 @@ class Board:
                 # than worked out on the canvas so there is one answer to "is this picture in the
                 # still" -- see `still_pictures`.
                 "still_refs": max(
-                    0, len(self.still_pictures(n)) - (self.reference_for(n) is not None)
+                    0, len(self.still_pictures(n))
+                    - (self.reference_for(n) is not None)
+                    - len(self.staging_pictures(n, for_still=True))
                 ),
                 # Whether this beat's still is wired as the composition it opens on. False on a
                 # reference beat carrying the previous clip, which opens on that instead.
@@ -1190,6 +1592,28 @@ class Board:
             # deliberately or is just beat 1 standing in.
             "reference": self.media_url(self.reference_path()),
             "reference_explicit": (self.workdir / REFERENCE_NAME).is_file(),
+            # The reel's cast and sets, designed once and bound to the beats that use them. Sent
+            # whole rather than as ids alone: this is the one list the canvas renders on its own
+            # panel, and it is small -- MAX_STAGE_SHEETS entries, and the sheets themselves go
+            # over as URLs.
+            "staging": [
+                {
+                    "id": str(entry.get("id")),
+                    "kind": self.stage_kind(entry),
+                    "name": self.stage_name(entry),
+                    "note": str(self.stage_field(entry, "note")),
+                    "draw": str(self.stage_field(entry, "draw")),
+                    "chat": self.stage_field(entry, "chat"),
+                    "sheet": self.media_url(self.stage_path(str(entry.get("id")))),
+                    # What the prompts are actually told this design is, name included --
+                    # derived here so the panel shows the sentence the model gets rather than
+                    # a second rendering of the same fields.
+                    "role": self.stage_role(entry),
+                }
+                for entry in self.staging
+            ],
+            "stage_kinds": list(config.STAGE_KINDS),
+            "max_staging": config.MAX_STAGE_SHEETS,
             "beats": beats,
             "canvas": self.data.get("canvas", {}),
             "reel": self.media_url(self.existing_reel()),

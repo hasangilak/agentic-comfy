@@ -95,7 +95,7 @@ export function ReviseField({
         value={draft.draft}
         onChange={draft.change}
         onBlur={draft.flush}
-        options={videoPictures(beat)}
+        options={videoPictures(beat, board.staging ?? [])}
         placeholder={placeholder}
         title={title}
       />

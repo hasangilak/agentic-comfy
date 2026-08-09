@@ -79,7 +79,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   // The whole conditioning set in the order the prompt numbers it, from the one module that
   // knows that order. `index` is the number the API addresses an upload by, and it is null on
   // an automatic slot -- those follow the still and the cast reference and cannot be edited here.
-  const pictures = videoPictures(beat);
+  const pictures = videoPictures(beat, board.staging ?? []);
   // `videoPictures` is empty off the reference join, mirroring the server -- so a beat whose join
   // was cycled away afterwards would show none of the pictures it still has on disk, and offer no
   // way to remove them. They reach no renderer there, which is worth SAYING rather than hiding:
@@ -553,6 +553,30 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               <AddPicture beat={beat} />
             </div>
         </div>
+
+        {/* Which of the film's designs are in this shot. Read-only here and edited in the
+            expanded view: at 240px the node can say WHICH, and a row of toggles for a bible of
+            a dozen would be the widest thing on it. Shown only once something is bound, so a
+            board with no design bible looks exactly as it did. */}
+        {beat.staging?.length ? (
+          <button
+            onClick={() => studio.setStagingOpen(true)}
+            className="nodrag flex w-full items-center gap-1 rounded px-1 py-0.5 text-left
+              text-[10px] leading-snug text-zinc-500 hover:bg-soft"
+            title={
+              `this scene is conditioned on ${beat.staging.length} of the reel's designs — ` +
+              `${beat.staging_refs} of them as pictures here` +
+              (beat.staging_text ? `, the rest as words: ${beat.staging_text}` : "")
+            }
+          >
+            <span className="shrink-0">🎭</span>
+            <span className="min-w-0 flex-1 truncate">
+              {beat.staging
+                .map((id) => board.staging.find((entry) => entry.id === id)?.name ?? "?")
+                .join(", ")}
+            </span>
+          </button>
+        ) : null}
 
         {/* The reference join's only route to continuity. ref2va has no keyframe input, so
             the previous clip cannot be handed over as a frame -- but the node takes reference

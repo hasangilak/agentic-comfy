@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import (agent, board as board_mod, comfy, config, papercut, pictures, qwen, render,
-               script, stills as stills_mod)
+               script, staging as staging_mod, stills as stills_mod)
 from .jobs import Job, Runner, runner
 
 app = FastAPI(title="Paper Reel Studio")
@@ -243,6 +243,44 @@ def handle_ref_chat(job: Job, run: Runner) -> dict:
     )
 
 
+def handle_stage_draw(job: Job, run: Runner) -> dict:
+    """Draw one of the reel's design sheets.
+
+    Its own kind rather than a variant of `ref_draw` for the same reason that one is not a
+    variant of `asset`: it addresses a different thing -- a reel-level design rather than a
+    picture on one beat -- and the canvas has to be able to tell which sheet is busy. Same queue
+    as everything else, so a sheet cannot be redrawn while a render is reading it.
+    """
+    board = load(job.slug)
+    entry_id = str(job.detail["id"])
+    staging_mod.draw(
+        board, entry_id,
+        prompt=job.detail.get("prompt"),
+        gemini_model=job.detail.get("gemini_model"),
+        gemini_image_size=job.detail.get("gemini_image_size"),
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run, label="design"),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )
+    run.publish_board(board.slug)
+    return {"id": entry_id}
+
+
+def handle_stage_chat(job: Job, run: Runner) -> dict:
+    """One turn of the conversation about one design sheet, its redraw included."""
+    board = load(job.slug)
+    entry_id = str(job.detail["id"])
+    run.log(job, f'[qwen] design {entry_id}: {job.detail["message"]}')
+    return staging_mod.converse(
+        board, entry_id, job.detail["message"],
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run, label="design"),
+        announce=lambda: run.publish_board(board.slug),
+        cancelled=lambda: job.cancelling,
+    )
+
+
 def handle_revise(job: Job, run: Runner) -> dict:
     """Rewrite one beat's scene or action from a note about it.
 
@@ -276,6 +314,7 @@ for kind, handler in (
     ("plan", handle_plan), ("chat", handle_chat), ("asset", handle_asset),
     ("still_chat", handle_still_chat), ("revise", handle_revise),
     ("ref_draw", handle_ref_draw), ("ref_chat", handle_ref_chat),
+    ("stage_draw", handle_stage_draw), ("stage_chat", handle_stage_chat),
     ("caption", handle_caption), ("render", handle_render),
 ):
     runner.register(kind, handler)
@@ -869,6 +908,217 @@ def remove_ref(slug: str, n: int, index: int) -> dict:
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}
+
+
+# ## Staging
+#
+# The reel's cast and sets: named, written down, drawn once, bound to the beats that contain
+# them. Reel-scoped, which is the whole difference from the per-beat pictures above -- these
+# routes carry no beat number and the binding is the one that does.
+
+
+SAFE_STAGE_ID = re.compile(r"^[0-9a-f]{4,12}$")
+
+
+def stage_id(entry_id: str) -> str:
+    """An id names one file in the reel directory, so it is checked before it is used as one."""
+    if not SAFE_STAGE_ID.match(entry_id):
+        raise HTTPException(404, f"no design called {entry_id!r}")
+    return entry_id
+
+
+def stage_busy(slug: str, entry_id: str) -> None:
+    """Refuse while a job for this sheet is queued or running.
+
+    Narrowed to this one design rather than reusing `require_structure_idle`, which blocks on
+    anything at all: removing a design while an unrelated scene renders is fine. What is not fine
+    is deleting the file a queued draw is about to write into, or redrawing one twice at once.
+    """
+    busy = next(
+        (
+            job for job in runner.jobs.values()
+            if job.slug == slug and job.kind in ("stage_draw", "stage_chat")
+            and job.state in ("queued", "running")
+            and str(job.detail.get("id") or "") == entry_id
+        ),
+        None,
+    )
+    if busy:
+        raise HTTPException(
+            409, f"that design is already being {'drawn' if busy.kind == 'stage_draw' else 'discussed'}. Wait for the job to finish.",
+        )
+
+
+@app.post("/api/reels/{slug}/staging")
+def add_staging(slug: str, body: dict = Body(...)) -> dict:
+    """Add one thing to the reel's design bible -- a character, a set, or a prop.
+
+    Synchronous and free: this mints an entry, it does not draw one. A sheet appears when it is
+    drawn or uploaded, which is the same rule a beat's reference pictures follow -- an entry with
+    a placeholder image would be a picture `staging_pictures` picks up and a render pays
+    reference tokens for.
+    """
+    board = load(slug)
+    name = " ".join(str(body.get("name") or "").split())
+    if not name:
+        raise HTTPException(422, "give the design a name -- it is what the prompts call it")
+    try:
+        entry = board.add_stage(
+            kind=str(body.get("kind") or config.STAGE_CHARACTER),
+            name=name,
+            note=str(body.get("note") or ""),
+            draw=str(body.get("draw") or ""),
+        )
+    except ValueError as refused:
+        raise HTTPException(422, str(refused))
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board), "id": entry["id"]}
+
+
+@app.patch("/api/reels/{slug}/staging/{entry_id}")
+def describe_staging(slug: str, entry_id: str, body: dict = Body(...)) -> dict:
+    """Rename a design, say what it IS, or say what it should be drawn as.
+
+    `name` and `note` both reach the render -- together they are `Board.stage_role`, the sentence
+    every prompt is told about this design -- so editing either marks every beat that binds it
+    stale. `draw` does not, deliberately: it produces a sheet, and the sheet's own content hash is
+    already in `staging_digest`, exactly as `asset_prompt` is left out because the still it made
+    is hashed.
+
+    Only the keys present are written, so four independent controls can edit four fields without
+    each one having to send the other three back.
+    """
+    board = load(slug)
+    try:
+        entry = board.stage_entry(stage_id(entry_id))
+    except KeyError:
+        raise HTTPException(404, f"no design called {entry_id!r} on this reel")
+    if "kind" in body:
+        if body["kind"] not in config.STAGE_KINDS:
+            raise HTTPException(422, f"kind must be one of {', '.join(config.STAGE_KINDS)}")
+        entry["kind"] = body["kind"]
+    for key in ("name", "note", "draw"):
+        if key in body:
+            entry[key] = " ".join(str(body[key] or "").split())
+    if not board.stage_field(entry, "name"):
+        raise HTTPException(422, "a design needs a name -- it is what the prompts call it")
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
+@app.post("/api/reels/{slug}/staging/{entry_id}/sheet")
+async def upload_staging_sheet(slug: str, entry_id: str, file: UploadFile = File(...)) -> dict:
+    """Use your own image as a design sheet.
+
+    Also the answer when the image server is not running: nothing else draws one, so an upload is
+    the only other way a design gets a picture. Unlike a beat's still there is no join to move --
+    a bound design reaches every join, as pictures where there are picture slots and as words
+    everywhere else -- so this changes nothing about the story.
+    """
+    board = load(slug)
+    entry_id = stage_id(entry_id)
+    try:
+        board.stage_entry(entry_id)
+    except KeyError:
+        raise HTTPException(404, f"no design called {entry_id!r} on this reel")
+    stage_busy(slug, entry_id)
+    await store_upload(file, board.stage_path(entry_id))
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
+@app.post("/api/reels/{slug}/staging/{entry_id}/draw")
+def draw_staging(slug: str, entry_id: str, body: dict = Body(default={})) -> dict:
+    """Draw or redraw one design sheet.
+
+    The prompt may be sent with the request, which lets an uploaded sheet be edited in one
+    action; a stored prompt is the fallback for one that has already been drawn.
+    """
+    board = load(slug)
+    entry_id = stage_id(entry_id)
+    model, image_size = gemini_options(body)
+    prompt = " ".join(str(body.get("prompt") or "").split()).strip() or None
+    stage_busy(slug, entry_id)
+    try:
+        staging_mod.drawable(board, entry_id, prompt)
+    except staging_mod.StagingError as refused:
+        raise HTTPException(refused.status, str(refused))
+    job = runner.submit("stage_draw", slug, {
+        "id": entry_id,
+        "prompt": prompt,
+        "gemini_model": model,
+        "gemini_image_size": image_size,
+    })
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/staging/{entry_id}/chat")
+def chat_staging(slug: str, entry_id: str, body: dict = Body(...)) -> dict:
+    """Say what should be different about one design sheet.
+
+    JSON, not multipart. In a still's conversation an attachment means "here is what I mean" and
+    is stored, because `Board.still_pictures` reads the beat; here the sheet IS the subject, and a
+    file sent with the note would have to become a second design nobody asked for.
+    """
+    board = load(slug)
+    entry_id = stage_id(entry_id)
+    message = " ".join(str(body.get("message") or "").split()).strip()
+    if not message:
+        raise HTTPException(422, "say what should be different about the design")
+    try:
+        board.stage_entry(entry_id)
+    except KeyError:
+        raise HTTPException(404, f"no design called {entry_id!r} on this reel")
+    if not board.stage_path(entry_id).is_file():
+        raise HTTPException(422, "draw or upload the sheet first, then say what to change")
+    stage_busy(slug, entry_id)
+    job = runner.submit("stage_chat", slug, {"id": entry_id, "message": message})
+    return {"job": job.to_json()}
+
+
+@app.delete("/api/reels/{slug}/staging/{entry_id}")
+def remove_staging(slug: str, entry_id: str) -> dict:
+    """Drop one design, its sheet, every binding to it, and every mention of it.
+
+    All four move together or the board starts lying -- a beat still numbering a sheet that is
+    gone, or a sentence naming a design the expander would silently drop at render time. The
+    token is rewritten into what the design WAS, which keeps the sentence readable.
+    """
+    board = load(slug)
+    entry_id = stage_id(entry_id)
+    stage_busy(slug, entry_id)
+    try:
+        board.remove_stage(entry_id)
+    except KeyError:
+        raise HTTPException(404, f"no design called {entry_id!r} on this reel")
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
+@app.put("/api/reels/{slug}/beats/{n}/staging")
+def bind_staging(slug: str, n: int, body: dict = Body(...)) -> dict:
+    """Say which of the reel's designs appear in this scene, in the order they are numbered.
+
+    Replaces rather than appends: the control is a set of toggles, and "which of these does this
+    shot contain" is one answer rather than a series of additions.
+
+    Unlike adding a picture, this never moves the join and so carries no warning. A picture only
+    reaches a render through the reference join; a bound design reaches every join -- as
+    <Picture i> where there are picture slots, and as a sentence everywhere else.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    ids = body.get("ids")
+    if not isinstance(ids, list):
+        raise HTTPException(422, "send the designs this scene uses as `ids`")
+    bound = board.bind_stage(n, [str(i) for i in ids])
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board), "staging": bound}
 
 
 @app.post("/api/reels/{slug}/reference")

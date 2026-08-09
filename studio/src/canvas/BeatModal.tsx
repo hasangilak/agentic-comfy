@@ -17,6 +17,7 @@ import { AddPicture, type AddPictureHandle } from "./AddPicture";
 import { PromptField } from "./Mentions";
 import { NewPicture, PicturePanel } from "./PicturePanel";
 import { ReviseField } from "./ReviseField";
+import { StagingBind } from "./StagingBind";
 import { StillChat } from "./StillChat";
 
 /**
@@ -604,7 +605,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                       value={prompt.draft}
                       onChange={prompt.change}
                       onBlur={prompt.flush}
-                      options={stillPictures(beat)}
+                      options={stillPictures(beat, board.staging ?? [])}
                       onPick={(option) =>
                         setPicked(option.id === "cast" ? "cast" : `picture:${option.id}`)
                       }
@@ -624,6 +625,12 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                 ) : null}
               </div>
             ) : null}
+
+            {/* Above the two lines that get rendered, because it answers the question they
+                assume: which of the film's designed things is in this shot. */}
+            <div className="border-t border-edge pt-3">
+              <StagingBind board={board} beat={beat} />
+            </div>
 
             <div className="space-y-3 border-t border-edge pt-3">
               <ReviseField

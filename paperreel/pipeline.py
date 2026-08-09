@@ -52,6 +52,10 @@ class Shot:
     # whole description of what one beat was handed, and a board read halfway through a batch
     # could answer differently than the one the batch was planned from.
     mentions: dict[str, tuple[int | None, str]] = field(default_factory=dict)
+    # What the reel's bound design sheets say, for the ones this shot was not handed as pictures.
+    # Carried rather than looked up for the same reason `mentions` is, and computed against
+    # `pictures` so a sheet is never both a numbered picture and a sentence about a second one.
+    staging: str = ""
     # Reference beats only: send the tail of the previous clip as a reference video, which is
     # how this join gets continuity without a keyframe.
     carry: bool = False
@@ -233,6 +237,7 @@ def render_beats(
                                                    opens_on=(shot.opens_on and bool(pictures)
                                                              and pictures[0][0] == shot.asset),
                                                    ref_videos=1 if carry else 0,
+                                                   staging=shot.staging,
                                                    mentions=shot.mentions or None),
                         length=length, steps=steps, seed=seed + n,
                     ),
@@ -316,6 +321,9 @@ def render_reel(
             # Resolved against the same read-only view the pictures came from, so the numbering
             # a token expands to and the list it is numbering are one decision.
             mentions=view.mentions(beat["n"], view.pictures_for(beat["n"])),
+            # Against the same list, for the same reason: a sheet already numbered as a picture
+            # must not also arrive as prose about a second one of it.
+            staging=view.staging_text(beat["n"], view.pictures_for(beat["n"])),
             carry=(beat.get("ref_video") == board_mod.CARRY_UPSTREAM and index > 0),
         )
         for index, (beat, source) in enumerate(zip(beats, resolved))

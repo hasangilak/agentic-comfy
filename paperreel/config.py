@@ -378,6 +378,80 @@ REF_DRAW_STYLE_SUFFIX = (
 REF_CHAT_HISTORY = int(os.environ.get("PAPERREEL_REF_CHAT_HISTORY", "8"))
 REF_CHAT_MEMORY = int(os.environ.get("PAPERREEL_REF_CHAT_MEMORY", "12"))
 
+# ## Staging: the reel's cast and sets, designed before anything is rendered
+#
+# Everything above is beat-scoped. A picture uploaded to beat 3 conditions beat 3, and the one
+# image that crossed the whole reel was the cast reference -- which is not a design sheet at all
+# but beat 1's own still, a composed shot whose framing, staging and light every later still was
+# then anchored to. That is why a second character had nowhere to live and why the same forest
+# was redesigned from the same paragraph in every beat that used it: the only reel-wide anchor
+# was one picture, and it was a picture of one moment.
+#
+# A staging entry is the missing layer. It is named, it is written down, it is drawn once as a
+# design sheet, and beats BIND it -- so the same wolf and the same clearing reach every shot they
+# appear in as the same image and the same sentence, rather than as two readings of the bible.
+#
+# Three kinds, and the kind is not decoration -- it decides three separate things: what the sheet
+# is drawn as (the suffixes below), what shape it is drawn at, and whether it reaches the still
+# renderer as an image or only as words. See `Board.staging_pictures`.
+STAGE_CHARACTER = "character"
+STAGE_ENVIRONMENT = "environment"
+STAGE_PROP = "prop"
+STAGE_KINDS = (STAGE_CHARACTER, STAGE_ENVIRONMENT, STAGE_PROP)
+
+# A soft ceiling on the whole bible, not on what one beat binds -- that is bounded by
+# MAX_REF_IMAGES already. It exists so a runaway loop cannot fill the reel directory with sheets,
+# and it is generous: a 40-second reel with more than a dozen designed things is not a reel.
+MAX_STAGE_SHEETS = int(os.environ.get("PAPERREEL_MAX_STAGE_SHEETS", "16"))
+
+# A set sheet is the one kind REF_DRAW_STYLE_SUFFIX is wrong for, and wrong in both halves: it
+# asks for "the subject complete and centred" on a "plain neutral background" with "no scenery",
+# and an environment sheet is nothing but scenery with the subject deliberately absent. Handed
+# the prop-sheet suffix, "a moonlit clearing ringed with birches" came back as a single birch on
+# grey -- which is a faithful reading of the instruction it was given.
+#
+# It also asks for the reel's own vertical shape rather than the square below, because a set is
+# the one design sheet whose framing is load-bearing: what the still needs to know is how much of
+# this clearing is above the puppet's head, and a square sheet answers a different question.
+SET_DRAW_STYLE_SUFFIX = (
+    "Handcrafted layered paper-cutout construction, visible paper grain, soft contact shadows, "
+    "layered depth from foreground to sky, even daylight unless the description says otherwise, "
+    "an empty set with no characters, no people and no animals anywhere in it, nothing cropped "
+    "at the edges, no text, no watermarks, no signature."
+)
+# The set sheet's shape. Deliberately the still's grid rather than PAPERCUT_REF_ASPECT: a set is
+# read for its framing, so it is drawn in the frame it will be seen in. Unlike PAPERCUT_ASPECT
+# this carries no hard constraint -- a sheet is conditioning and is never handed to H3 as a frame
+# -- so it is the same string for a reason rather than by obligation.
+PAPERCUT_SET_ASPECT = PAPERCUT_ASPECT
+
+# What a bound sheet is called in the prompt when the director has written nothing about it. The
+# name alone, in a sentence, because `reference_roles` splices this after "<Picture 3> is " and a
+# bare noun reads as a fragment there. A sheet WITH a note uses the note instead: the director's
+# own words about their own design always win.
+STAGE_ROLE = {
+    STAGE_CHARACTER: "{name}, one of this reel's characters -- this sheet is that character's "
+                     "locked design, and the same single {name} performs the action below",
+    STAGE_ENVIRONMENT: "{name}, the set this shot takes place in -- this sheet is that set's "
+                       "locked design, empty of characters",
+    STAGE_PROP: "{name}, a prop in this film -- this sheet is its locked design",
+}
+
+# A bound entry that is NOT one of the pictures this render was given travels as words instead,
+# and every renderer applies the same rule (`Board.staging_text`). Two things end up here: a set,
+# which is text by design on the still side, and anything past a cap. Prefixed rather than woven
+# in, for the reason SCENE_PREFIX is: these are descriptions of separate things and no connecting
+# phrase reads correctly across a character, a clearing and a club at once.
+STAGING_PREFIX = "Also already designed and not to be reinterpreted: "
+
+# The window and the memory for one staging sheet's conversation. Longer than a picture's,
+# because the reason that one is short does not apply: REF_CHAT_MEMORY is 12 against the still's
+# 60 because a beat has up to nine pictures and `to_json` serialises every transcript on every
+# refetch, so it grows in two dimensions. The bible is one list for the whole reel and is the
+# thing most worth having a record of -- it is what every image in the film is held to.
+STAGE_CHAT_HISTORY = int(os.environ.get("PAPERREEL_STAGE_CHAT_HISTORY", "10"))
+STAGE_CHAT_MEMORY = int(os.environ.get("PAPERREEL_STAGE_CHAT_MEMORY", "40"))
+
 # ## Prompt scaffold
 #
 # H3 holds a paper-cutout look far better when the instruction pins down what must
@@ -562,7 +636,16 @@ def reference_roles(notes: list[str]) -> str:
 # when beat 1's still lands, when a character.png is uploaded, when carry is ticked, and when
 # the join is cycled: four events that touch no text and would silently relabel every literal.
 CAST_MENTION = "cast"
-MENTION_RE = re.compile(r"@(?:ref:([0-9a-f]{4,12})|(cast))(?![\w:])")
+# `@stage:` names a reel-level staging sheet rather than a beat's own picture. The two token
+# spaces are separate because the two ids are minted independently -- a beat's `ref_ids` and the
+# board's staging entries are different lists with no shared counter -- so a bare hex body could
+# name either. The bodies below are namespaced for the same reason: `mentions()` is one dict, and
+# a staging entry that happened to mint the same six characters as a picture on beat 3 would
+# otherwise resolve onto whichever was inserted last.
+STAGE_MENTION_PREFIX = "stage:"
+MENTION_RE = re.compile(
+    r"@(?:ref:([0-9a-f]{4,12})|stage:([0-9a-f]{4,12})|(cast))(?![\w:])"
+)
 
 # What @cast degrades to when the render it lands in is not conditioned on the cast reference.
 # Short on purpose: REF_ROLE_CAST is a whole paragraph, correct as the answer to "what is
@@ -571,13 +654,21 @@ CAST_MENTION_ROLE = "this reel's cast reference"
 
 
 def _mention_body(match: "re.Match[str]") -> str:
-    """Which picture a matched token names: an id, or the cast reference's fixed word."""
-    return match.group(1) or CAST_MENTION
+    """Which picture a matched token names, namespaced so the two id spaces cannot collide."""
+    if match.group(1):
+        return match.group(1)
+    if match.group(2):
+        return STAGE_MENTION_PREFIX + match.group(2)
+    return CAST_MENTION
 
 
 def mention_token(body: str) -> str:
     """The literal a field stores to name one picture. The one place the spelling is decided."""
-    return "@cast" if body == CAST_MENTION else f"@ref:{body}"
+    if body == CAST_MENTION:
+        return "@cast"
+    if body.startswith(STAGE_MENTION_PREFIX):
+        return f"@stage:{body[len(STAGE_MENTION_PREFIX):]}"
+    return f"@ref:{body}"
 
 
 def mention_bodies(text: str) -> list[str]:
@@ -693,7 +784,7 @@ MENTION_NOTE = (
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
                  continues: bool = False, lands: bool = False, refs: int = 0,
                  ref_notes: list[str] | None = None, ref_videos: int = 0,
-                 opens_on: bool = False,
+                 opens_on: bool = False, staging: str = "",
                  mentions: dict[str, tuple[int | None, str]] | None = None) -> str:
     """Assemble the instruction for one beat.
 
@@ -719,6 +810,12 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     the clip begins on it instead of on something the model invents from the scene line. It is
     a flag rather than being inferred from `refs`, because the same picture count means the
     opposite thing on a beat whose references are all uploads of the cast.
+
+    `staging` is what the reel's bound design sheets say, for the ones this render was NOT
+    handed as pictures -- a set on a beat that spent its slots on characters, or anything past
+    the cap. A sheet that IS one of the pictures is described in `ref_notes` instead, by
+    position, and saying it twice would have the model looking for two clearings. One rule,
+    `Board.staging_text`, applied by every renderer.
 
     `mentions` resolves the @-tokens a director may have typed into any of the three texts.
     One keyword here rather than three expanded call sites, so every path into a render --
@@ -758,6 +855,13 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     identity = " ".join(identity.split())
     if identity:
         parts.append(IDENTITY_PREFIX + identity.rstrip(".") + ". ")
+    # Straight after the style bible, because it is the same claim about more specific things:
+    # the bible says what the production looks like, these say what two named things in it look
+    # like. Before the scene line, so "Scene: the clearing at dusk" is read against a clearing
+    # that has already been described rather than one the model has just invented.
+    staging = " ".join(expand_mentions(staging, mentions).split()).strip().rstrip(".")
+    if staging:
+        parts.append(STAGING_PREFIX + staging + ". ")
     scene = " ".join(scene.split()).strip().rstrip(".")
     if scene:
         parts.append(SCENE_PREFIX + scene + ". ")

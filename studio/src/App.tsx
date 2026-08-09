@@ -2,6 +2,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useState } from "react";
 import { BeatModal } from "./canvas/BeatModal";
 import { Canvas } from "./canvas/Canvas";
+import { StagingPanel } from "./canvas/StagingPanel";
 import { CanvasToolbar } from "./panels/CanvasToolbar";
 import { ChatPanel } from "./panels/ChatPanel";
 import { Sidebar } from "./panels/Sidebar";
@@ -70,8 +71,10 @@ export default function App() {
         ) : null}
       </div>
       {/* Outside the canvas on purpose: a fixed overlay inside a node would be positioned
-          against React Flow's transformed viewport and pan away with it. */}
+          against React Flow's transformed viewport and pan away with it. Both of these are
+          opened from nodes and rendered here for that one reason. */}
       <BeatModal />
+      <StagingPanel />
     </StudioContext.Provider>
   );
 }

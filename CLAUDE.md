@@ -76,6 +76,7 @@ paperreel/papercut.py   HTTP client for image/ — the transport to the Gemini s
 paperreel/qwen.py       Ollama transport: structured output, tool calls, vision
 paperreel/stills.py     rendering stills, then LOOKING at them; the still-job rules
 paperreel/pictures.py   reference pictures as drawable assets; NO review pass, deliberately
+paperreel/staging.py    the reel's cast and sets, designed once and bound to beats
 paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/script.py     adopting a script written outside the studio
 paperreel/agent.py      the tool loop -> board operations; `revise`, one line at a time
@@ -211,10 +212,70 @@ chained frame on the previous frame *alone* — the uploads would be silently dr
 maps differently on every axis: `REF_DRAW_STYLE_SUFFIX` → `style`, `ref_draws[i]` → the one frame
 `beat`, the picture itself → `referencePaths` in `edit` mode, and `1:1` → `aspectId`.
 
+### Staging: the reel's cast and sets
+
+`staging.py` is `pictures.py` one level up, and the level is the whole point. A picture belongs
+to one beat, so a second character had nowhere to live and the same clearing was redrawn from the
+same paragraph in every shot that used it. The two things that were reel-wide before this both
+have the same ceiling: `style_bible` is one paragraph (words land differently on every
+generation) and the cast reference is one image, and not a design sheet at all — it is beat 1's
+own *still*, a composed shot whose framing and light every later still is then anchored to.
+
+A staging entry lives in `board.data["staging"]` as `{id, kind, name, note, draw, chat}`, its
+sheet at `stage_<id>.png` **directly in the reel directory** — `api.media_file` serves only files
+whose parent IS that directory, so a sheet in a subfolder would render and never be visible. A
+beat binds ids in `beat["staging"]`, and `Board.bind_stage` replaces rather than appends.
+
+`config.STAGE_KINDS` is not decoration. It decides three things at once, and `staging.style_for`
+/ `staging.aspect_for` / `Board.staging_pictures` are the three places:
+
+| kind | style suffix | aspect | in the clip | in the still |
+| --- | --- | --- | --- | --- |
+| `character`, `prop` | `REF_DRAW_STYLE_SUFFIX` | `PAPERCUT_REF_ASPECT` | a picture | a picture |
+| `environment` | `SET_DRAW_STYLE_SUFFIX` | `PAPERCUT_SET_ASPECT` | a picture | **words** |
+
+The set suffix exists because `REF_DRAW_STYLE_SUFFIX` asks for "the subject complete and centred"
+on a "plain neutral background" with "no scenery", and a set sheet is nothing but scenery with
+the subject deliberately absent — handed the prop-sheet suffix, "a moonlit clearing ringed with
+birches" is a single birch on grey, which is a faithful reading of what it was told.
+
+**The one measured constraint is the still's cap**, and everything else falls out of it. The
+video model takes `MAX_REF_IMAGES` (9); the still takes `MAX_STILL_REFS` (4), one already the
+cast. Three characters and a set do not fit, so the set is dropped and `Board.staging_text` picks
+it up — **whatever a render is not handed as a picture, it is told in words**, one rule applied by
+`config.build_prompt(staging=...)` and `papercut._beat_text`, each computing it against *the very
+list it is conditioning on* so a sheet is never both `<Picture 2>` and a sentence about a second
+one of it. It is also what makes a written-but-undrawn entry useful.
+
+Bound sheets sit between `auto_pictures` and the uploads in `pictures_for`, which renumbers the
+uploads — safe by construction rather than by luck, because that method returns (path, role)
+pairs and `mentions` resolves by path. `ref_budget` subtracts them, so an upload the render would
+truncate is refused rather than stored.
+
+**Both fingerprints append `staging_digest` only when the beat binds something.** An
+unconditional part would change every existing board's fingerprint, mark every rendered beat
+stale at once and re-price a paid render for a feature nobody had used. It overlaps
+`frame_ids.refs` on a reference beat; that is harmless (both move together) and it is what
+carries staging onto the three joins with no picture list at all.
+
+`pictures.py`'s three drawing lessons apply here unchanged, and `staging.conditioning` records
+them: nothing conditions a first draw unless the director names a sibling with `@stage:` (a model
+shown the cast draws the cast), the board's style bible never reaches the render (`papercut.draw`
+now takes `style` / `aspect` / `label`, defaulted so a reference-picture draw composes the
+byte-identical scene it always did), and a redraw is `consistency="edit"`. **There is no review
+pass, ever** — same reason, one level up: a design sheet is *supposed* to differ from the cast.
+
+`papercut.NO_BEAT` is how a reel-level render rides the beat-keyed scene path. `_gemini_settings`
+answers "nothing stored" for a frame that is not a beat rather than raising, which is what lets
+one scene body serve a still, a reference picture and a design sheet.
+
 ### `@`-mentions
 
 A director can name one picture inside any prompt field — `@ref:a1b2c3` for an upload,
-`@cast` — instead of describing it again. `config.MENTION_RE` / `expand_mentions` are the grammar,
+`@stage:a1b2c3` for a reel-level design, `@cast` — instead of describing it again. The two hex
+token spaces are namespaced in the resolved dict (`config.STAGE_MENTION_PREFIX`) because the two
+id lists are minted independently and a bare body could name either.
+`config.MENTION_RE` / `expand_mentions` are the grammar,
 `Board.mentions(n, pictures)` resolves it, and the token is expanded **at prompt-build time on the
 server**, never substituted in the browser.
 
@@ -399,13 +460,20 @@ selection downstream; a cut (or a reference beat not carrying motion) breaks the
 
 `jobs.Runner` is a single daemon worker thread with one queue — serial on purpose: one GPU
 container, ComfyUI runs one graph at a time, chaining is serial anyway. `api.py` registers
-handlers (`plan`, `chat`, `asset`, `still_chat`, `revise`, `ref_draw`, `ref_chat`, `caption`,
-`render`) and never blocks the request. `ref_draw` and `ref_chat` are two kinds rather than one
-for the same reason `asset` and `still_chat` are: ✦ must not spend a model turn.
+handlers (`plan`, `chat`, `asset`, `still_chat`, `revise`, `ref_draw`, `ref_chat`, `stage_draw`,
+`stage_chat`, `caption`, `render`) and never blocks the request. `ref_draw` and `ref_chat` are two
+kinds rather than one for the same reason `asset` and `still_chat` are: ✦ must not spend a model
+turn. The `stage_*` pair are their own kinds for the reason those are: they address a reel-level
+design rather than a picture on one beat, and the canvas has to say which sheet is busy.
 
 `DELETE /beats/{n}/refs/{index}` refuses with 409 while a picture job for that beat is queued or
 running. The job captured its index at submit and `remove_ref` renumbers, so it would otherwise
 draw into whatever slid up into the slot.
+
+`DELETE /staging/{id}` and the sheet upload refuse the same way, narrowed to that one design
+(`api.stage_busy`). There is no renumbering to protect here — a design's id is minted once and
+`stage_path` is keyed by it — so the guard is against deleting or overwriting the file a queued
+draw is about to write into.
 
 The worker must never die. It catches `(Exception, SystemExit)` — `comfy.py` was written for
 CLI use and raises `SystemExit` for things like a 401.
@@ -583,6 +651,20 @@ from words alone reads as belonging to the same film as one drawn from the cast.
 the live design question — the medium now travels as words (`REF_DRAW_STYLE_SUFFIX`) rather than
 as a conditioning image, and it is free to try the other way by handing `pictures.conditioning`
 the cast reference again. Expect the cast to come back with it.
+
+**Staging has never reached a live Gemini request.** The server side is exercised end to end
+against a real board — entries mint, bind, renumber the uploads below them, reach the clip as
+`<Picture N>` and the still as prose, the budget shrinks, and a delete takes the sheet, the
+bindings and rewrites every `@stage:` into what the design was for. The fingerprints are verified
+byte-identical on a board that binds nothing, which is what keeps every existing reel out of
+`stale`. What has NOT happened is one sheet being drawn: nobody has rendered a character sheet,
+redrawn one from a note, or compared a scene conditioned on two design sheets against the same
+scene on the cast reference alone — which is the entire claim. `SET_DRAW_STYLE_SUFFIX` and the
+9:16 set shape are reasoned from `pictures.py`'s prop-sheet failure, not measured. The panel and
+the bind toggles have not been clicked in a browser either.
+
+**Nothing arbitrates between a bound design and a beat's own picture of the same thing.** Both go
+over, described twice. `ref_budget` notices the slot; nothing notices the duplication.
 
 **`@`-mentions have never been typed in a browser.** The grammar, the two expansions, the
 degrade-to-role path and the rewrite-on-delete are exercised against a real board; the menu, the

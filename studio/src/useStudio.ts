@@ -45,6 +45,12 @@ export function useStudioState() {
   // Flow's transformed viewport, where `position: fixed` is measured from the panned and
   // zoomed layer instead of from the window.
   const [expanded, setExpanded] = useState<number | null>(null);
+  // Whether the design bible is open, and which design is selected in it. Shared for the same
+  // reason `expanded` is -- it is rendered at the top of the app rather than inside the node
+  // that opens it -- and keyed by id rather than by position, because deleting a design would
+  // otherwise leave the panel editing whichever one slid up into the slot.
+  const [stagingOpen, setStagingOpen] = useState(false);
+  const [stagingPick, setStagingPick] = useState<string | null>(null);
   const [authOk, setAuthOk] = useState(true);
   // The two local services this studio orchestrates, and both can simply not be running.
   // Optimistic defaults: the copy that depends on them is a warning, and flashing "the image
@@ -97,6 +103,8 @@ export function useStudioState() {
       setSelection([]);
       setRenderSelection([]);
       setExpanded(null);
+      setStagingOpen(false);
+      setStagingPick(null);
       await refreshBoard(target);
     },
     [refreshBoard],
@@ -127,6 +135,8 @@ export function useStudioState() {
       setSelection([]);
       setRenderSelection([]);
       setExpanded(null);
+      setStagingOpen(false);
+      setStagingPick(null);
     };
 
     followLocation();
@@ -250,12 +260,16 @@ export function useStudioState() {
     selection,
     renderSelection,
     expanded,
+    stagingOpen,
+    stagingPick,
     authOk,
     stillsBackend,
     model,
     setSelection,
     setRenderSelection,
     setExpanded,
+    setStagingOpen,
+    setStagingPick,
     setError,
     openReel,
     refreshBoard,

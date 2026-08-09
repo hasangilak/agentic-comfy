@@ -319,6 +319,60 @@ the continuation wording plus an instruction that the second still is where this
 ends and must be reached only on the last frame — without that, the model treats it as another
 shot to cut to, arrives early and then sits there.
 
+### Staging — designing the cast and the sets before anything is rendered
+
+Everything above holds one film together with two things: a **style bible**, which is one
+paragraph for the whole reel, and a **cast reference**, which is one image. Both have a ceiling
+you hit the same way. The paragraph is words, and the same sentence that produced a round-eared
+pig in scene 1 produces a sharper-eared one in scene 4 — neither prompt was wrong. The image is
+scene 1's own *still*: a composed shot, so its framing, its staging and its light are carried
+into every still conditioned on it, and there is exactly one of it, so a second character has
+nowhere to live and a recurring location is redrawn from prose in every shot that uses it.
+
+**Staging** is the layer between them. Open it from 🎭 on the script node. A design is a named
+thing — a `character`, an `environment` or a `prop` — with a sentence saying what it is, a
+**design sheet** drawn once by Gemini, and a stable id. Scenes then **bind** the designs they
+contain, and every scene bound to one is conditioned on the same picture and told the same
+sentence.
+
+The kind is not decoration; it decides three things at once:
+
+|  | drawn as | drawn at | reaches the clip | reaches the still |
+| --- | --- | --- | --- | --- |
+| `character` / `prop` | subject whole and centred, plain ground | 1:1 | a picture | a picture |
+| `environment` | the place, empty of characters | 9:16 | a picture | **words** |
+
+That last cell is the one measured constraint in the feature. The video model takes nine
+pictures; the still renderer takes four, one of which is already the cast reference. Three
+characters and a set do not fit, so the set is dropped from the still and arrives as a sentence
+instead — characters are what drift visibly between shots, and a clearing redrawn from a *fixed*
+sentence in every scene is survivable in a way a wolf that changes species is not. The rule is
+uniform rather than special-cased: **whatever a render is not handed as a picture, it is told in
+words**, which is also what makes writing the bible useful before a single sheet is drawn.
+
+Bound designs sit between the automatic slots and the scene's own uploads in the numbering, so a
+cut with two characters bound reads `<Picture 1>` opening still, `<Picture 2>` cast reference,
+`<Picture 3>`…`<Picture 4>` the two designs, uploads from `<Picture 5>`. The node shows the same
+numbers the model is given, and the upload budget shrinks to match — a picture the render would
+truncate away is refused rather than stored.
+
+Three things about how a sheet is *drawn* are the same lesson wearing different clothes, and all
+three were measured one level down on reference pictures: **a model shown the cast draws the
+cast.** So nothing conditions a first draw unless you name a sibling with `@stage:`; the board's
+style bible never reaches the render (it describes the cast, and a prop sheet is not the cast);
+and a redraw uses the image server's `edit` mode, the one conditioned mode with no "move the
+subject into a different pose" clause. Every sheet has a conversation of its own — *"her chest
+should be cream, not white"* — which rewrites the prompt and draws it again. There is no
+automatic review, deliberately: the reviewer holds an image to the cast reference, and a design
+sheet is *supposed* to differ from it.
+
+Naming a design in prose is `@stage:<id>`, alongside `@ref:` and `@cast`. It carries the id
+rather than a number for the same reason those do — the two prompt builders order their pictures
+differently, and a number typed into prose is persisted derived state.
+
+Free, all of it, apart from the Gemini requests that draw the sheets. Deleting a design takes its
+sheet, every binding to it, and rewrites every `@stage:` naming it into what it was for.
+
 ### The reference join — nine pictures instead of a keyframe, and the default cut
 
 A keyframe is one image. This join is a different checkpoint rather than a different wiring:
@@ -531,6 +585,8 @@ paperreel/comfy.py      ComfyUI client + the 15-node H3 graph
 paperreel/qwen.py       Ollama: structured output, tool calls, vision
 paperreel/papercut.py   stills from image/, over HTTP on this machine
 paperreel/stills.py     rendering stills, then looking at them
+paperreel/pictures.py   a beat's reference pictures, drawn as well as uploaded
+paperreel/staging.py    the reel's cast and sets, designed once and bound to scenes
 paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/script.py     adopting a script written outside the studio
 paperreel/pipeline.py   app lifecycle + chained batch rendering
@@ -562,6 +618,19 @@ hourly rate. Kept for reference; the pipeline above does not use it.
 - **The CLI can still ask for 15 s beats**, which have failed once on this card. The studio
   cannot — `config.BEAT_LENGTHS` caps it at 243 frames — but `storyboard.py --seconds 15`
   bypasses that and only logs a warning.
+- **Staging has never been drawn against a live model.** The server side is exercised end to
+  end: entries mint, bind, renumber the pictures below them, reach the clip as `<Picture N>` and
+  the still as words, and deleting one takes its sheet, its bindings and rewrites every
+  `@stage:` naming it into what it was for. The fingerprints are verified to stay *byte
+  identical* on a board that binds nothing, which is what stops this marking every rendered beat
+  in every existing reel stale. What has not happened is a single Gemini request: nobody has
+  drawn a character sheet, redrawn one from a note, or looked at whether a scene conditioned on
+  two design sheets holds its cast better than one conditioned on the cast reference alone —
+  which is the entire claim the feature makes. The set-sheet suffix and its 9:16 shape are
+  reasoned from the prop-sheet failure one level down, not measured.
+- **Nothing arbitrates between a design and a beat's own picture.** Bind a wolf and upload a
+  picture of the same wolf to one scene and the render is handed both, described twice. The slot
+  budget notices; nothing else does.
 - **Cross-scene consistency is improved but not measured.** Independent scenes no longer
   rely on the `style_bible` text alone — every still is generated conditioned on the cast
   reference image, the bible is in the video prompt too, and the model now looks at each

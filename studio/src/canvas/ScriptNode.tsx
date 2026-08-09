@@ -75,6 +75,31 @@ export function ScriptNode() {
           </p>
         )}
 
+        {/* Directly under the style bible, because it is the same promise made more precisely.
+            The bible is one paragraph for the whole film, so the same sentence produced a
+            round-eared pig in scene 1 and a sharper-eared one in scene 4 and neither prompt was
+            wrong. A design is named, drawn once, and bound to the scenes it turns up in. */}
+        <button
+          onClick={() => studio.setStagingOpen(true)}
+          className="flex w-full items-center gap-2 rounded border border-edge bg-ink px-2 py-1.5
+            text-left transition-colors hover:bg-hover"
+          title="the cast, the sets and the props this film is made of — designed once, then
+            bound to the scenes that contain them"
+        >
+          <span className="text-[13px]">🎭</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] uppercase tracking-wide text-zinc-500">staging</span>
+            <span className="block truncate text-[10px] text-zinc-500">
+              {board.staging.length
+                ? board.staging.map((entry) => entry.name).join(", ")
+                : "nothing designed yet — the cast, the sets, the props"}
+            </span>
+          </span>
+          <span className="shrink-0 text-[10px] text-zinc-400">
+            {board.staging.length || "＋"}
+          </span>
+        </button>
+
         {/* Every beat has its own upload, but a whole imported script's worth of stills is
             one selection here -- and this is also where generation is switched off entirely. */}
         <FillStills />
