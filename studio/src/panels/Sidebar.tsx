@@ -1,6 +1,7 @@
 import { api, clock, money } from "../api";
 import { useStudio } from "../useStudio";
 import { RailRow } from "../ui";
+import { CrewPanel } from "./CrewPanel";
 import { StageRail } from "./StageRail";
 
 const CONTAINER_LOOK = {
@@ -56,6 +57,12 @@ export function Sidebar() {
       </div>
 
       <StageRail />
+
+      {/* Under the stages rather than beside them, because a cast is a property of a stage:
+          the rail says which stages are left and this says who works them. It is also where
+          a crew run is STARTED, so the thing that spends and the thing that reports are one
+          panel -- the same rule the money bar keeps for the render. */}
+      <CrewPanel />
 
       {/* The three services this studio orchestrates, in the shape the reference gives its
           navigation. None of them is a page to visit; each of them can simply not be running,

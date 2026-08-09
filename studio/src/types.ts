@@ -164,9 +164,16 @@ export interface Beat {
  * One line of a single still's conversation. Both writers land here: the director asking for a
  * change, and the automatic review saying what it made of a render nobody had looked at yet.
  */
+/** The three lenses a crew's checkers file verdicts under. Same words `critique.LENSES` uses. */
+export type Lens = "style" | "blocking" | "story";
+
 export interface AssetTurn {
-  /** "qwen" is only ever read: boards written before the studio moved to Gemini carry it. */
-  role: "user" | "gemini" | "qwen";
+  /**
+   * "qwen" is only ever read: boards written before the studio moved to Gemini carry it.
+   * "gemini" is the automatic review that fires on every render; the three lenses are the
+   * crew's checkers, which report and suggest a fix and never re-render.
+   */
+  role: "user" | "gemini" | "qwen" | Lens;
   text: string;
   /** The rewritten `asset_prompt`, on a turn that changed it. */
   prompt?: string;
@@ -236,6 +243,10 @@ export interface Board {
   gen_aspect: number;
   /** The stills are the user's own work: no generate affordance, and the API refuses to run one. */
   manual_stills: boolean;
+  /** What the film is physically made of. Absent on disk means the default; this is resolved. */
+  medium: string;
+  /** Every medium that ships, for the picker. `key` is what PATCH takes. */
+  mediums: { key: string; name: string }[];
   /** The still every cut's image is generated from, so the cast survives a scene change. */
   reference: string | null;
   /** False when it is only beat 1's own still standing in. */
@@ -306,6 +317,10 @@ export interface Job {
     /** Draw storyboard panels and rebuild the sheet. `detail.beats` is null for "all of them". */
     | "panel_draw"
     | "caption"
+    /** A whole crew run: several agents across several stages. `detail.plan` is its cast list. */
+    | "crew"
+    /** One named agent, one message. `detail.agent` is the skill name. */
+    | "agent"
     | "render";
   slug: string;
   detail: Record<string, unknown>;
@@ -366,3 +381,61 @@ export type StudioEvent =
   | { type: "log"; job_id: string | null; line: string }
   | { type: "board"; slug: string }
   | { type: "progress"; job_id: string; beat: number | null; step: number; step_max: number };
+
+
+/**
+ * The crew, as the browser sees it.
+ *
+ * A stage is a CAST rather than one agent (`paperreel/crew.py`), so the unit here is a stage
+ * plus the agents that work it in order. `lens` is set only on a member that is there to CHECK
+ * rather than to make -- the same skill appears in three casts doing two different jobs, so
+ * "is this one checking" is a property of the (stage, member) pair and never of the name.
+ */
+export interface CastMember {
+  agent: string;
+  lens: Lens | null;
+}
+
+export interface StagePlan {
+  stage: string;
+  cast: CastMember[];
+}
+
+/** What the crew would do to this board next, resolved against THIS board's medium. */
+export interface CrewPlan {
+  stage: string | null;
+  plan: StagePlan[];
+  medium: string;
+  lenses: Lens[];
+}
+
+/** One agent, as `GET /api/agents` reports it. `error` replaces the rest on a broken file. */
+export interface AgentInfo {
+  name: string;
+  description?: string;
+  model?: string;
+  think?: boolean;
+  temperature?: number | null;
+  max_rounds?: number;
+  tools?: string[];
+  path?: string;
+  error?: string;
+}
+
+export interface AgentRoster {
+  agents: AgentInfo[];
+  stages: string[];
+  /** The default medium's casts. A reel's own are in `CrewPlan`, which resolves per board. */
+  cast: Record<string, string[]>;
+  lenses: Lens[];
+  mediums: { key: string; name: string }[];
+}
+
+/** One lens's verdict on one still, from `POST /api/reels/:slug/beats/:n/inspect`. */
+export interface Verdict {
+  lens: Lens;
+  beat: number;
+  passed: boolean;
+  problem: string;
+  fix: string;
+}

@@ -192,6 +192,7 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
             continue
         message = _brief(name, role, lens, note)
         hooks.say(f"[crew] {name}/{who}")
+        hooks.doing(f"{name} · {who}" + (f" · {lens}" if lens else ""))
         try:
             turns.append(one(who, board, message, hooks=hooks, llm=llm, state=shared))
         except (skills.SkillError, llm_mod.LLMError) as failed:

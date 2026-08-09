@@ -28,15 +28,25 @@ const LABELS: Record<string, string> = {
   ref_chat: "looking at the picture",
 };
 
+// The two crew kinds are deliberately NOT in that table. Every other kind is one call, so a
+// fixed label is the whole truth about it; a crew job is several agents across several stages
+// and the server writes which one is working into `Job.phase` per member and per round. A label
+// here would be a second, worse vocabulary for something already said in words -- and it would
+// go stale the moment a skill is added.
+const SPEAKS_FOR_ITSELF = new Set(["crew", "agent"]);
+
 const RENDER_STAGES = ["deploying", "booting", "rendering", "stitching"];
 
 export function JobStrip({ job }: { job: Job }) {
   if (job.kind !== "render") {
     const step = job.step_max ? ` ${job.step}/${job.step_max}` : "";
     const beat = job.beat ? ` · scene ${job.beat}` : "";
+    const said = SPEAKS_FOR_ITSELF.has(job.kind)
+      ? job.phase || (job.kind === "crew" ? "the crew is starting" : "the agent is starting")
+      : LABELS[job.kind] ?? job.phase;
     return (
       <span className="px-1 text-[11px] text-warm">
-        {LABELS[job.kind] ?? job.phase}
+        {said}
         {beat}
         {step}…
       </span>

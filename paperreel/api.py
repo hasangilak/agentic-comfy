@@ -381,6 +381,10 @@ def crew_hooks(job: Job, run: Runner, slug: str) -> runtime.Hooks:
         progress=still_progress(job, run, label="picture"),
         announce=lambda: run.publish_board(slug),
         cancelled=lambda: job.cancelling,
+        # Onto `Job.phase`, which is the field the studio's job strip already reads for a
+        # render's four stages. A crew run reuses it rather than inventing a second telemetry
+        # field, so the strip needs the labels and not a new shape.
+        phase=lambda what: run.update(job, phase=what),
     )
 
 
@@ -1492,7 +1496,12 @@ def run_crew(slug: str, body: dict = Body(default={})) -> dict:
     if stage is not None and stage not in crew.STAGES:
         raise HTTPException(422, f"stage has to be one of {', '.join(crew.STAGES)}")
     job = runner.submit("crew", slug,
-                        {"note": str(body.get("note") or ""), "stage": stage})
+                        {"note": str(body.get("note") or ""), "stage": stage,
+                         # Resolved once, at submit, so the strip can show the whole cast
+                         # before the first agent has said anything -- and so what it shows is
+                         # what this run actually decided rather than a re-read that could
+                         # answer differently once the board starts moving.
+                         "plan": crew.plan_of(board)})
     return {"job": job.to_json(), "stage": crew.next_stage(board),
             # What this run is about to do, resolved against THIS board -- so the browser can
             # show the casts before the first agent has said anything. Free.

@@ -9,7 +9,23 @@ import type { ChatTurn } from "../types";
  * Its own file because two surfaces render the same transcript -- the rail-width `ChatPanel`
  * and the full-width conversation on the Script stage -- and a second copy of this would be a
  * second answer to "what does an edit look like".
+ *
+ * A turn from a crew agent is attributed and every other model turn is not, which is a real
+ * distinction rather than decoration. "gemini" is the chat panel answering the director, and
+ * saying so would label every turn in a conversation the director is having with one model. An
+ * agent turn is a specialist reporting back on work nobody watched -- so which specialist is
+ * the first thing worth knowing about it. `AGENT_ROLES` is a set rather than a lookup against
+ * the live roster because a transcript outlives the skill that wrote it.
  */
+const AGENT_ROLES = new Set([
+  "script-writer",
+  "storyboarder",
+  "asset-maker",
+  "mise-en-scene",
+  "style-paper-cutout",
+  "style-claymation",
+]);
+
 export function Turn({ turn }: { turn: ChatTurn }) {
   const [open, setOpen] = useState(false);
   const ops = turn.ops ?? [];
@@ -30,6 +46,11 @@ export function Turn({ turn }: { turn: ChatTurn }) {
 
   return (
     <div>
+      {AGENT_ROLES.has(turn.role) ? (
+        <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+          {turn.role}
+        </div>
+      ) : null}
       {ops.length ? (
         <button
           onClick={() => setOpen((value) => !value)}

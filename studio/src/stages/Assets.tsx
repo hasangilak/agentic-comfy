@@ -6,6 +6,7 @@ import { FillStills } from "../canvas/FillStills";
 import { PromptField } from "../canvas/Mentions";
 import { KIND_LOOK } from "../canvas/StagingPanel";
 import { StillChat } from "../canvas/StillChat";
+import { AgentTurns } from "../panels/CrewPanel";
 import { JOIN_LOOK } from "../joins";
 import {
   DEFAULT_GEMINI_IMAGE_MODEL,
@@ -17,6 +18,7 @@ import {
   type Board,
   type GeminiImageModel,
   type GeminiImageSize,
+  type Lens,
 } from "../types";
 import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
@@ -343,15 +345,27 @@ function ShotRow({
   );
 }
 
+/** The three lenses a crew's checkers file under. Same words `critique.LENSES` uses. */
+const LENSES: Lens[] = ["style", "blocking", "story"];
+const isLens = (role: string): role is Lens => (LENSES as string[]).includes(role);
+
 /**
  * The review's last word about this still, as one character.
  *
- * Off `verdict`, which `stills.remember` now stamps on every review turn — not off the copy.
+ * Off `verdict`, which `stills.remember` stamps on every review turn — not off the copy.
  * A board written before that key exists reads as "no verdict", which is the truth about it.
+ *
+ * The crew's three checkers stamp the same key, and this deliberately skips them. Their
+ * verdicts are a PANEL — three lenses answering three questions about one picture, filed in
+ * whatever order the cast ran — so "the last one" is not a summary of them, it is whichever
+ * lens happened to go last. `LensPanel` below shows all three; this stays what it was, the
+ * automatic review's own word.
  */
 function pip(beat: Beat): { glyph: string; tone: string; hint: string } {
   if (!beat.asset) return { glyph: "○", tone: "text-warm", hint: "no still yet" };
-  const judged = [...(beat.asset_chat ?? [])].reverse().find((turn) => turn.verdict);
+  const judged = [...(beat.asset_chat ?? [])]
+    .reverse()
+    .find((turn) => turn.verdict && !isLens(turn.role));
   if (!judged) return { glyph: "·", tone: "text-zinc-300", hint: "not reviewed" };
   if (judged.verdict === "pass") {
     return { glyph: "✓", tone: "text-live", hint: "the reviewer says it matches the reel" };
@@ -466,6 +480,8 @@ function Still({
         </p>
       ) : null}
 
+      <LensPanel beat={beat} />
+
       <div className="space-y-2 rounded-2xl border border-edge bg-panel p-3">
         <p className="text-[10px] uppercase tracking-wide text-zinc-500">drawn from</p>
         {drawn.length ? (
@@ -539,7 +555,67 @@ function DrawnFrom({ picture, beat }: { picture: PictureRef; beat: Beat }) {
   );
 }
 
+/**
+ * What the crew's three checkers made of this still.
+ *
+ * Three lenses, three questions, one picture — craft, staging, story. They are shown together
+ * and never as a running total, because they fail independently: a still can be flawless clay
+ * and the wrong moment, or the right moment blocked backwards. A single "reviewed ✓" over the
+ * three would be true of none of them.
+ *
+ * **A failing lens carries a suggested fix and nothing else happens.** No re-render, no prompt
+ * rewrite — the checkers report and the director decides, which is the bound `critique.py`
+ * exists to keep. So the fix is the actionable part of this panel and is shown in full.
+ *
+ * The latest verdict per lens rather than every one, because a still re-checked after a fix
+ * should read as fixed. Everything is already in `asset_chat`, in order, for the transcript
+ * below to show — this is a summary of it, not a second copy.
+ */
+function LensPanel({ beat }: { beat: Beat }) {
+  const latest = new Map<Lens, AssetTurn>();
+  for (const turn of beat.asset_chat ?? []) {
+    if (isLens(turn.role) && turn.verdict) latest.set(turn.role, turn);
+  }
+  if (!latest.size) return null;
+  return (
+    <div className="space-y-1.5 rounded-2xl border border-edge bg-panel p-3">
+      <p className="text-[10px] uppercase tracking-wide text-zinc-500">the crew looked at it</p>
+      {LENSES.filter((lens) => latest.has(lens)).map((lens) => {
+        const turn = latest.get(lens)!;
+        const passed = turn.verdict === "pass";
+        return (
+          <div key={lens} className="flex gap-2">
+            <span className={`w-3 shrink-0 text-[11px] ${passed ? "text-live" : "text-stale"}`}>
+              {passed ? "✓" : "⚠"}
+            </span>
+            <span className="w-14 shrink-0 text-[10px] text-zinc-400">{lens}</span>
+            <span
+              className={`min-w-0 flex-1 text-[10px] leading-relaxed ${
+                passed ? "text-zinc-400" : "text-zinc-700"
+              }`}
+            >
+              {/* The stored text already reads "lens: problem. Suggested fix: …" — the label is
+                  its own column here, so it is stripped rather than shown twice. */}
+              {turn.text.replace(new RegExp(`^${lens}:\\s*`), "")}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** The conversation about this still, never collapsed, plus the prompt it is drawn from. */
+// The assets cast, by name. Named rather than "every agent", because a reel's transcript holds
+// the script and storyboard stages' reports too and this column is about the stills.
+const ASSET_AGENTS = [
+  "asset-maker",
+  "style-paper-cutout",
+  "style-claymation",
+  "mise-en-scene",
+  "script-writer",
+];
+
 function Talk({ beat, board }: { beat: Beat; board: Board }) {
   const studio = useStudio();
   const pictures = stillPictures(beat, board.staging ?? []);
@@ -550,6 +626,14 @@ function Talk({ beat, board }: { beat: Beat; board: Board }) {
   );
   return (
     <div className="space-y-3">
+      {/* What the crew's agents said about this stage, above the per-still conversation.
+          This is the one stage with no `ChatPanel` -- deliberately, because the board agent
+          cannot see a picture and `stills.converse` can, and two conversations about one still
+          with one of them blind is worse than one. But an agent's REPORT is not a conversation
+          about the still; it is what the asset-maker handed back before the checkers looked, and
+          without it this page is the only place in the studio where work happens invisibly. */}
+      <AgentTurns names={ASSET_AGENTS} />
+
       <StillChat beat={beat} expanded />
 
       <div className="space-y-1">

@@ -56,6 +56,11 @@ class Hooks:
     progress: Callable[[int, float], None] | None = None
     announce: Callable[[], None] | None = None
     cancelled: Callable[[], bool] | None = None
+    # Who is working, and on what. The other four callbacks are `jobs.Runner`'s existing
+    # contract; this one is new and exists because a crew job is not one call -- it is up to
+    # four agents across three stages, and a job strip that says "crew" for six minutes tells
+    # the director nothing about which of them is thinking or what it has done so far.
+    phase: Callable[[str], None] | None = None
 
     def stopping(self) -> bool:
         return bool(self.cancelled and self.cancelled())
@@ -66,6 +71,10 @@ class Hooks:
     def changed(self) -> None:
         if self.announce is not None:
             self.announce()
+
+    def doing(self, what: str) -> None:
+        if self.phase is not None:
+            self.phase(what)
 
 
 @dataclass
@@ -200,6 +209,7 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
     stopped = "answered"
     rounds = 0
     for rounds in range(1, skill.max_rounds + 1):
+        hooks.doing(f"{skill.name} · round {rounds}")
         assistant = agent.llm.chat(messages, tools=agent.declarations, think=skill.think,
                                    temperature=skill.temperature, model=skill.model)
         spoken = str(assistant.get("content") or "").strip()

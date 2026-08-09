@@ -31,7 +31,15 @@ export function StageRail() {
       <div className="px-2.5 pb-1 text-[11px] font-medium text-zinc-400">Stages</div>
       {STAGES.map((stage) => {
         const read = readout(stage.id, board);
-        const live = running ? STAGE_JOBS[stage.id].includes(running.kind) : false;
+        // A crew job spans stages, so it is in no `STAGE_JOBS` list -- and putting it in all
+        // three would light all three at once, which is the opposite of what the dot is for.
+        // The server writes the stage it is currently in as the first word of `Job.phase`, so
+        // that is read instead. A lone `agent` job is not attributed at all: an agent works
+        // more than one stage now, so its name does not say which one it is on.
+        const live = running
+          ? STAGE_JOBS[stage.id].includes(running.kind) ||
+            (running.kind === "crew" && running.phase.startsWith(`${stage.id} · `))
+          : false;
         const here = stage.id === at;
         return (
           <button

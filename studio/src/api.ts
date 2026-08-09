@@ -1,13 +1,17 @@
 import type {
+  AgentRoster,
   Board,
   ChatTurn,
+  CrewPlan,
   Estimate,
   GeminiImageModel,
   GeminiImageSize,
   Job,
   ReelSummary,
+  Lens,
   Source,
   StageKind,
+  Verdict,
 } from "./types";
 
 type GeminiOptions = { model?: GeminiImageModel; imageSize?: GeminiImageSize };
@@ -326,6 +330,42 @@ export const api = {
 
   render: (slug: string, beats?: number[], draft = false) =>
     post<{ job: Job; estimate: Estimate }>(`/api/reels/${slug}/render`, { beats, draft }),
+
+  /**
+   * The crew: every agent that exists, and which of them work each stage.
+   *
+   * Static for the session in practice -- the skills are files on the server -- but fetched
+   * rather than mirrored here, because a `SKILL.md` is meant to be edited against a running
+   * studio and a second copy of the roster in the browser is exactly the drift the server's
+   * mtime cache exists to avoid.
+   */
+  agents: () => call<AgentRoster>("/api/agents"),
+
+  /** What the crew would do to THIS board next, with the style role resolved by its medium. */
+  crewPlan: (slug: string) => call<CrewPlan>(`/api/reels/${slug}/crew`),
+
+  /**
+   * Run the crew from wherever this board is. One job that spans several agents and, unless
+   * `stage` says otherwise, several stages. It stops where money starts: there is no cast for
+   * the render.
+   */
+  runCrew: (slug: string, body: { note?: string; stage?: string } = {}) =>
+    post<{ job: Job; stage: string | null; plan: CrewPlan["plan"] }>(
+      `/api/reels/${slug}/crew`,
+      body,
+    ),
+
+  /** One named agent, one message. 404 with a sentence if the skill does not exist. */
+  runAgent: (slug: string, name: string, message: string) =>
+    post<{ job: Job }>(`/api/reels/${slug}/agents/${name}`, { message }).then((r) => r.job),
+
+  /**
+   * Look at one still through one lens. Synchronous rather than a job: one structured vision
+   * call with a bounded cost, and the answer is what the caller asked for rather than something
+   * to watch happen. Renders nothing and rewrites no prompt.
+   */
+  inspectStill: (slug: string, n: number, lens: Lens) =>
+    post<{ verdict: Verdict; board: Board }>(`/api/reels/${slug}/beats/${n}/inspect`, { lens }),
 
   cancel: (jobId: string) => post<{ job: Job }>(`/api/jobs/${jobId}/cancel`).then((r) => r.job),
 
