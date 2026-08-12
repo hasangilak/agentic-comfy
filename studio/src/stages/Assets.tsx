@@ -480,7 +480,7 @@ function Still({
         </p>
       ) : null}
 
-      <LensPanel beat={beat} />
+      <LensPanel beat={beat} slug={board.slug} />
 
       <div className="space-y-2 rounded-2xl border border-edge bg-panel p-3">
         <p className="text-[10px] uppercase tracking-wide text-zinc-500">drawn from</p>
@@ -571,15 +571,48 @@ function DrawnFrom({ picture, beat }: { picture: PictureRef; beat: Beat }) {
  * should read as fixed. Everything is already in `asset_chat`, in order, for the transcript
  * below to show — this is a summary of it, not a second copy.
  */
-function LensPanel({ beat }: { beat: Beat }) {
+function LensPanel({ beat, slug }: { beat: Beat; slug: string }) {
+  const studio = useStudio();
+  const [busy, setBusy] = useState<Lens | null>(null);
   const latest = new Map<Lens, AssetTurn>();
   for (const turn of beat.asset_chat ?? []) {
     if (isLens(turn.role) && turn.verdict) latest.set(turn.role, turn);
   }
-  if (!latest.size) return null;
+
+  async function inspect(lens: Lens) {
+    setBusy(lens);
+    try {
+      await studio.guard(() => api.inspectStill(slug, beat.n, lens));
+      await studio.refreshBoard(slug);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!beat.asset) return null;
+
   return (
     <div className="space-y-1.5 rounded-2xl border border-edge bg-panel p-3">
-      <p className="text-[10px] uppercase tracking-wide text-zinc-500">the crew looked at it</p>
+      <div className="flex items-baseline gap-2">
+        <p className="text-[10px] uppercase tracking-wide text-zinc-500">the crew looked at it</p>
+        <div className="ml-auto flex gap-1">
+          {LENSES.map((lens) => (
+            <button
+              key={lens}
+              onClick={() => void inspect(lens)}
+              disabled={busy !== null}
+              title={`check this still through the ${lens} lens`}
+              className="rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-400 transition-colors
+                hover:bg-hover hover:text-zinc-700 disabled:opacity-40"
+            >
+              {busy === lens ? "…" : lens}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!latest.size ? (
+        <p className="text-[10px] text-zinc-400">No checker verdicts yet — run a lens above.</p>
+      ) : null}
       {LENSES.filter((lens) => latest.has(lens)).map((lens) => {
         const turn = latest.get(lens)!;
         const passed = turn.verdict === "pass";
