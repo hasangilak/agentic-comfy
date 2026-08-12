@@ -210,3 +210,45 @@ def record(board: board_mod.Board, n: int, verdict: dict) -> dict:
                  + (f" Suggested fix: {verdict['fix']}" if verdict["fix"] else ""))
     return stills.remember(board, n, lens, text,
                            verdict="pass" if verdict["passed"] else "fail")
+
+
+def filed(board: board_mod.Board, *, recent: int | None = None) -> list[dict]:
+    """Every lens verdict on this board, in beat order, read back out of `asset_chat`.
+
+    Out of the transcript rather than a list of its own, because the transcript is where
+    `record` files them and a second store would be the drift the derived-state design exists
+    to prevent. Each entry carries the beat number so a caller formatting a report does not
+    have to walk the beats again. `recent` keeps only the last N verdict turns per beat --
+    the director's synthesis wants the tail, the maker's brief wants the standing state.
+    """
+    found: list[dict] = []
+    for beat in board.ordered_beats():
+        turns = [turn for turn in (beat.get("asset_chat") or [])
+                 if turn.get("verdict") and turn.get("role") in LENSES]
+        if recent is not None:
+            turns = turns[-recent:]
+        for turn in turns:
+            found.append({"beat": int(beat["n"]), "lens": str(turn["role"]),
+                          "verdict": str(turn["verdict"]),
+                          "text": str(turn.get("text") or "")})
+    return found
+
+
+def failing(board: board_mod.Board) -> list[dict]:
+    """The verdicts still standing against this board: the LATEST per (beat, lens), fails only.
+
+    Latest rather than any, because a fail that was fixed and re-inspected to a pass is
+    history -- a maker told about it would spend a metered render un-fixing the fix. This is
+    the read `crew` uses both to decide whether the inspect gate reopens the stills phase and
+    to tell the asset-maker what the inspectors said.
+    """
+    latest: dict[tuple[int, str], dict] = {}
+    for item in filed(board):
+        latest[(item["beat"], item["lens"])] = item
+    return [item for _key, item in sorted(latest.items()) if item["verdict"] == "fail"]
+
+
+def failing_report(board: board_mod.Board) -> str:
+    """The standing failures as prose for a brief. Empty when every latest verdict passes."""
+    return "\n".join(f"beat {item['beat']} ({item['lens']}): {item['text']}"
+                     for item in failing(board))

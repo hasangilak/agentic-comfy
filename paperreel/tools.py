@@ -1058,13 +1058,12 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
 
 
 def _checker_verdicts(board: board_mod.Board) -> str:
-    """Recent checker verdicts from asset_chat, for the director to synthesize."""
-    lines: list[str] = []
-    for beat in board.ordered_beats():
-        for turn in (beat.get("asset_chat") or [])[-6:]:
-            if turn.get("verdict") and turn.get("role") in critique.lenses():
-                role = turn["role"]
-                verdict = turn["verdict"]
-                text = str(turn.get("text") or "")[:160]
-                lines.append(f"  beat {beat['n']} {role} {verdict}: {text}")
-    return "\n".join(lines) if lines else ""
+    """Recent checker verdicts from asset_chat, for the director to synthesize.
+
+    Through `critique.filed` rather than a walk of its own, so the read of what a checker
+    said has one copy -- `crew` reads the same turns to decide whether the inspect gate
+    reopens the stills phase, and two walks of `asset_chat` is how they would drift.
+    """
+    lines = [f"  beat {item['beat']} {item['lens']} {item['verdict']}: {item['text'][:160]}"
+             for item in critique.filed(board, recent=6)]
+    return "\n".join(lines)

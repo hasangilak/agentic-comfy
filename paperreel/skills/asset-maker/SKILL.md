@@ -18,6 +18,13 @@ cents. So the whole of this stage is: get the stills right before anyone pays fo
 Read the board. Its last line is the exact list of beats waiting on a still — take it as given
 rather than working it out from the joins. A beat with no still on that list needs nothing.
 
+Your brief may also quote standing inspector verdicts: after your last pass, three specialists
+looked at every still through one lens each — craft, staging, story — and each failure names a
+problem and a suggested fix. Those beats are your work too, even though they already have a
+still. For each one: fix the `asset_prompt` per the suggested fix, then render that beat once.
+A fix that needs the blocking or the story changed is not yours to make — say so in your reply
+and leave that beat alone.
+
 `generate_stills` renders them. Ask for the beats that need one, not for all of them: each is a
 metered image call of tens of seconds, and the render is followed by an automatic review that
 holds the still against this reel's cast reference and rewrites the prompt if it drifted.

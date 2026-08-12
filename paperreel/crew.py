@@ -31,14 +31,19 @@ like `chat`, not like a fingerprint -- and it is in no render hash.
 The assets cast is the one with a shape of its own: the asset-maker renders, and then three
 agents look at what came back through three different lenses -- craft, staging, story. They
 **report and suggest; they never re-render.** See `critique.py` for why that bound is where it
-is. Three vision calls per still, once, is the cost.
+is. Three vision calls per still, once, is the cost. Their verdicts do feed back, through the
+board rather than a message: an inspect phase that leaves a standing failure points `awaiting`
+back at the stills phase, and the asset-maker's next brief quotes those verdicts. The director
+approves that re-run like any other gate, so the checkers stay advisory and the one place a
+re-render is decided is still the maker's turn.
 
 That last row of the table is the design. There is no fourth stage in `STAGES` and no cast a
 fourth could resolve through, so "the crew is finished" and "only the paid stage is left" are
 literally the same value. The studio's own `resolveStage` answers `"studio"` where this answers
-`None`, and the difference is the whole boundary this module is drawn around. The `inspect`
-phase is the one exception that can still be awaiting after `next_stage` has answered None:
-stills exist, so the stage read says "studio", but the checkers have not run yet.
+`None`, and the difference is the whole boundary this module is drawn around. Two phases can
+still be awaiting after `next_stage` has answered None: `inspect`, because stills exist so the
+stage read says "studio" but the checkers have not run yet -- and `stills` again, when inspect
+left standing failures and reopened the gate for the maker.
 """
 
 from __future__ import annotations
@@ -237,9 +242,10 @@ def crew_record(board: board_mod.Board | None) -> dict:
 def awaiting_phase(board: board_mod.Board | None) -> str | None:
     """Which phase the director should run or approve next.
 
-    Prefers an explicit `awaiting` on the board (including `inspect` after stills, when
-    `next_stage` has already answered None). Otherwise the first incomplete phase of the
-    current stage. Boards that never gated start at the first phase of `next_stage`.
+    Prefers an explicit `awaiting` on the board -- including the two that outlive
+    `next_stage`: `inspect` after the stills landed, and `stills` again after inspect
+    reopened it over standing failures. Otherwise the first incomplete phase of the current
+    stage. Boards that never gated start at the first phase of `next_stage`.
     """
     record = crew_record(board)
     if record["awaiting"] is not None:
@@ -287,6 +293,24 @@ def mark_phase_done(board: board_mod.Board, phase: str) -> None:
     done = other + order[: index + 1]
     awaiting = order[index + 1] if index + 1 < len(order) else None
     write_crew(board, done=done, awaiting=awaiting)
+
+
+def reopen_phase(board: board_mod.Board, phase: str) -> None:
+    """Point `awaiting` back at an earlier phase, dropping it and everything after from `done`.
+
+    The inspect -> stills back-edge is the caller: a standing checker failure is work for the
+    asset-maker, and a cursor that says "assets is finished" over verdicts that just failed is
+    the studio lying about what the checkers said. This moves the gate and runs nothing -- the
+    director approves the re-run like any other phase, which is what keeps the loop from being
+    autonomous: each pass around it costs one explicit approval.
+    """
+    if phase not in PHASE_STAGE:
+        raise ValueError(f"no phase called {phase!r}. Phases: {', '.join(PHASES)}")
+    stage_name = PHASE_STAGE[phase]
+    order = phases_for(stage_name)
+    index = order.index(phase)
+    other = [item for item in crew_record(board)["done"] if PHASE_STAGE.get(item) != stage_name]
+    write_crew(board, done=other + order[:index], awaiting=phase)
 
 
 def mark_stage_done(board: board_mod.Board, stage: str) -> None:
@@ -376,7 +400,7 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
         if lens and not _checkable(board):
             hooks.say(f"[crew] {who}: nothing to check yet")
             continue
-        message = _brief(name, role, lens, note)
+        message = _brief(name, role, lens, note, board)
         label = f"{name} · {phase} · {who}" if phase else f"{name} · {who}"
         hooks.say(f"[crew] {name}/{who}" + (f" ({phase})" if phase else ""))
         hooks.doing(label + (f" · {lens}" if lens else ""))
@@ -391,7 +415,13 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
             trace.note("agent_failed", agent=who, status="failed", summary=str(failed))
         board = board_mod.Board.load(board.slug)
     if not hooks.stopping():
-        if phase is not None:
+        if phase == "inspect" and critique.failing(board):
+            # The back-edge: standing failures are the asset-maker's work, so the gate moves
+            # back to stills rather than declaring the stage finished over them. Gated only --
+            # an ungated run keeps burning through, which is what ungated means.
+            reopen_phase(board, "stills")
+            hooks.say("[crew] inspect left standing failures; awaiting stills again")
+        elif phase is not None:
             mark_phase_done(board, phase)
             hooks.say(f"[crew] phase {phase} done; awaiting {crew_record(board)['awaiting'] or 'nothing'}")
         else:
@@ -472,10 +502,14 @@ def run(board: board_mod.Board, *, note: str = "", stop_after: str | None = None
             break
         where = next_stage(board)
         if where is None:
-            # Inspect can still be awaiting after stills cleared assets_needed.
+            # An assets phase can still be awaiting after stills cleared assets_needed:
+            # inspect after the stills landed, or stills again after inspect reopened it.
+            # One phase, then stop -- looping here would let a checker that always fails
+            # ping-pong stills and inspect until the budget starved the maker into a loop
+            # of refusals, with nobody approving any of it.
             leftover = awaiting_phase(board)
-            if leftover == "inspect":
-                turns += run_phase(board, "inspect", note=note, hooks=hooks, llm=llm,
+            if leftover is not None and PHASE_STAGE[leftover] == "assets":
+                turns += run_phase(board, leftover, note=note, hooks=hooks, llm=llm,
                                    state=shared)
                 board = board_mod.Board.load(board.slug)
             else:
@@ -522,11 +556,26 @@ def _checkable(board: board_mod.Board) -> bool:
     return any(board.asset_path(beat["n"]).is_file() for beat in board.ordered_beats())
 
 
-def _brief(stage_name: str, role: str, lens: str | None, note: str) -> str:
+def _brief(stage_name: str, role: str, lens: str | None, note: str,
+           board: board_mod.Board | None = None) -> str:
     if lens:
         body = CHECK_BRIEF.format(lens=lens)
     else:
         body = BRIEF_FOR.get((stage_name, role), "Do what this board needs next.")
+    if stage_name == "assets" and role == "asset-maker" and board is not None:
+        # The checkers' feedback reaches the maker here, as quoted verdicts in the brief --
+        # the board is still the message passing, this just reads it out loud. Only standing
+        # failures (the latest verdict per beat and lens): a fail that was fixed and
+        # re-inspected to a pass would send the maker un-fixing the fix.
+        standing = critique.failing_report(board)
+        if standing:
+            body += (
+                "\n\nThe inspectors failed these stills on their last pass. Each names a "
+                "problem and a suggested fix. The re-render decision is yours: fix the prompt "
+                "first, then render that beat once. A fix that needs the blocking or the "
+                "story changed is not yours to make -- say so in your reply and leave it.\n"
+                + standing
+            )
     return body + (f"\n\nThe director says: {note.strip()}" if note.strip() else "")
 
 
@@ -564,8 +613,10 @@ def plan_of(board: board_mod.Board | None) -> list[dict]:
     remaining: list[str] = []
     if where is not None:
         remaining = list(STAGES[STAGES.index(where):])
-    elif awaiting == "inspect":
-        remaining = ["assets"]
+    elif awaiting is not None:
+        # A phase can still be awaiting after `next_stage` answers None: inspect once stills
+        # exist, and stills again when inspect reopened it over standing failures.
+        remaining = [PHASE_STAGE[awaiting]]
     plan = []
     for name in remaining:
         phases = []

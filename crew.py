@@ -155,7 +155,7 @@ def _default_brief(agent: str, board) -> str:
         for role, who in zip(crew.STAGE_CAST[stage], crew.cast_for(stage, board)):
             if who == agent:
                 return crew._brief(stage, role, crew.CHECKERS.get(role)
-                                   if crew._is_check(stage, role) else None, "")
+                                   if crew._is_check(stage, role) else None, "", board)
     return "Do what this board needs next."
 
 
