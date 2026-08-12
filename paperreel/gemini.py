@@ -77,25 +77,37 @@ def _key() -> str:
 
 def _post(model: str, body: dict, *, read: float | None = None) -> dict:
     url = f"{config.GEMINI_API_URL}/models/{model}:generateContent"
-    try:
-        response = httpx.post(url, json=body, timeout=_timeout(read),
-                              headers={"x-goog-api-key": _key(),
-                                       "content-type": "application/json"})
-    except httpx.ConnectError as gone:
-        raise GeminiUnavailable(
-            f"could not reach {config.GEMINI_API_URL} -- check the network."
-        ) from gone
-    except httpx.TimeoutException as slow:
-        raise GeminiError(
-            f"{model} did not answer within {config.LLM_TIMEOUT:.0f}s. Raise "
-            "PAPERREEL_LLM_TIMEOUT, or use a faster model."
-        ) from slow
-    if response.status_code >= 400:
-        raise GeminiError(_fault(model, response))
-    payload = response.json()
-    if isinstance(payload, dict) and payload.get("error"):
-        raise GeminiError(str(payload["error"].get("message") or payload["error"]))
-    return payload
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = httpx.post(url, json=body, timeout=_timeout(read),
+                                  headers={"x-goog-api-key": _key(),
+                                           "content-type": "application/json"})
+        except httpx.ConnectError as gone:
+            raise GeminiUnavailable(
+                f"could not reach {config.GEMINI_API_URL} -- check the network."
+            ) from gone
+        except httpx.TimeoutException as slow:
+            raise GeminiError(
+                f"{model} did not answer within {config.LLM_TIMEOUT:.0f}s. Raise "
+                "PAPERREEL_LLM_TIMEOUT, or use a faster model."
+            ) from slow
+        if response.status_code == 429 and attempt < 2:
+            time.sleep(2 ** attempt)
+            continue
+        if response.status_code >= 400:
+            last_error = GeminiError(_fault(model, response))
+            if response.status_code == 429 and attempt < 2:
+                time.sleep(2 ** attempt)
+                continue
+            raise last_error
+        payload = response.json()
+        if isinstance(payload, dict) and payload.get("error"):
+            raise GeminiError(str(payload["error"].get("message") or payload["error"]))
+        return payload
+    if last_error is not None:
+        raise last_error
+    raise GeminiError(f"{model} did not answer after retries")
 
 
 def _fault(model: str, response: httpx.Response) -> str:
