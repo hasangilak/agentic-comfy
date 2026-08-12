@@ -1,0 +1,69 @@
+{
+  "beats": [],
+  "chat": [
+    {
+      "role": "user",
+      "text": "a flock of birds are migration to a new location. and all of a sudden the weather gets stormy"
+    },
+    {
+      "ops": [
+        {
+          "op": "ask_director",
+          "summary": "asked 4 questions"
+        }
+      ],
+      "questions": [
+        {
+          "id": "beats",
+          "kind": "choice",
+          "options": [
+            "4 \u00d7 5s (20s - short test reel)",
+            "2 \u00d7 10s (20s - two held beats)",
+            "6 \u00d7 5s (30s - brisk montage)",
+            "8 \u00d7 5s (40s - quick, cutting energy)",
+            "4 \u00d7 10s (40s - slow, contemplative)",
+            "2 \u00d7 10s + 4 \u00d7 5s (40s - slow open/close, brisk middle - DEFAULT)",
+            "1 \u00d7 10s + 6 \u00d7 5s (40s - one held moment, otherwise brisk)",
+            "3 \u00d7 10s + 2 \u00d7 5s (40s - slow with accents)",
+            "6 \u00d7 10s (60s - longer arc)"
+          ],
+          "prompt": "How long should the film run, and how do you want that time split across 5s and 10s beats?"
+        },
+        {
+          "id": "shots",
+          "kind": "choice",
+          "options": [
+            "3 camera setups (recommended for 40s)",
+            "4 camera setups",
+            "5 camera setups",
+            "1 long unbroken chained take for the entire film"
+          ],
+          "prompt": "How many separate camera setups (shots) would you like across the film?"
+        },
+        {
+          "id": "cast",
+          "kind": "choice",
+          "options": [
+            "Design the bird flock for me (paper cutout migratory songbirds/cranes)",
+            "I have an existing style bible to paste"
+          ],
+          "prompt": "Cast & Style: Should I design the paper-cutout bird flock puppet designs, or do you have a locked look/bible to paste?"
+        },
+        {
+          "id": "tone",
+          "kind": "text",
+          "options": [],
+          "prompt": "Tone & Ending: What specific feeling or image should the final frame leave with the viewer after the storm breaks?"
+        }
+      ],
+      "role": "gemini",
+      "text": "Welcome to the studio! Before we build the puppets and sets for your film about migrating birds caught in a sudden storm, I need a few quick directorial decisions."
+    }
+  ],
+  "concept": "a flock of birds are migration to a new location. and all of a sudden the weather gets stormy",
+  "seconds": 10.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "",
+  "title": "a flock of birds are migration to a new location. and all of"
+}

@@ -35,6 +35,16 @@ const DEFAULT_OPTIONS: Record<string, string[]> = {
   ],
   shots: ["3 setups", "4 setups", "5 setups", "one long chained take", "no long chained take"],
   cast: ["design them", "I will paste a style bible"],
+  // Matches develop.DEFAULT_OPTIONS["tone"] — model often sends tone as kind "text" with no
+  // options; without this the form is a blank field for a question that has a closed set.
+  tone: [
+    "hopeful landing",
+    "triumphant survival",
+    "bittersweet arrival",
+    "quiet wonder",
+    "lingering unease",
+    "relief and stillness",
+  ],
 };
 
 type InterviewTopic = "beats" | "shots" | "cast" | "tone";
@@ -46,6 +56,14 @@ function topicOf(question: InterviewQuestion): InterviewTopic {
   if (prompt.includes("beat") || prompt.includes("split") || prompt.includes("duration") || prompt.includes("how long")) return "beats";
   if (prompt.includes("cast") || prompt.includes("style_bible") || prompt.includes("puppet")) return "cast";
   if (prompt.includes("shot") || prompt.includes("camera") || prompt.includes("setup")) return "shots";
+  if (
+    prompt.includes("tone") ||
+    prompt.includes("ending") ||
+    prompt.includes("mood") ||
+    prompt.includes("final frame")
+  ) {
+    return "tone";
+  }
   return "tone";
 }
 
@@ -62,6 +80,14 @@ function defaultOptionsFor(id: string, prompt: string): string[] {
   }
   if (lower.includes("shot") || lower.includes("camera") || lower.includes("setup")) {
     return [...DEFAULT_OPTIONS.shots];
+  }
+  if (
+    lower.includes("tone") ||
+    lower.includes("ending") ||
+    lower.includes("mood") ||
+    lower.includes("final frame")
+  ) {
+    return [...DEFAULT_OPTIONS.tone];
   }
   return [];
 }

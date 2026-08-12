@@ -55,8 +55,9 @@ about this studio rather than about the film:
   prose list. One ask_director call per turn; keep the preamble short.
 - For a closed set of options use kind "choice" (one answer) or "multi" (several). For open
   answers use kind "text". Put the real options in the options array -- the brief's beat-split
-  list, shot counts, cast choices, and so on. Prefer ids beats, shots, cast, tone for the four
-  section 0 questions.
+  list, shot counts, cast choices, tone/ending moods, and so on. Prefer ids beats, shots, cast,
+  tone for the four section 0 questions. Tone is still a choice with mood chips (not a blank
+  text field); the director can type a custom line underneath if none fit.
 - Do not write the script as prose, ever. Call write_script only when you have answers to all
   four section 0 topics (beat structure, camera setups, cast, tone and ending) -- or the
   director said "defaults" / "you decide" for the whole interview. A lone beat-split (e.g.
@@ -106,6 +107,17 @@ DEFAULT_OPTIONS = {
     "cast": (
         "design them",
         "I will paste a style bible",
+    ),
+    # Tone is open-ended in the brief, but a blank text field is a worse default than chips
+    # the director can override — same pattern as beats/shots/cast. Keep these medium-agnostic
+    # endings, not concept-specific ones; the free-text field still accepts anything else.
+    "tone": (
+        "hopeful landing",
+        "triumphant survival",
+        "bittersweet arrival",
+        "quiet wonder",
+        "lingering unease",
+        "relief and stillness",
     ),
 }
 
@@ -167,8 +179,8 @@ def ask_tool() -> dict:
         "ask_director",
         "Ask the director one or more interview questions as a structured form. Call this "
         "instead of listing questions in prose. Do not call write_script in the same turn. "
-        "For section 0 use ids beats / shots / cast / tone; put the brief's beat splits and "
-        "shot-count choices in options.",
+        "For section 0 use ids beats / shots / cast / tone; put the brief's beat splits, "
+        "shot-count choices, cast choices, and tone/ending moods in options.",
         {
             "preamble": {
                 "type": "string",
@@ -203,7 +215,9 @@ def ask_tool() -> dict:
                                 "Labels for choice/multi. Required for those kinds. "
                                 "Omit or leave empty for text. For beats use the brief's "
                                 "splits; for shots use 3/4/5 setups or one long chained take; "
-                                "for cast use design them / I will paste a style bible."
+                                "for cast use design them / I will paste a style bible; "
+                                "for tone use short ending moods (hopeful landing, quiet "
+                                "wonder, lingering unease, …)."
                             ),
                         },
                     },
@@ -229,6 +243,8 @@ def _default_options_for(qid: str, prompt: str) -> list[str]:
         return list(DEFAULT_OPTIONS["cast"])
     if "shot" in lower or "camera" in lower or "setup" in lower:
         return list(DEFAULT_OPTIONS["shots"])
+    if "tone" in lower or "ending" in lower or "mood" in lower or "final frame" in lower:
+        return list(DEFAULT_OPTIONS["tone"])
     return []
 
 
@@ -349,6 +365,34 @@ def _beat_total(value: str) -> int | None:
     return sum(int(count) * int(seconds) for count, seconds in parts)
 
 
+def _shots_gaps(value: str) -> list[str]:
+    """What a camera-plan answer still lacks. Empty means settled (or deferred).
+
+    A whole-film long take -- the chip `one long chained take`, or the model's
+    `One continuous chained long take` -- is a complete plan: one continuous shot.
+    Requiring a separate 3/4/5 digit for that case makes the form re-ask forever.
+    """
+    if not value or _deferred(value):
+        return []
+    shot_lower = value.lower()
+    shot_counts = set(re.findall(r"\b[345]\b", shot_lower))
+    chooses_no_take = "no long" in shot_lower
+    affirmative = shot_lower.replace("no long chained take", "")
+    chooses_take = (
+        "long" in affirmative or "chain" in affirmative
+        or "unbroken" in affirmative or "continuous" in affirmative
+    )
+    has_take_choice = chooses_take != chooses_no_take
+    pure_long_take = chooses_take and not chooses_no_take and not shot_counts
+    has_count = len(shot_counts) == 1 or pure_long_take
+    missing: list[str] = []
+    if not has_count:
+        missing.append("a total shot count")
+    if not has_take_choice:
+        missing.append("whether to include a long chained take")
+    return missing
+
+
 def _clarifications(answers: dict[str, str]) -> list[dict]:
     """Questions that remain incomplete, independent of what the model tried to do."""
     questions: list[dict] = []
@@ -375,22 +419,8 @@ def _clarifications(answers: dict[str, str]) -> list[dict]:
         })
 
     shots = answers.get("shots", "")
-    shot_lower = shots.lower()
-    shot_counts = set(re.findall(r"\b[345]\b", shot_lower))
-    has_count = len(shot_counts) == 1
-    chooses_no_take = "no long" in shot_lower
-    affirmative = shot_lower.replace("no long chained take", "")
-    chooses_take = (
-        "long" in affirmative or "chain" in affirmative
-        or "unbroken" in affirmative or "continuous" in affirmative
-    )
-    has_take_choice = chooses_take != chooses_no_take
-    if not shots or (not _deferred(shots) and (not has_count or not has_take_choice)):
-        missing = []
-        if not has_count:
-            missing.append("a total shot count")
-        if not has_take_choice:
-            missing.append("whether to include a long chained take")
+    missing = [] if not shots else _shots_gaps(shots)
+    if not shots or missing:
         detail = f" Please choose {' and '.join(missing)}." if missing else ""
         questions.append({
             "id": "shots",
@@ -411,18 +441,52 @@ def _clarifications(answers: dict[str, str]) -> list[dict]:
         questions.append({
             "id": "tone",
             "prompt": "What mood or final image should the film leave with the audience?",
-            "kind": "text",
-            "options": [],
+            "kind": "choice",
+            "options": list(DEFAULT_OPTIONS["tone"]),
         })
     return questions
+
+
+def _merge_answers(stored, raw) -> dict[str, str]:
+    """Fold a form submit onto what the board already has.
+
+    A free-text affirmation ("no, the 20 second is enough") must not wipe a previous
+    parseable split -- `_clarifications` would then re-ask forever, because the prose has
+    no `N x 5s` to read. Keep the old beats answer whenever the new one does not parse and
+    is not an explicit deferral. Same for shots: a custom line that drops the count must not
+    erase a settled camera plan.
+    """
+    merged = _answer_values(stored)
+    incoming = _answer_values(raw)
+    new_beats = incoming.get("beats", "")
+    old_beats = merged.get("beats", "")
+    if (
+        new_beats
+        and old_beats
+        and not _deferred(new_beats)
+        and _beat_total(new_beats) is None
+        and _beat_total(old_beats) is not None
+    ):
+        incoming = {k: v for k, v in incoming.items() if k != "beats"}
+    new_shots = incoming.get("shots", "")
+    old_shots = merged.get("shots", "")
+    if (
+        new_shots
+        and old_shots
+        and not _deferred(new_shots)
+        and _shots_gaps(new_shots)
+        and not _shots_gaps(old_shots)
+    ):
+        incoming = {k: v for k, v in incoming.items() if k != "shots"}
+    merged.update(incoming)
+    return merged
 
 
 def _hold_for_answers(board: board_mod.Board, message: str, raw_answers) -> dict | None:
     """Persist valid progress and return a clarification turn while anything is incomplete."""
     if raw_answers is None:
         return None
-    merged = _answer_values(board.data.get("interview_answers"))
-    merged.update(_answer_values(raw_answers))
+    merged = _merge_answers(board.data.get("interview_answers"), raw_answers)
     board.data["interview_answers"] = merged
     questions = _clarifications(merged)
     if not questions:

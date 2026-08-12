@@ -166,7 +166,7 @@ def template(medium_key: str | None = None) -> str:
     Three of its passages are medium-bound and live in `config.MEDIUMS` rather than in the file:
     the opening sentence about what the films are made of, section 4 (the physics), and section
     6(a) (the construction the style bible must lock down). Everything else -- the interview, the
-    joins, the 40-second budget, the anti-slop rules, the output format, the self-check -- is
+    joins, the duration budget the director chose, the anti-slop rules, the output format, the self-check -- is
     pipeline and is word-for-word correct in any medium, which is why the file was forked at
     three seams rather than copied.
 
