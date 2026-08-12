@@ -359,6 +359,21 @@ export function useStudioState() {
     }
   }, []);
 
+  /**
+   * Soft-delete a reel (moves to `.trash/`). If it is the one on screen, go home so the shell
+   * is not left holding a board whose directory no longer exists.
+   */
+  const trashReel = useCallback(
+    async (target: string) => {
+      await guard(async () => {
+        await api.deleteReel(target);
+        if (target === slugRef.current) await go(null);
+        await refreshReels();
+      });
+    },
+    [go, guard, refreshReels],
+  );
+
   return {
     reels,
     slug,
@@ -396,6 +411,7 @@ export function useStudioState() {
     go,
     goStage,
     openReel,
+    trashReel,
     refreshBoard,
     refreshReels,
     guard,

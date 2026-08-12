@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { money } from "../api";
 import { useStudio } from "../useStudio";
+import { TrashReel } from "../panels/TrashReel";
 import { PasteAScript, TalkItThrough, WriteItForMe } from "./NewReel";
 
 /**
@@ -66,26 +67,35 @@ export function Start() {
           {studio.reels.length ? (
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {studio.reels.map((reel) => (
-                <button
+                <div
                   key={reel.slug}
-                  onClick={() => void studio.openReel(reel.slug)}
-                  className="lift overflow-hidden rounded-2xl border border-edge bg-panel text-left
+                  className="lift relative overflow-hidden rounded-2xl border border-edge bg-panel
                     transition-colors hover:bg-hover"
                 >
-                  {reel.thumb ? (
-                    <img src={reel.thumb} alt="" className="h-32 w-full object-cover" />
-                  ) : (
-                    <div className="flex h-32 w-full items-center justify-center bg-ink text-xl text-zinc-300">
-                      🎞
+                  <TrashReel
+                    slug={reel.slug}
+                    className="absolute right-2 top-2 z-10 rounded-full bg-panel/90 px-1.5 py-0.5
+                      shadow-sm"
+                  />
+                  <button
+                    onClick={() => void studio.openReel(reel.slug)}
+                    className="w-full text-left"
+                  >
+                    {reel.thumb ? (
+                      <img src={reel.thumb} alt="" className="h-32 w-full object-cover" />
+                    ) : (
+                      <div className="flex h-32 w-full items-center justify-center bg-ink text-xl text-zinc-300">
+                        🎞
+                      </div>
+                    )}
+                    <div className="px-3 py-2">
+                      <div className="truncate text-[12px] text-zinc-800">{reel.title}</div>
+                      <div className="text-[10px] text-zinc-400">
+                        {reel.beats ? `${reel.beats} beats` : "draft"} · {money(reel.spent)}
+                      </div>
                     </div>
-                  )}
-                  <div className="px-3 py-2">
-                    <div className="truncate text-[12px] text-zinc-800">{reel.title}</div>
-                    <div className="text-[10px] text-zinc-400">
-                      {reel.beats ? `${reel.beats} beats` : "draft"} · {money(reel.spent)}
-                    </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           ) : (

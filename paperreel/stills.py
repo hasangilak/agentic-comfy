@@ -80,9 +80,16 @@ JUDGEMENT = (
     "- the palette and the art direction.\n"
     "- the frame: tall vertical 9:16, the character fully inside it, no text, no watermark, "
     "no signature, no border or frame drawn around the picture.\n"
-    "- whether the still actually shows what its prompt asked for.\n\n"
+    "- whether the still actually shows what its prompt asked for.\n"
+    "- leave room for the action: the still is frame one of the beat's motion, not the "
+    "climax. If THIS BEAT'S ACTION describes travel across the frame — walk, cross, slide "
+    "left-to-right — and the picture already parks the subject mid-path or at the "
+    "destination with no empty travel space, reject it. Rewrite the asset_prompt so they "
+    "start at the near edge with the destination side open and named. Do not reject a still "
+    "that correctly opens a travel beat with empty space ahead.\n\n"
     "The setting, the framing, the scale and the pose are SUPPOSED to differ from the "
-    "reference -- each beat is a different shot. Never reject a still for those."
+    "reference -- each beat is a different shot. Never reject a still for those, except the "
+    "leave-room rule above when travel space was consumed."
 )
 
 
@@ -362,7 +369,9 @@ def review(board: board_mod.Board, n: int) -> dict:
     if not still.is_file():
         raise gemini.GeminiError(f"beat {n} has no still to look at")
     reference = board.reference_for(n)
-    prompt = (board.beat(n).get("asset_prompt") or "").strip()
+    beat = board.beat(n)
+    prompt = (beat.get("asset_prompt") or "").strip()
+    action = (beat.get("action") or "").strip()
     parts: list[str] = []
     images: list[Path] = []
     if reference is not None:
@@ -381,6 +390,8 @@ def review(board: board_mod.Board, n: int) -> dict:
     images.append(still)
     parts.append(f"STYLE BIBLE: {board.identity()}")
     parts.append(f"REQUIRED OF EVERY STILL: {board.look().still}")
+    if action:
+        parts.append(f"THIS BEAT'S ACTION (what moves after frame one): {action}")
     if prompt:
         parts.append(f"THIS STILL WAS ASKED FOR AS: {prompt}")
         # This pass rewrites `asset_prompt` without anyone asking for it, and it is told to

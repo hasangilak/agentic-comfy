@@ -12,6 +12,10 @@ one video call: it is N separate 5-second or 10-second MiniMax-H3 generations st
 together. Your job is temporal consistency across those joins — not looks, not stills, not
 design sheets.
 
+Coherence has already reconciled action against blocking, asset prompts and look-only design
+notes. You only own seams. Do not reopen leave-room or hinged-prop fights unless a seam fix
+you make forces a new one — and even then, change only `scene` / `action` / `source`.
+
 {{MEDIUM}}
 
 ## What you own

@@ -53,6 +53,14 @@ const patch = <T,>(path: string, body: unknown) =>
 export const api = {
   reels: () => call<{ reels: ReelSummary[] }>("/api/reels").then((r) => r.reels),
 
+  /**
+   * Soft-delete: the reel directory moves to `reels/.trash/`, not unlinked. Paid clips survive
+   * on disk; a mis-click is recoverable from the filesystem. 409 while any job for the slug
+   * is queued or running.
+   */
+  deleteReel: (slug: string) =>
+    call<{ trashed: string }>(`/api/reels/${slug}`, { method: "DELETE" }),
+
   createReel: (concept: string, beats: number, seconds: number) =>
     post<{ job: Job }>("/api/reels", { concept, beats, seconds }).then((r) => r.job),
 

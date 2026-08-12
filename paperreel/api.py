@@ -609,6 +609,19 @@ def patch_reel(slug: str, body: dict = Body(...)) -> dict:
 
 @app.delete("/api/reels/{slug}")
 def delete_reel(slug: str) -> dict:
+    # Jobs write into the reel directory; renaming it under them would orphan every path.
+    busy = next(
+        (
+            job for job in runner.jobs.values()
+            if job.slug == slug and job.state in ("queued", "running")
+        ),
+        None,
+    )
+    if busy:
+        raise HTTPException(
+            409,
+            f"cannot delete while the {busy.kind} job is {busy.state}",
+        )
     board = load(slug)
     # Move rather than delete: renders cost real money and a mis-click should not be final.
     trash = board_mod.reels_dir() / ".trash" / f"{slug}-{int(time.time())}"

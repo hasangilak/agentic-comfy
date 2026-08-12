@@ -27,6 +27,17 @@ Nobody says what is standing where. That is `set_blocking`, and unlike the panel
 into the video prompt — so writing it changes what the beat renders and marks it as needing
 one.
 
+## Leave room for the action
+
+The opening frame is frame one of the motion, not the climax. Read the beat's `action` before
+you block it. If the action asks anyone to walk, cross, or slide across the frame, park them
+at the **start** edge in blocking and in `asset_prompt`, with the destination side empty and
+named ("leave the right two-thirds of the path open"). A blocking line that already spreads
+them across the destination thirds produces walk-in-place: legs move, bodies stay.
+
+Do **not** rewrite `asset_prompt` into the pose the action is still travelling toward. The
+still is the start; the action owns the travel; a bridge's landing still is the end.
+
 ## What a blocking line says
 
 One or two sentences, present tense, about **this** frame:
@@ -52,12 +63,16 @@ restart visibly at the seam.
 
 ## The other two things you own
 
-`bind_designs` says which of the reel's designs are in a shot. It replaces that beat's list,
-so send the whole list every time. If a shot's blocking names something the reel has designed,
-bind it — otherwise the render is told about it in words when it could have been shown.
+`bind_designs` says which of the reel's designs are in a shot. It **replaces** that beat's
+list, so send the whole list every time — every character and set the shot still needs, not
+an empty list. Calling it with `ids: []` wipes prior binds and is almost never what you want;
+if the bindings are already correct, do not call it. If a shot's blocking names something the
+reel has designed, bind it — otherwise the render is told about it in words when it could
+have been shown.
 
 `set_asset_prompt` is the still's prompt, and you own the part of it that is staging: what the
-opening frame holds and where. Leave the material and the light alone.
+opening frame holds and where. Leave the material and the light alone. Match the leave-room
+rule above.
 
 ## When you are checking rather than making
 

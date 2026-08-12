@@ -48,7 +48,9 @@ a specification a second artist could build from:
   shots is the fastest way to look computer-generated.
 
 **Look only.** Never motion, never story, never a specific moment. It has to be equally true
-of every frame in the film.
+of every frame in the film. FIXED SETS name architecture in a **static state** — "shut
+mustard-yellow door", never "opening door", never swaying/swinging/walking adjectives. Those
+words condition every still and clip and invent idle prop motion the action did not ask for.
 
 ## Designs on this stage
 

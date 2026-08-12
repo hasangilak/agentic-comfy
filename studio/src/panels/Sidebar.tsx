@@ -3,6 +3,7 @@ import { useStudio } from "../useStudio";
 import { RailRow } from "../ui";
 import { CrewPanel } from "./CrewPanel";
 import { StageRail } from "./StageRail";
+import { TrashReel } from "./TrashReel";
 
 const CONTAINER_LOOK = {
   cold: { dot: "bg-zinc-300", label: "cold", hint: "no GPU running, nothing billing" },
@@ -108,26 +109,31 @@ export function Sidebar() {
 
       <div className="thin flex-1 overflow-y-auto px-2 pb-2">
         {studio.reels.map((reel) => (
-          <button
+          <div
             key={reel.slug}
-            onClick={() => void studio.openReel(reel.slug)}
-            className={`mb-0.5 flex w-full items-center gap-2.5 rounded-xl p-1.5 text-left
-              transition-colors ${reel.slug === studio.slug ? "bg-soft" : "hover:bg-hover"}`}
+            className={`mb-0.5 flex w-full items-center gap-1 rounded-xl p-1.5
+              ${reel.slug === studio.slug ? "bg-soft" : "hover:bg-hover"}`}
           >
-            {reel.thumb ? (
-              <img src={reel.thumb} alt="" className="h-9 w-9 rounded-lg object-cover" />
-            ) : (
-              <div className="h-9 w-9 rounded-lg bg-softer" />
-            )}
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12px] text-zinc-800">{reel.title}</span>
-              <span className="block text-[10px] text-zinc-400">
-                {/* A reel with no beats is one that was started and not written yet — a real
-                    state now that a conversation can create the board before the script. */}
-                {reel.beats ? `${reel.beats} beats` : "draft"} · {money(reel.spent)}
+            <button
+              onClick={() => void studio.openReel(reel.slug)}
+              className="flex min-w-0 flex-1 items-center gap-2.5 text-left transition-colors"
+            >
+              {reel.thumb ? (
+                <img src={reel.thumb} alt="" className="h-9 w-9 rounded-lg object-cover" />
+              ) : (
+                <div className="h-9 w-9 rounded-lg bg-softer" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] text-zinc-800">{reel.title}</span>
+                <span className="block text-[10px] text-zinc-400">
+                  {/* A reel with no beats is one that was started and not written yet — a real
+                      state now that a conversation can create the board before the script. */}
+                  {reel.beats ? `${reel.beats} beats` : "draft"} · {money(reel.spent)}
+                </span>
               </span>
-            </span>
-          </button>
+            </button>
+            <TrashReel slug={reel.slug} className="shrink-0 px-1 py-0.5" />
+          </div>
         ))}
         {!studio.reels.length ? (
           <p className="px-2 py-1 text-[11px] leading-relaxed text-zinc-400">

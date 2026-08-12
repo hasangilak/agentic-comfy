@@ -1,10 +1,11 @@
 """What the three agents can do, as tools over the modules that already do it.
 
-Every tool here is a thin call into `agent.py`, `board.py`, `develop.py`, `panels.py`,
-`pictures.py`, `planner.py`, `staging.py` or `stills.py`. That is the whole design and it is
-worth stating plainly: the measured prompt scaffolding, the fingerprint rules, the still review,
-the join guards and the picture budget all keep exactly one copy, in the module that was
-written around them. An agent is a different way to *reach* those, never a second version.
+Every tool here is a thin call into `agent.py`, `board.py`, `coherence.py`, `develop.py`,
+`panels.py`, `pictures.py`, `planner.py`, `staging.py` or `stills.py`. That is the whole design
+and it is worth stating plainly: the measured prompt scaffolding, the fingerprint rules, the
+still review, the join guards and the picture budget all keep exactly one copy, in the module
+that was written around them. An agent is a different way to *reach* those, never a second
+version.
 
 Where a description already exists, it is borrowed rather than rewritten. `agent.TOOLS` carries
 descriptions that were tuned against a live model -- given a bare "Edit one beat" it spent a
@@ -34,7 +35,7 @@ import copy
 
 from . import agent as agent_mod
 from . import board as board_mod
-from . import config, critique, develop, llm as llm_mod, panels, pictures
+from . import coherence, config, critique, develop, llm as llm_mod, panels, pictures
 from . import planner, skills, staging, stills
 from .runtime import Context, Outcome, Tool, ToolRefused
 
@@ -48,7 +49,7 @@ def toolbox(llm: llm_mod.LLM | None = None) -> dict[str, Tool]:
     speaker = llm or llm_mod.provider()
     found: dict[str, Tool] = {}
     for make in (_shared, _script_tools, _storyboard_tools, _asset_tools,
-                 _style_tools, _blocking_tools, _check_tools):
+                 _style_tools, _blocking_tools, _coherence_tools, _check_tools):
         for tool in make(speaker):
             found[tool.spec["name"]] = tool
     return found
@@ -778,6 +779,50 @@ def _blocking_tools(llm: llm_mod.LLM) -> list[Tool]:
             },
             ["n", "blocking"],
         ), run=set_blocking),
+    ]
+
+
+# ## Coherence
+#
+# Text-only audit of action / blocking / asset_prompt / look-only fields. Writes nothing;
+# the coherence agent (or the director) fixes what it names. Lives before continuity in the
+# storyboard cast so seam phrases are written on the reconciled actions.
+
+
+def _coherence_tools(llm: llm_mod.LLM) -> list[Tool]:
+    def audit_coherence(context: Context, arguments: dict) -> Outcome:
+        board = context.need_board()
+        deep = arguments.get("deep")
+        if deep is None:
+            deep = True
+        findings = coherence.audit(
+            board, deep=bool(deep), llm=context.llm or llm,
+        )
+        return coherence.format_report(findings), [
+            {"op": "audit_coherence",
+             "summary": f"{len(findings)} coherence finding(s)"},
+        ]
+
+    return [
+        Tool(spec=llm.tool(
+            "audit_coherence",
+            "Read-only audit of fights between action, blocking, asset_prompt, style bible "
+            "and design notes that will make the video model walk in place, animate idle "
+            "doors, or otherwise invent motion. Returns findings only — fix them with "
+            "set_beat / set_blocking / set_asset_prompt / describe_design / set_script, then "
+            "re-audit. Costs nothing when deep is false (deterministic only).",
+            {
+                "deep": {
+                    "type": "boolean",
+                    "description": (
+                        "When true (default), run one cheap structured pass if the "
+                        "deterministic checks found nothing. Set false for a free "
+                        "deterministic-only scan."
+                    ),
+                },
+            },
+            [],
+        ), run=audit_coherence),
     ]
 
 

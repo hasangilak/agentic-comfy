@@ -53,7 +53,9 @@ If any `asset_prompt` is a single sentence or omits the layer stack, expand it w
 - **Every `asset_prompt`** — layered still description with `FOREGROUND` / `MIDGROUND` /
   `BACKGROUND` / `UPPER THIRD` / `LIGHT` / `COMPOSITION`, about 150–250 words, non-empty on
   every beat including chained ones. Beat 1 must show every recurring character full,
-  unobstructed, and clearly lit (it becomes the cast reference still).
+  unobstructed, and clearly lit (it becomes the cast reference still). The still is frame one
+  of the action, not the climax: if characters walk across the frame, park them at the start
+  edge with the destination side open and named.
 - **Every `action`** — one primary motion, its direction and speed, and what stays perfectly
   still. Chain and bridge beats open with a continuity phrase and pick up the previous beat's
   exact end-state.

@@ -9,7 +9,8 @@ prevent -- and a director agent would spend a model turn per decision on a quest
 statements answer for nothing.
 
     script      no beats yet          script-writer, then the style artist
-    storyboard  no panel written      style, character-sheet, set-designer, mise, continuity, panels
+    storyboard  no panel written      style, character-sheet, set-designer, mise, coherence,
+                                      continuity, panels
     assets      beats waiting on a still   asset-maker, then three agents check its work
     None        nothing left that does not cost GPU money
 
@@ -57,16 +58,17 @@ STYLE = "@style"
 #
 #   script      the writer first, because there is nothing to style until there are beats.
 #   storyboard  the style artist first (bible + medium), then character-sheet (cast locks),
-#               then set-designer (place locks), then mise-en-scene binds, then continuity
-#               audits seams -- and the panels come last because `panels._digest` names the
-#               designs a beat binds, so a panel written before the binding is a panel written
-#               about a cast it could not see.
+#               then set-designer (place locks), then mise-en-scene binds, then coherence
+#               reconciles action/blocking/still fights, then continuity audits seams --
+#               and the panels come last because `panels._digest` names the designs a beat
+#               binds, so a panel written before the binding is a panel written about a cast
+#               it could not see.
 #   assets      the maker first and the three checkers after, which is the only order that
 #               makes sense for a check.
 STAGE_CAST: dict[str, tuple[str, ...]] = {
     "script": ("script-writer", STYLE),
     "storyboard": (STYLE, "character-sheet", "set-designer", "mise-en-scene",
-                   "continuity", "storyboarder"),
+                   "coherence", "continuity", "storyboarder"),
     "assets": ("asset-maker", STYLE, "mise-en-scene", "script-writer"),
 }
 
@@ -80,7 +82,7 @@ STAGE_PHASES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     "storyboard": (
         ("designs", (STYLE, "character-sheet", "set-designer")),
-        ("seams", ("mise-en-scene", "continuity")),
+        ("seams", ("mise-en-scene", "coherence", "continuity")),
         ("panels", ("storyboarder",)),
     ),
     "assets": (
@@ -132,6 +134,10 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
     ("storyboard", "mise-en-scene"): ("Block every shot: what each frame holds and where "
                                       "everything stands in it. Bind the designs each shot "
                                       "contains."),
+    ("storyboard", "coherence"): ("Audit action against blocking, asset prompts and look-only "
+                                  "design notes for fights that make the video model walk in "
+                                  "place or invent idle prop motion. Fix what fails, then "
+                                  "re-audit."),
     ("storyboard", "continuity"): ("Audit every chain and bridge seam: identical scene lines "
                                    "within a shot, continuity phrases, bridge landings, no "
                                    "three pure chains, no shot past 20 seconds. Fix what fails."),

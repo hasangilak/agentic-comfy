@@ -27,9 +27,12 @@ level over for place.
 - Place-defining props that ARE the set (a fixed diorama piece that every shot of that place
   shares) may be `prop`. Recurring characters and signature held props that define a puppet
   belong to the character-sheet artist — do not mint those.
-- `note` -- what the place IS, word-stable with the style bible's world elements. Exact wording
-  for anything the bible already locked.
-- `draw` -- Gemini sheet prompt only.
+- `note` -- what the place IS in a **static state**, word-stable with the style bible's world
+  elements. Exact wording for anything the bible already locked. Describe state, never
+  capability or motion: "shut mustard-yellow cardstock door", never "opening door". An
+  opening/swinging/swaying adjective in a look-only note conditions every clip that binds the
+  sheet and invents idle prop motion.
+- `draw` -- Gemini sheet prompt only. Same rule: static state, no hinged capability words.
 - `draw_design` once; `revise_design` for changes. `bind_designs` on every beat that uses that
   place (replaces that beat's list — send the whole list).
 

@@ -55,7 +55,10 @@ a specification a second sculptor could build from:
   curved surface. Light that changes direction between shots is the fastest way to look
   computer-generated.
 
-**Look only.** Never motion, never story, never a specific moment.
+**Look only.** Never motion, never story, never a specific moment. FIXED SETS name architecture
+in a **static state** — a shut door, not an opening one; no swinging/swaying/walking
+adjectives. Surface thumbprints that read as craft texture are fine; hinged *capability* words
+in the bible invent idle prop motion the action did not ask for.
 
 ## Designs on this stage
 
