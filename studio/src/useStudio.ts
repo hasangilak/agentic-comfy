@@ -9,7 +9,7 @@ import {
 } from "react";
 import { api } from "./api";
 import { buildRoute, parseRoute, resolveStage, type Stage } from "./route";
-import type { Board, ChatTurn, Container, Job, ReelSummary, StudioEvent } from "./types";
+import type { Board, ChatTurn, Container, Job, ReelSummary, StudioEvent, ActivityEvent } from "./types";
 
 const COLD: Container = {
   state: "cold",
@@ -31,6 +31,8 @@ export function useStudioState() {
   const [container, setContainer] = useState<Container>(COLD);
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  /** Live activity events for in-flight agent jobs, keyed by job id. */
+  const [liveActivity, setLiveActivity] = useState<Record<string, ActivityEvent[]>>({});
   const [selection, setSelection] = useState<number[]>([]);
   const [renderSelection, setRenderSelection] = useState<number[]>([]);
   // Which beat is open full-screen, if any. Shared state rather than the node's own, because
@@ -232,6 +234,13 @@ export function useStudioState() {
           break;
         case "job":
           setJobs((current) => ({ ...current, [event.job.id]: event.job }));
+          if (event.job.state !== "running") {
+            setLiveActivity((current) => {
+              const next = { ...current };
+              delete next[event.job.id];
+              return next;
+            });
+          }
           if (event.job.kind === "plan" && event.job.state === "done") {
             const created = (event.job.result as { slug?: string } | null)?.slug;
             void refreshReels();
@@ -258,6 +267,26 @@ export function useStudioState() {
             };
           });
           break;
+        case "activity": {
+          const { job_id: jobId, event: activityEvent } = event;
+          setLiveActivity((current) => {
+            const list = [...(current[jobId] ?? [])];
+            const index = list.findIndex((item) => item.id === activityEvent.id);
+            if (index >= 0) list[index] = activityEvent;
+            else list.push(activityEvent);
+            return { ...current, [jobId]: list };
+          });
+          setJobs((current) => {
+            const job = current[jobId];
+            if (!job) return current;
+            const activity = [...(job.activity ?? [])];
+            const index = activity.findIndex((item) => item.id === activityEvent.id);
+            if (index >= 0) activity[index] = activityEvent;
+            else activity.push(activityEvent);
+            return { ...current, [jobId]: { ...job, activity } };
+          });
+          break;
+        }
       }
     };
     source.onerror = () => setError("lost the studio event stream; is studio.py running?");
@@ -291,6 +320,23 @@ export function useStudioState() {
     [jobs],
   );
 
+  const agentJob = useMemo(() => {
+    if (!slug) return null;
+    return (
+      Object.values(jobs).find(
+        (job) =>
+          job.slug === slug &&
+          job.state === "running" &&
+          (job.kind === "chat" || job.kind === "crew" || job.kind === "agent"),
+      ) ?? null
+    );
+  }, [jobs, slug]);
+
+  const agentActivity = useMemo(() => {
+    if (!agentJob) return [];
+    return liveActivity[agentJob.id] ?? agentJob.activity ?? [];
+  }, [agentJob, liveActivity]);
+
   useEffect(() => {
     if (!activeJob) void refreshStatus();
   }, [activeJob, refreshStatus]);
@@ -323,6 +369,9 @@ export function useStudioState() {
     chat,
     jobs,
     activeJob,
+    agentJob,
+    agentActivity,
+    liveActivity,
     container,
     liveSeconds,
     sessionCost,

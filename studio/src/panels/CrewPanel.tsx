@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { AgentInfo, AgentRoster, CrewPlan, Job } from "../types";
 import { useStudio } from "../useStudio";
+import { ActivityTimeline } from "./ActivityTimeline";
 
 /**
  * Who is working on this reel, what they are doing, and what they handed back.
@@ -33,6 +34,8 @@ export function CrewPanel() {
   const [plan, setPlan] = useState<CrewPlan | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState<string | null>(null);
+  const [askText, setAskText] = useState("");
 
   // The roster is the skills on disk and changes only when a SKILL.md does, so it is fetched
   // once. The plan is derived from the board and is refetched whenever the board announces a
@@ -53,6 +56,19 @@ export function CrewPanel() {
   const job = studio.activeJob?.slug === board.slug ? studio.activeJob : null;
   const running = job && (job.kind === "crew" || job.kind === "agent") ? job : null;
   const byName = new Map(roster.agents.map((agent) => [agent.name, agent]));
+
+  async function runAgent(name: string) {
+    const brief = askText.trim();
+    if (!brief) return;
+    setBusy(true);
+    try {
+      await studio.guard(() => api.runAgent(board!.slug, name, brief));
+      setAskText("");
+      setAsking(null);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function runCrew(stage?: string) {
     setBusy(true);
@@ -122,6 +138,16 @@ export function CrewPanel() {
                     was === `${entry.stage}-${index}` ? null : `${entry.stage}-${index}`,
                   )
                 }
+                asking={asking === member.agent}
+                onAsk={() => {
+                  setAsking((was) => (was === member.agent ? null : member.agent));
+                  setAskText("");
+                }}
+                askText={asking === member.agent ? askText : ""}
+                onAskText={setAskText}
+                onSubmitAsk={() => void runAgent(member.agent)}
+                askBusy={busy}
+                canAsk={!running}
               />
             ))}
           </div>
@@ -144,6 +170,13 @@ function CastRow({
   live,
   open,
   onToggle,
+  asking,
+  onAsk,
+  askText,
+  onAskText,
+  onSubmitAsk,
+  askBusy,
+  canAsk,
 }: {
   agent: AgentInfo | undefined;
   name: string;
@@ -152,34 +185,71 @@ function CastRow({
   live: boolean;
   open: boolean;
   onToggle: () => void;
+  asking: boolean;
+  onAsk: () => void;
+  askText: string;
+  onAskText: (text: string) => void;
+  onSubmitAsk: () => void;
+  askBusy: boolean;
+  canAsk: boolean;
 }) {
   return (
     <div>
-      <button
-        onClick={onToggle}
-        className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left
-          transition-colors ${open ? "bg-soft" : "hover:bg-hover"}`}
-        title={agent?.description ?? agent?.error ?? name}
-      >
-        <span className="w-4 shrink-0 text-center text-[10px] text-zinc-300">
-          {live ? (
-            <span className="inline-block h-2 w-2 rounded-full bg-warm live-dot" />
-          ) : (
-            order
-          )}
-        </span>
-        <span
-          className={`min-w-0 flex-1 truncate text-[12px] ${
-            live ? "font-medium text-zinc-900" : "text-zinc-700"
-          }`}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={onToggle}
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left
+            transition-colors ${open ? "bg-soft" : "hover:bg-hover"}`}
+          title={agent?.description ?? agent?.error ?? name}
         >
-          {name}
-        </span>
-        {/* A lens is what makes this member a checker rather than a maker, and the same skill
-            appears in both jobs -- so it is shown on the member, never beside the name. */}
-        {lens ? <span className="shrink-0 text-[10px] text-live">{lens}</span> : null}
-        {agent?.error ? <span className="shrink-0 text-[10px] text-danger">broken</span> : null}
-      </button>
+          <span className="w-4 shrink-0 text-center text-[10px] text-zinc-300">
+            {live ? (
+              <span className="inline-block h-2 w-2 rounded-full bg-warm live-dot" />
+            ) : (
+              order
+            )}
+          </span>
+          <span
+            className={`min-w-0 flex-1 truncate text-[12px] ${
+              live ? "font-medium text-zinc-900" : "text-zinc-700"
+            }`}
+          >
+            {name}
+          </span>
+          {lens ? <span className="shrink-0 text-[10px] text-live">{lens}</span> : null}
+          {agent?.error ? <span className="shrink-0 text-[10px] text-danger">broken</span> : null}
+        </button>
+        {canAsk ? (
+          <button
+            onClick={onAsk}
+            title="talk to this specialist directly, bypassing the director"
+            className={`shrink-0 rounded-lg px-1.5 py-1 text-[10px] transition-colors ${
+              asking ? "bg-soft text-zinc-800" : "text-zinc-400 hover:bg-hover hover:text-zinc-700"
+            }`}
+          >
+            ask
+          </button>
+        ) : null}
+      </div>
+      {asking ? (
+        <div className="mb-1 space-y-1 px-2.5">
+          <textarea
+            className="thin w-full resize-none rounded-xl border border-edge bg-ink px-2 py-1.5
+              text-[11px] leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400"
+            rows={2}
+            value={askText}
+            onChange={(event) => onAskText(event.target.value)}
+            placeholder={`what should ${name} do?`}
+          />
+          <button
+            onClick={onSubmitAsk}
+            disabled={askBusy || !askText.trim()}
+            className="rounded-lg bg-solid px-2 py-1 text-[10px] text-white disabled:opacity-40"
+          >
+            send
+          </button>
+        </div>
+      ) : null}
       {open ? (
         <div className="mb-1 space-y-1 border-l border-edge pl-3.5 pr-2 pt-0.5">
           {agent?.error ? (
@@ -213,21 +283,24 @@ function CastRow({
  */
 function LiveCrew({ job }: { job: Job }) {
   const studio = useStudio();
+  const activity = studio.liveActivity[job.id] ?? job.activity ?? [];
   return (
-    <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-warm/30 bg-warm/5
-      px-2.5 py-1.5">
-      <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-warm live-dot" />
-      <span className="min-w-0 flex-1 truncate text-[11px] text-warm">
-        {job.phase || (job.kind === "crew" ? "the crew is starting" : "the agent is starting")}
-      </span>
-      <button
-        onClick={() => void studio.guard(() => api.cancel(job.id))}
-        className="shrink-0 rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-400
-          transition-colors hover:bg-hover hover:text-danger"
-        title="stop after this round"
-      >
-        stop
-      </button>
+    <div className="mb-1.5 space-y-1.5 rounded-xl border border-warm/30 bg-warm/5 px-2.5 py-1.5">
+      <div className="flex items-center gap-2">
+        <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-warm live-dot" />
+        <span className="min-w-0 flex-1 truncate text-[11px] text-warm">
+          {job.phase || (job.kind === "crew" ? "the crew is starting" : "the agent is starting")}
+        </span>
+        <button
+          onClick={() => void studio.guard(() => api.cancel(job.id))}
+          className="shrink-0 rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-400
+            transition-colors hover:bg-hover hover:text-danger"
+          title="stop after this round"
+        >
+          stop
+        </button>
+      </div>
+      {activity.length ? <ActivityTimeline events={activity} live defaultOpen /> : null}
     </div>
   );
 }
@@ -263,6 +336,7 @@ export function AgentTurns({ names }: { names?: string[] }) {
  * outlives the skill that wrote it: a turn from an agent since renamed still has to render.
  */
 const AGENT_ROLES = new Set([
+  "director",
   "script-writer",
   "storyboarder",
   "asset-maker",

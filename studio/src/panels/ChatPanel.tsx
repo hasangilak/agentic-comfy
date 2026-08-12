@@ -1,24 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useStudio } from "../useStudio";
+import { ActivityTimeline } from "./ActivityTimeline";
 import { Turn } from "./Turn";
 
 const NUDGES = [
   "make it slower and calmer",
   "add one more beat at the end",
   "this action is too busy — one movement only",
-  "generate the stills this reel is missing",
+  "write the script and style it",
 ];
 
 /**
- * The conversation that drives the board. A turn is a tool loop, so it can edit a beat, read
- * the board back to see what that did, and ask the image server for the stills the board now
- * needs -- all in one turn. The edits are listed as they land, so the canvas never changes
- * without saying why.
- *
- * Note what is missing: the model cannot render. It writes, rewrites, re-times and reorders,
- * and it can ask for stills, all of which are free. Pressing render stays a human act -- which
- * is why the render button is on the canvas toolbar and nothing in this panel can reach it.
+ * The conversation that drives the board. The director edits directly or delegates to
+ * specialists; activity events show tools and subagents as they run.
  */
 export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
   const studio = useStudio();
@@ -26,13 +21,11 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
   const [message, setMessage] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
 
-  const thinking = Object.values(studio.jobs).some(
-    (job) => job.kind === "chat" && job.state === "running",
-  );
+  const thinking = Boolean(studio.agentJob);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-  }, [studio.chat.length, thinking]);
+  }, [studio.chat.length, thinking, studio.agentActivity.length]);
 
   const send = (text: string) => {
     const trimmed = text.trim();
@@ -55,7 +48,7 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
           }`}
           title={
             studio.model.ready
-              ? "the script, the board edits and the still review — through the Google API"
+              ? "the director, specialists, and still review — through the Google API"
               : "no Google API key, or it was refused. Put X-GOOG-API-KEY=… in .env."
           }
         >
@@ -76,9 +69,12 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
           <Turn key={index} turn={turn} />
         ))}
         {thinking ? (
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-warm live-dot" />
-            thinking…
+          <div className="space-y-2">
+            <ActivityTimeline events={studio.agentActivity} live defaultOpen />
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-warm live-dot" />
+              {studio.agentJob?.phase || "director is working…"}
+            </div>
           </div>
         ) : null}
       </div>
@@ -98,11 +94,6 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
         </div>
       ) : null}
 
-      {/* The reference design's "needs approval to run" strip, doing the job it does there: one
-          thing the board is waiting on, and the way to it. It used to fire the batch from here.
-          It navigates now instead -- the Assets stage shows what each still is drawn from and
-          which scene defines the cast, and a batch started from a side panel is a batch you
-          cannot watch. */}
       {missing && !board.manual_stills ? (
         <div className="mx-3 mb-2 flex items-center gap-2 rounded-2xl border border-edge bg-ink px-3 py-2">
           <span className="min-w-0 flex-1 text-[11px] text-zinc-600">
@@ -120,8 +111,6 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
         </div>
       ) : null}
 
-      {/* The composer is one card, the way the reference draws it: the field, and underneath it
-          on the same sheet everything that decides what the message means. */}
       <div className="p-3 pt-0">
         <div className="rounded-2xl border border-edge bg-panel p-2 transition-colors focus-within:border-zinc-300">
           <textarea
@@ -135,7 +124,7 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
                 send(message);
               }
             }}
-            placeholder="ask for a change to the board…"
+            placeholder="ask the director for a change…"
           />
           <div className="flex items-center gap-1.5 px-0.5 pt-1">
             {studio.selection.length ? (
@@ -168,4 +157,3 @@ export function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
     </div>
   );
 }
-

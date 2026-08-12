@@ -338,6 +338,25 @@ export interface Job {
   finished_at: number | null;
   cancelling: boolean;
   log: string[];
+  activity?: ActivityEvent[];
+}
+
+export type ActivityKind =
+  | "tool_call"
+  | "agent_start"
+  | "agent_done"
+  | "agent_failed"
+  | "round";
+
+export interface ActivityEvent {
+  id: string;
+  kind: ActivityKind;
+  status: "running" | "done" | "failed";
+  agent?: string;
+  tool?: string;
+  summary?: string;
+  started_at: number;
+  ended_at?: number;
 }
 
 export interface Container {
@@ -362,15 +381,20 @@ export interface ChatTurn {
   role:
     | "user"
     | "gemini"
+    | "director"
     | "qwen"
     | "agy"
     | "studio"
     | "script-writer"
     | "storyboarder"
-    | "asset-maker";
+    | "asset-maker"
+    | "mise-en-scene"
+    | "style-paper-cutout"
+    | "style-claymation";
   text: string;
   selection?: number[];
   ops?: { op: string; n?: number; summary: string }[];
+  activity?: ActivityEvent[];
 }
 
 export type StudioEvent =
@@ -380,7 +404,8 @@ export type StudioEvent =
   | { type: "job"; job: Job }
   | { type: "log"; job_id: string | null; line: string }
   | { type: "board"; slug: string }
-  | { type: "progress"; job_id: string; beat: number | null; step: number; step_max: number };
+  | { type: "progress"; job_id: string; beat: number | null; step: number; step_max: number }
+  | { type: "activity"; job_id: string; event: ActivityEvent };
 
 
 /**

@@ -102,8 +102,8 @@ export function resolveStage(board: Board | null): Stage {
  * flight. `render` is the only kind that spends the GPU and the only one on `studio`.
  */
 export const STAGE_JOBS: Record<Stage, string[]> = {
-  script: ["develop", "plan", "chat", "revise", "caption"],
-  storyboard: ["panel_write", "panel_draw", "stage_draw", "stage_chat"],
-  assets: ["asset", "still_chat", "ref_draw", "ref_chat"],
-  studio: ["render"],
+  script: ["develop", "plan", "chat", "revise", "caption", "crew", "agent"],
+  storyboard: ["panel_write", "panel_draw", "stage_draw", "stage_chat", "chat", "crew", "agent"],
+  assets: ["asset", "still_chat", "ref_draw", "ref_chat", "crew", "agent"],
+  studio: ["render", "chat", "crew", "agent"],
 };

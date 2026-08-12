@@ -15,7 +15,7 @@ import { useStudio } from "../useStudio";
 const LABELS: Record<string, string> = {
   develop: "talking it through",
   plan: "writing the script",
-  chat: "the model is thinking",
+  chat: "the director is thinking",
   revise: "rewriting the line",
   caption: "writing the caption",
   panel_write: "writing the shots",

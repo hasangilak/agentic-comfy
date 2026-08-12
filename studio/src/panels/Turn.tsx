@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { ChatTurn } from "../types";
+import type { ActivityEvent, ChatTurn } from "../types";
+import { ActivityTimeline } from "./ActivityTimeline";
 
 /**
  * One turn of the board's conversation. The user's is a bubble on the right; the model's is
@@ -11,13 +12,12 @@ import type { ChatTurn } from "../types";
  * second answer to "what does an edit look like".
  *
  * A turn from a crew agent is attributed and every other model turn is not, which is a real
- * distinction rather than decoration. "gemini" is the chat panel answering the director, and
- * saying so would label every turn in a conversation the director is having with one model. An
- * agent turn is a specialist reporting back on work nobody watched -- so which specialist is
- * the first thing worth knowing about it. `AGENT_ROLES` is a set rather than a lookup against
- * the live roster because a transcript outlives the skill that wrote it.
+ * distinction rather than decoration. "gemini" is the legacy chat role before the director
+ * agent; "director" is the one voice the studio talks to now. An agent turn is a specialist
+ * reporting back on work nobody watched -- so which specialist is the first thing worth knowing.
  */
 const AGENT_ROLES = new Set([
+  "director",
   "script-writer",
   "storyboarder",
   "asset-maker",
@@ -26,9 +26,21 @@ const AGENT_ROLES = new Set([
   "style-claymation",
 ]);
 
-export function Turn({ turn }: { turn: ChatTurn }) {
+const ROLE_LABELS: Record<string, string> = {
+  director: "director",
+  gemini: "assistant",
+};
+
+export function Turn({
+  turn,
+  liveActivity,
+}: {
+  turn: ChatTurn;
+  liveActivity?: ActivityEvent[];
+}) {
   const [open, setOpen] = useState(false);
   const ops = turn.ops ?? [];
+  const activity = liveActivity?.length ? liveActivity : (turn.activity ?? []);
 
   if (turn.role === "user") {
     return (
@@ -44,13 +56,17 @@ export function Turn({ turn }: { turn: ChatTurn }) {
     );
   }
 
+  const showRole = AGENT_ROLES.has(turn.role);
+  const roleLabel = ROLE_LABELS[turn.role] ?? turn.role;
+
   return (
     <div>
-      {AGENT_ROLES.has(turn.role) ? (
+      {showRole ? (
         <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
-          {turn.role}
+          {roleLabel}
         </div>
       ) : null}
+      <ActivityTimeline events={activity} live={Boolean(liveActivity?.length)} />
       {ops.length ? (
         <button
           onClick={() => setOpen((value) => !value)}
