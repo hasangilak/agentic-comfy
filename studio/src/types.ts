@@ -389,6 +389,7 @@ export interface ChatTurn {
     | "storyboarder"
     | "asset-maker"
     | "mise-en-scene"
+    | "character-sheet"
     | "style-paper-cutout"
     | "style-claymation";
   text: string;

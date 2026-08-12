@@ -53,11 +53,14 @@ PLAN_SCHEMA = {
         "style_bible": {
             "type": "string",
             "description": (
-                "The single dense paragraph from section 6 of the brief: medium and "
-                "construction, every recurring character in forensic detail, the world's "
-                "fixed elements, the 5-7 named colours, the lighting rig, the framing. "
-                "Prepended to every image and video prompt, so it must describe look only -- "
-                "never motion, never story, never a specific moment."
+                "One dense paragraph (section 6): medium and construction; every recurring "
+                "character in forensic detail (species/build, materials and colours of each "
+                "part, eyes, joints, garments, identifying marks -- wording two artists would "
+                "build the same puppet from); the world's fixed elements; 5-7 named colours; "
+                "one light rig; vertical 9:16 framing. Prepended verbatim to every image and "
+                "video prompt as the identity lock across stitched 5s/10s clips -- look only, "
+                "never motion, never story, never a specific moment. Refuse a thin or generic "
+                "bible."
             ),
         },
         "beats": {
@@ -70,38 +73,47 @@ PLAN_SCHEMA = {
                     "scene": {
                         "type": "string",
                         "description": (
-                            "One line: where and when this beat happens, and at what scale. "
-                            "It is rendered, so setting only -- never motion. Beats in one "
-                            "shot carry identical text."
+                            "One short line: where and when, and at what scale. Setting or "
+                            "framing only -- never motion, never story. Every beat of one "
+                            "continuous shot must carry identical text word for word."
                         ),
                     },
                     "action": {
                         "type": "string",
                         "description": (
-                            "What MOVES, for a locked-off camera, and what stays perfectly "
-                            "still. One primary motion. On a chain or bridge beat it opens "
-                            "with a continuity phrase and picks up in the exact end-state of "
-                            "the beat before."
+                            "Motion only for a locked-off camera: one primary motion, its "
+                            "direction and speed, and what stays perfectly still. Do NOT "
+                            "restate materials, colours, markings, or construction -- those "
+                            "live in style_bible and reference pictures; restating them with "
+                            "drift invents a second puppet mid-clip. On chain or bridge, open "
+                            "with a continuity phrase and pick up the exact end-state of the "
+                            "beat before; on bridge, finish in the state asset_prompt describes."
                         ),
                     },
                     "asset_prompt": {
                         "type": "string",
                         "description": (
-                            "The layered still description from section 7, 150-250 words, "
-                            "required and non-empty on EVERY beat including chained ones. "
-                            "Describes the beat's first frame -- except on a bridge, where it "
-                            "describes the frame the beat ends on."
+                            "Layered still description (section 7), about 150-250 words, with "
+                            "FOREGROUND / MIDGROUND / BACKGROUND / UPPER THIRD / LIGHT / "
+                            "COMPOSITION labels. Required and non-empty on EVERY beat including "
+                            "chained ones. Character look restated word-for-word from "
+                            "style_bible. Describes the beat's first frame -- except on a "
+                            "bridge, where it describes the frame the beat ends on. Beat 1 must "
+                            "show every recurring character full, unobstructed, clearly lit. "
+                            "Refuse a single-sentence or label-free prompt."
                         ),
                     },
                     "source": {
                         "type": "string",
                         "enum": WRITABLE_SOURCES,
                         "description": (
-                            "reference = this beat begins a new shot, a cut. chain = it "
-                            "continues the previous beat unbroken. bridge = it continues the "
-                            "previous beat AND must arrive at its own still. asset = a cut "
-                            "whose opening frame must be exact, which is rare -- see section 2. "
-                            "Beat 1 is always reference."
+                            "Joins are a consistency tool across stitched clips. reference = "
+                            "new shot cut on ref2va (cast held through reference pictures) -- "
+                            "prefer this for cuts. chain = continues previous beat unbroken. "
+                            "bridge = continues AND must arrive at its own still (use to "
+                            "re-anchor a long take). asset = exact-keyframe cut with no cast "
+                            "ref through the clip -- rare. Beat 1 is always reference. Never "
+                            "three pure chains without a bridge or cut."
                         ),
                     },
                 },
@@ -285,12 +297,16 @@ def review(draft: dict, instructions: str, *,
         "script, not rewriting the film, so keep the same story and the same number of beats.\n\n"
         f"{settled}"
         "Spend the effort on the checks that are invisible on the page and obvious in the "
-        "finished render: a chained beat whose action does not pick up in the exact end-state "
-        "of the beat before it, a chained beat whose scene line differs from its shot's first "
-        "beat, a character description in an asset_prompt that has drifted from the style "
-        "bible, an empty or thin asset_prompt, a shot running past 20 seconds, a third chain "
-        "with no bridge or cut before it, no genuine close-up or no genuine wide anywhere in "
-        "the film, no beat that is nearly motionless, and any banned word from section 5.9.\n\n"
+        "finished render: a thin or generic style_bible that could not lock the cast across "
+        "stitched clips; an empty, single-sentence, or label-free asset_prompt (missing "
+        "FOREGROUND/MIDGROUND/BACKGROUND/LIGHT/COMPOSITION); an action line that redesigns "
+        "appearance (materials, colours, markings) instead of describing motion only; a "
+        "chain or bridge whose action lacks a continuity phrase or does not pick up the "
+        "exact end-state of the beat before; a chained beat whose scene line differs from "
+        "its shot's first beat; a character description in an asset_prompt that has drifted "
+        "from the style bible; a shot running past 20 seconds; a third chain with no bridge "
+        "or cut before it; no genuine close-up or no genuine wide anywhere in the film; no "
+        "beat that is nearly motionless; and any banned word from section 5.9.\n\n"
         "Return the corrected script in full, then the changelog. Return JSON only.\n\n"
         f"===== THE BRIEF =====\n{instructions}\n\n"
         f"===== THE SCRIPT TO CHECK =====\n{_as_json(draft)}"

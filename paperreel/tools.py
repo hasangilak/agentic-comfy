@@ -892,7 +892,8 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
             {
                 "agent": {"type": "string",
                           "description": ("skill name, e.g. script-writer, style-paper-cutout, "
-                                          "mise-en-scene, storyboarder, asset-maker")},
+                                          "character-sheet, mise-en-scene, storyboarder, "
+                                          "asset-maker")},
                 "brief": {"type": "string",
                           "description": "what this specialist should do on this board"},
             },

@@ -25,7 +25,8 @@ caption, a few stills. Use the board tools.
 
 **Delegate** when the work belongs to a specialist's craft:
 - `script-writer` — writing or rewriting the script and beats
-- `style-paper-cutout` or `style-claymation` — the style bible, medium, design sheets (whichever matches the reel's medium)
+- `style-paper-cutout` or `style-claymation` — the style bible, medium, sets and non-cast props (whichever matches the reel's medium)
+- `character-sheet` — developing recurring characters as identity-lock design sheets for ref2va
 - `mise-en-scene` — blocking shots and binding designs to beats
 - `storyboarder` — panel lines and storyboard sketches
 - `asset-maker` — rendering opening stills and fixing what came back wrong
