@@ -35,7 +35,7 @@ import copy
 from . import agent as agent_mod
 from . import board as board_mod
 from . import config, critique, develop, llm as llm_mod, panels, pictures
-from . import planner, staging, stills
+from . import planner, skills, staging, stills
 from .runtime import Context, Outcome, Tool, ToolRefused
 
 
@@ -49,6 +49,16 @@ def toolbox(llm: llm_mod.LLM | None = None) -> dict[str, Tool]:
     found: dict[str, Tool] = {}
     for make in (_shared, _script_tools, _storyboard_tools, _asset_tools,
                  _style_tools, _blocking_tools, _check_tools):
+        for tool in make(speaker):
+            found[tool.spec["name"]] = tool
+    return found
+
+
+def director_toolbox(llm: llm_mod.LLM | None = None) -> dict[str, Tool]:
+    """The director's toolbox: board edits, still generation, and delegation to specialists."""
+    speaker = llm or llm_mod.provider()
+    found: dict[str, Tool] = {}
+    for make in (_shared, _director_board, _director_delegate):
         for tool in make(speaker):
             found[tool.spec["name"]] = tool
     return found
@@ -757,3 +767,161 @@ def _check_tools(llm: llm_mod.LLM) -> list[Tool]:
             ["n", "lens"],
         ), run=inspect_still),
     ]
+
+
+# ## The director
+#
+# One conversational agent that edits the board directly or delegates to specialists. Delegation
+# returns findings as tool text rather than top-level chat turns -- the director synthesizes
+# for the user. The crew panel's run-all path still exists for directors who want batch work.
+
+
+def _director_board(llm: llm_mod.LLM) -> list[Tool]:
+    def write_caption(context: Context, _arguments: dict) -> Outcome:
+        board = context.need_board()
+        written = agent_mod.caption(board)
+        context.hooks.changed()
+        return written, [{"op": "set_caption", "summary": "wrote the caption"}]
+
+    def generate_stills(context: Context, arguments: dict) -> Outcome:
+        board = context.need_board()
+        wanted = _beat_list(board, arguments) or []
+        if not wanted:
+            raise ToolRefused("say which beats, as a list of beat numbers")
+        spent = int(context.state.get("stills_made") or 0)
+        room = config.CREW_STILL_BUDGET - spent
+        if room <= 0:
+            return (f"this run has already rendered {spent} stills, which is its budget "
+                    f"({config.CREW_STILL_BUDGET}). Say what is still wrong and stop."), []
+        if len(wanted) > room:
+            context.hooks.say(f"[stills] budget: rendering {room} of {len(wanted)} asked for")
+            wanted = wanted[:room]
+        outcome = agent_mod.generate_stills(
+            board, {"beats": wanted}, log=context.hooks.log, progress=context.hooks.progress,
+            announce=context.hooks.announce, cancelled=context.hooks.cancelled)
+        context.state["stills_made"] = spent + len(wanted)
+        context.hooks.changed()
+        return outcome, [{"op": "generate_stills", "summary": f"rendered stills for {wanted}"}]
+
+    return [
+        Tool(spec=borrowed(llm, "set_script"), run=board_op("set_script")),
+        Tool(spec=borrowed(llm, "set_beat"), run=board_op("set_beat")),
+        Tool(spec=borrowed(llm, "add_beat"), run=board_op("add_beat")),
+        Tool(spec=borrowed(llm, "remove_beat"), run=board_op("remove_beat")),
+        Tool(spec=borrowed(llm, "set_source"), run=board_op("set_source")),
+        Tool(spec=borrowed(llm, "set_caption"), run=write_caption),
+        Tool(spec=borrowed(llm, "set_reel"), run=board_op("set_reel")),
+        Tool(spec=borrowed(llm, "generate_stills"), run=generate_stills),
+    ]
+
+
+def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
+    def crew_plan(context: Context, _arguments: dict) -> Outcome:
+        from . import crew as crew_mod
+
+        plan = crew_mod.plan_of(context.board)
+        if not plan:
+            return "nothing left for the crew -- only the render remains, which no agent can start", []
+        lines = []
+        for entry in plan:
+            cast = ", ".join(
+                f"{member['agent']}" + (f" ({member['lens']})" if member.get("lens") else "")
+                for member in entry["cast"]
+            )
+            lines.append(f"{entry['stage']}: {cast}")
+        return "Remaining crew work:\n" + "\n".join(lines), []
+
+    def delegate_agent(context: Context, arguments: dict) -> Outcome:
+        from . import crew as crew_mod
+
+        board = context.need_board()
+        name = str(arguments.get("agent") or "").strip()
+        brief = _text(arguments, "brief", "what this specialist should do")
+        roster = {entry["name"] for entry in skills.catalogue()}
+        if name not in roster:
+            raise ToolRefused(f"no agent called {name!r}. Available: {', '.join(sorted(roster))}")
+        turn = crew_mod.one(name, board, brief, hooks=context.hooks, state=context.state,
+                            via_director=True)
+        board = turn.board or board
+        lines = [
+            f"agent: {turn.agent}",
+            f"stopped: {turn.stopped}",
+            f"rounds: {turn.rounds}",
+            f"reply: {turn.reply}",
+        ]
+        if turn.ops:
+            lines.append("edits: " + "; ".join(op["summary"] for op in turn.ops))
+        findings = _checker_verdicts(board)
+        if findings:
+            lines.append("checker verdicts:\n" + findings)
+        summary = f"delegated to {name}"
+        return "\n".join(lines), [{"op": "delegate_agent", "summary": summary}]
+
+    def run_crew_stage(context: Context, arguments: dict) -> Outcome:
+        from . import crew as crew_mod
+
+        board = context.need_board()
+        stage = str(arguments.get("stage") or "").strip()
+        if stage not in crew_mod.STAGES:
+            raise ToolRefused(f"stage has to be one of {', '.join(crew_mod.STAGES)}")
+        note = str(arguments.get("note") or "").strip()
+        turns = crew_mod.stage(stage, board, note=note, hooks=context.hooks,
+                               state=context.state, via_director=True)
+        board = board_mod.Board.load(board.slug)
+        lines = [f"stage {stage} finished with {len(turns)} agent(s):"]
+        for turn in turns:
+            lines.append(f"  {turn.agent}: {turn.reply[:200]}")
+        findings = _checker_verdicts(board)
+        if findings:
+            lines.append("checker verdicts:\n" + findings)
+        return "\n".join(lines), [{"op": "run_crew_stage", "summary": f"ran {stage} stage"}]
+
+    return [
+        Tool(spec=llm.tool(
+            "crew_plan",
+            "Read what the crew would do next on this board, without doing any of it. "
+            "Returns the remaining stages and which specialists work each.",
+            {},
+        ), run=crew_plan),
+        Tool(spec=llm.tool(
+            "delegate_agent",
+            "Hand one task to a named specialist and read back what they did. Use this when "
+            "the work belongs to a particular craft -- writing, styling, storyboarding, stills. "
+            "The specialist's report comes back here; synthesize it for the director in your "
+            "reply rather than quoting it verbatim.",
+            {
+                "agent": {"type": "string",
+                          "description": ("skill name, e.g. script-writer, style-paper-cutout, "
+                                          "mise-en-scene, storyboarder, asset-maker")},
+                "brief": {"type": "string",
+                          "description": "what this specialist should do on this board"},
+            },
+            ["agent", "brief"],
+        ), run=delegate_agent),
+        Tool(spec=llm.tool(
+            "run_crew_stage",
+            "Run every specialist in one stage, in order, on this board. Use when the director "
+            "wants a whole phase done -- script, storyboard, or assets -- rather than one "
+            "specialist at a time.",
+            {
+                "stage": {"type": "string", "enum": ["script", "storyboard", "assets"],
+                          "description": "script, storyboard, or assets"},
+                "note": {"type": "string",
+                         "description": "anything specific the director wants them to know"},
+            },
+            ["stage"],
+        ), run=run_crew_stage),
+    ]
+
+
+def _checker_verdicts(board: board_mod.Board) -> str:
+    """Recent checker verdicts from asset_chat, for the director to synthesize."""
+    lines: list[str] = []
+    for beat in board.ordered_beats():
+        for turn in (beat.get("asset_chat") or [])[-6:]:
+            if turn.get("verdict") and turn.get("role") in critique.lenses():
+                role = turn["role"]
+                verdict = turn["verdict"]
+                text = str(turn.get("text") or "")[:160]
+                lines.append(f"  beat {beat['n']} {role} {verdict}: {text}")
+    return "\n".join(lines) if lines else ""

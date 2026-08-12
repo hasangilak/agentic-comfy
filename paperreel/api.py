@@ -160,22 +160,45 @@ def handle_develop(job: Job, run: Runner) -> dict:
 
 
 def handle_chat(job: Job, run: Runner) -> dict:
-    """One conversational turn, tools and all.
-
-    A turn can reach the image server, so it can take minutes rather than seconds -- the
-    hooks below are the same ones the still job uses, which is what puts a `generate_stills`
-    tool call in the job log and on the canvas as it happens rather than after the turn ends.
-    """
+    """One director turn: board edits, delegation to specialists, synthesis for the user."""
     board = load(job.slug)
-    run.log(job, f'[gemini] {job.detail["message"]}')
-    result = agent.turn(
-        board, job.detail["message"], selection=job.detail.get("selection"),
-        log=lambda line: run.log(job, line),
-        progress=still_progress(job, run),
-        announce=lambda: run.publish_board(board.slug),
-        cancelled=lambda: job.cancelling,
+    run.log(job, f'[director] {job.detail["message"]}')
+    hooks, collector = agent_hooks(job, run, board.slug)
+    director = runtime.build("director")
+    selection = job.detail.get("selection") or []
+    focus = ""
+    if selection:
+        focus = (
+            f"\nThe director currently has beat(s) {', '.join(map(str, selection))} selected. "
+            "Unqualified references like 'this one' mean those beats.\n"
+        )
+    turn = runtime.run(
+        director, job.detail["message"], board=board,
+        prelude=crew.prelude(board) + focus, hooks=hooks, state={}, collector=collector,
     )
-    return result
+    board = turn.board or board
+    runtime.remember(board, "director", job.detail["message"], turn)
+    run.publish_board(board.slug)
+    return {"reply": turn.reply, "ops": turn.ops, "activity": turn.activity}
+
+
+def agent_hooks(job: Job, run: Runner, slug: str, *,
+                picture_label: str = "still") -> tuple[runtime.Hooks, runtime.ActivityCollector]:
+    """Hooks shared by the director, crew, and single-agent jobs."""
+
+    def emit(event: dict) -> None:
+        run.emit_activity(job, event)
+
+    collector = runtime.ActivityCollector(emit)
+    hooks = runtime.Hooks(
+        log=lambda line: run.log(job, line),
+        progress=still_progress(job, run, label=picture_label),
+        announce=lambda: run.publish_board(slug),
+        cancelled=lambda: job.cancelling,
+        phase=lambda what: run.update(job, phase=what),
+        activity=emit,
+    )
+    return hooks, collector
 
 
 def still_progress(job: Job, run: Runner, label: str = "still"):
@@ -376,16 +399,8 @@ def crew_hooks(job: Job, run: Runner, slug: str) -> runtime.Hooks:
     three different kinds -- an opening still, a design sheet, a storyboard panel -- and the
     progress strip should not claim all three are stills.
     """
-    return runtime.Hooks(
-        log=lambda line: run.log(job, line),
-        progress=still_progress(job, run, label="picture"),
-        announce=lambda: run.publish_board(slug),
-        cancelled=lambda: job.cancelling,
-        # Onto `Job.phase`, which is the field the studio's job strip already reads for a
-        # render's four stages. A crew run reuses it rather than inventing a second telemetry
-        # field, so the strip needs the labels and not a new shape.
-        phase=lambda what: run.update(job, phase=what),
-    )
+    hooks, _collector = agent_hooks(job, run, slug, picture_label="picture")
+    return hooks
 
 
 def handle_crew(job: Job, run: Runner) -> dict:

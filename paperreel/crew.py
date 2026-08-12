@@ -146,19 +146,35 @@ def next_stage(board: board_mod.Board | None) -> str | None:
 def one(name: str, board: board_mod.Board | None, message: str, *,
         hooks: runtime.Hooks = runtime.Hooks(),
         llm: llm_mod.LLM | None = None,
-        state: dict | None = None) -> runtime.Turn:
+        state: dict | None = None,
+        via_director: bool = False,
+        collector: runtime.ActivityCollector | None = None) -> runtime.Turn:
     """One named agent, one message, no orchestration.
 
     The transcript is written here rather than inside `runtime.run` because a turn with no
     board -- the script agent before it has written anything -- has nowhere to write one, and a
     loop that sometimes records and sometimes does not is worse than a caller that decides.
+
+    When `via_director` is set, the specialist's reply lands in the director's activity tree
+    rather than as a top-level chat turn -- the director synthesizes for the user afterwards.
     """
     agent = runtime.build(name, llm=llm)
     text = prelude(board)
     hooks.say(f"[{name}] {message.strip()[:120]}")
-    turn = runtime.run(agent, message, board=board, prelude=text, hooks=hooks, state=state)
-    if turn.board is not None:
+    trace = collector if collector is not None else hooks.track()
+    event_id = trace.start("agent_start", agent=name, summary=message.strip()[:120])
+    hooks.doing(f"director · delegating {name}" if via_director else name)
+    try:
+        turn = runtime.run(agent, message, board=board, prelude=text, hooks=hooks,
+                           state=state, collector=trace)
+    except (skills.SkillError, llm_mod.LLMError) as failed:
+        trace.finish(event_id, status="failed", summary=str(failed))
+        raise
+    trace.finish(event_id, status="done", summary=turn.reply[:200] if turn.reply else "done")
+    if turn.board is not None and not via_director:
         runtime.remember(turn.board, name, message, turn)
+        hooks.changed()
+    elif turn.board is not None:
         hooks.changed()
     return turn
 
@@ -166,7 +182,9 @@ def one(name: str, board: board_mod.Board | None, message: str, *,
 def stage(name: str, board: board_mod.Board, *, note: str = "",
           hooks: runtime.Hooks = runtime.Hooks(),
           llm: llm_mod.LLM | None = None,
-          state: dict | None = None) -> list[runtime.Turn]:
+          state: dict | None = None,
+          via_director: bool = False,
+          collector: runtime.ActivityCollector | None = None) -> list[runtime.Turn]:
     """One stage: every agent in its cast, in order, on the same board.
 
     The board is reloaded between members for the reason `run` reloads between stages -- an
@@ -194,11 +212,14 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
         hooks.say(f"[crew] {name}/{who}")
         hooks.doing(f"{name} · {who}" + (f" · {lens}" if lens else ""))
         try:
-            turns.append(one(who, board, message, hooks=hooks, llm=llm, state=shared))
+            turns.append(one(who, board, message, hooks=hooks, llm=llm, state=shared,
+                             via_director=via_director, collector=collector))
         except (skills.SkillError, llm_mod.LLMError) as failed:
             # Logged and stepped over rather than raised. See the docstring: the rest of the
             # cast is still worth running, and the job log is where a director looks.
             hooks.say(f"[crew] {who} failed: {failed}")
+            trace = collector if collector is not None else hooks.track()
+            trace.note("agent_failed", agent=who, status="failed", summary=str(failed))
         board = board_mod.Board.load(board.slug)
     return turns
 
