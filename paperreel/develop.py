@@ -23,11 +23,12 @@ What IS here:
   a draft you can delete through the route that already trashes rather than deletes -- and,
   the good part, `data["chat"]` as the transcript, so the interview and every later board
   conversation are one history rather than two.
-- **One tool, `write_script`,** whose parameters are `planner.PLAN_SCHEMA` plus a per-beat
-  `seconds`. The model talks in prose while it is interviewing and calls the tool when it has
-  answers. Per-beat seconds is required rather than optional: section 0's first question is
-  about *mixed* lengths (`2 x 10s + 4 x 5s`), which the one-shot path cannot express because
-  `ANSWERS` fixes one length for the whole film.
+- **Two tools:** `ask_director` shapes the interview as a form the studio renders; `write_script`
+  (from `planner.PLAN_SCHEMA` plus per-beat `seconds`) ends it. A prose numbered list that
+  skipped the ask tool is recovered by `questions_from_prose` so the director still gets fields.
+  Per-beat seconds is required: section 0's first question is about *mixed* lengths
+  (`2 x 10s + 4 x 5s`), which the one-shot path cannot express because `ANSWERS` fixes one
+  length for the whole film.
 - **The self-check is `planner.review`, unchanged.** There is one implementation of the brief's
   section 11 in this repo and it stays one.
 """
@@ -35,6 +36,7 @@ What IS here:
 from __future__ import annotations
 
 import copy
+import re
 from typing import Callable
 
 from . import board as board_mod
@@ -45,13 +47,21 @@ from . import config, gemini, planner, script
 # drift `planner`'s docstring exists to prevent.
 SYSTEM = """You are interviewing a film director, following the brief you are about to be given.
 
-Two things about the format of your replies, which the brief does not cover because they are
+Four things about the format of your replies, which the brief does not cover because they are
 about this studio rather than about the film:
 
-- When you offer the director a set of choices, put each one on its own line beginning with
-  "- ". They are shown as buttons, so a choice buried mid-sentence cannot be tapped.
-- Do not write the script as prose, ever. When you have the answers you need, call the
-  write_script tool. That is the only way a script reaches the board.
+- When you need answers, call the ask_director tool with structured questions. That is how the
+  director gets checkboxes and fields they can fill in -- do not bury the interview as a long
+  prose list. One ask_director call per turn; keep the preamble short.
+- For a closed set of options use kind "choice" (one answer) or "multi" (several). For open
+  answers use kind "text". Put the real options in the options array -- the brief's beat-split
+  list, shot counts, cast choices, and so on. Prefer ids beats, shots, cast, tone for the four
+  section 0 questions.
+- Do not write the script as prose, ever. Call write_script only when you have answers to all
+  four section 0 topics (beat structure, camera setups, cast, tone and ending) -- or the
+  director said "defaults" / "you decide" for the whole interview. A lone beat-split (e.g.
+  "8 x 5s") is not enough: call ask_director again with the unanswered questions.
+- That is the only way a script reaches the board.
 
 Keep every reply short. This is a conversation, not a document."""
 
@@ -66,6 +76,33 @@ SETTLED_BY_INTERVIEW = (
     "the rhythm reads to you. Do not change a single beat length, and do not add or remove a "
     "beat.\n\n"
 )
+
+# What ask_director may put on a question. Strings only -- a non-string enum on a function
+# declaration answers 400 (see gemini._declarable).
+QUESTION_KINDS = ("choice", "multi", "text")
+
+# Closed sets the brief already names. When the model asks with kind "choice" but forgets the
+# options array (or a prose fallback recovers the prompt with none), these fill the chips so
+# the director is not handed a blank text field for a question that was never open-ended.
+DEFAULT_OPTIONS = {
+    "beats": (
+        "8 × 5s",
+        "4 × 10s",
+        "2 × 10s + 4 × 5s",
+        "1 × 10s + 6 × 5s",
+        "3 × 10s + 2 × 5s",
+    ),
+    "shots": (
+        "3 setups",
+        "4 setups",
+        "5 setups",
+        "one long chained take",
+    ),
+    "cast": (
+        "design them",
+        "I will paste a style bible",
+    ),
+}
 
 
 class DevelopError(RuntimeError):
@@ -105,11 +142,180 @@ def write_tool() -> dict:
     return gemini.tool(
         "write_script",
         "Write the finished shooting script. Call this only once you have the director's "
-        "answers to the section 0 questions -- it ends the interview and puts the film on the "
-        "board.",
+        "answers to all four section 0 questions (beats, shots, cast, tone) -- or they said "
+        "defaults / you decide for the whole interview. A single beat-split is not enough. "
+        "This ends the interview and puts the film on the board.",
         properties,
         list(planner.PLAN_SCHEMA["required"]),
     )
+
+
+def ask_tool() -> dict:
+    """Structured interview questions the studio renders as a form.
+
+    The wire stays a plain chat message when the director answers -- this tool only shapes
+    what the *model asks*, so checkboxes and fields can be drawn without parsing prose.
+    """
+    return gemini.tool(
+        "ask_director",
+        "Ask the director one or more interview questions as a structured form. Call this "
+        "instead of listing questions in prose. Do not call write_script in the same turn. "
+        "For section 0 use ids beats / shots / cast / tone; put the brief's beat splits and "
+        "shot-count choices in options.",
+        {
+            "preamble": {
+                "type": "string",
+                "description": "Optional short intro shown above the form. One or two sentences.",
+            },
+            "questions": {
+                "type": "array",
+                "description": "The questions to show, in order. Usually the unanswered section 0 items.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Stable handle, e.g. beats, shots, cast, tone.",
+                        },
+                        "prompt": {
+                            "type": "string",
+                            "description": "The question the director sees.",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": list(QUESTION_KINDS),
+                            "description": (
+                                "choice = pick one option; multi = pick several; "
+                                "text = free answer."
+                            ),
+                        },
+                        "options": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Labels for choice/multi. Required for those kinds. "
+                                "Omit or leave empty for text. For beats use the brief's "
+                                "splits; for shots use 3/4/5 setups or one long chained take; "
+                                "for cast use design them / I will paste a style bible."
+                            ),
+                        },
+                    },
+                    "required": ["id", "prompt", "kind"],
+                },
+            },
+        },
+        ["questions"],
+    )
+
+
+def _default_options_for(qid: str, prompt: str) -> list[str]:
+    """Chip labels when the model named a known closed set but left options empty."""
+    key = qid.strip().lower()
+    if key in DEFAULT_OPTIONS:
+        return list(DEFAULT_OPTIONS[key])
+    lower = prompt.lower()
+    if "beat" in lower or "split" in lower or "40 second" in lower or "40s" in lower:
+        return list(DEFAULT_OPTIONS["beats"])
+    # Cast prompts often mention a reference from a previous shot, so the more specific
+    # subject test must run before the camera/setup test.
+    if "cast" in lower or "style_bible" in lower or "puppet" in lower:
+        return list(DEFAULT_OPTIONS["cast"])
+    if "shot" in lower or "camera" in lower or "setup" in lower:
+        return list(DEFAULT_OPTIONS["shots"])
+    return []
+
+
+def normalise_questions(raw) -> list[dict]:
+    """Validate ask_director arguments into what the studio can render.
+
+    Drops broken entries rather than failing the turn: a partial form is still better than
+    falling back to an unanswerable prose blob, and the director can always type instead.
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "text").strip().lower()
+        if kind not in QUESTION_KINDS:
+            kind = "text"
+        prompt = " ".join(str(item.get("prompt") or "").split())
+        if not prompt:
+            continue
+        qid = " ".join(str(item.get("id") or f"q{index + 1}").split()) or f"q{index + 1}"
+        options = []
+        for option in item.get("options") or []:
+            label = " ".join(str(option).split())
+            if label and label not in options:
+                options.append(label)
+        if kind in ("choice", "multi") and len(options) < 2:
+            options = _default_options_for(qid, prompt) or options
+        if kind in ("choice", "multi") and len(options) < 2:
+            # Still not enough to be a real choice -- degrade to a text field.
+            kind = "text"
+            options = []
+        elif kind == "text" and not options:
+            # A prose-recovered beat/shots/cast line with no bullets still deserves chips.
+            filled = _default_options_for(qid, prompt)
+            if filled:
+                kind = "choice"
+                options = filled
+        out.append({"id": qid, "prompt": prompt, "kind": kind, "options": options})
+    return out[:8]
+
+
+def questions_from_prose(text: str) -> list[dict]:
+    """Recover a form from a prose interview turn that never called ask_director.
+
+    Mirrors `questionsFromProse` in the studio: numbered lines become questions. Bullets with
+    an em-dash become suggestions; plain bullets are subquestions appended to the prompt. Run
+    through `normalise_questions` so default chips still land when options were omitted.
+    """
+    found: list[dict] = []
+    current: dict | None = None
+
+    def flush() -> None:
+        nonlocal current
+        if not current:
+            return
+        if len(current["options"]) >= 2:
+            current["kind"] = "choice"
+        found.append(current)
+        current = None
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        numbered = re.match(r"^\*{0,2}(\d+)[.)]\s+(.*?)\*{0,2}$", line)
+        if numbered:
+            flush()
+            prompt = re.sub(r"\*\*", "", numbered.group(2))
+            prompt = " ".join(prompt.split())
+            if prompt:
+                current = {
+                    "id": f"q{numbered.group(1)}",
+                    "prompt": prompt,
+                    "kind": "text",
+                    "options": [],
+                }
+            continue
+        if current and line.startswith("- "):
+            bullet = " ".join(line[2:].split())
+            separator = re.search(r"\s+[—–]\s+|\s+--\s+", bullet)
+            backtick = re.match(r"^`([^`]+)`", bullet)
+            if separator or backtick:
+                label = backtick.group(1) if backtick else bullet[:separator.start()]
+                label = label.replace("`", "").rstrip(".,;:").strip()
+                if label and len(label) <= 72 and label not in current["options"]:
+                    current["options"].append(label)
+            elif bullet:
+                current["prompt"] = f'{current["prompt"]} {bullet}'
+            continue
+        # Models often put the bold numbered heading and question body on separate lines.
+        if current and line:
+            current["prompt"] = f'{current["prompt"]} {line.replace("**", "")}'
+    flush()
+    return normalise_questions(found)
 
 
 def start(message: str) -> board_mod.Board:
@@ -176,11 +382,11 @@ def history(board: board_mod.Board, limit: int = 20) -> str:
 def turn(board: board_mod.Board, message: str, *,
          log: Callable[[str], None] = print,
          announce: Callable[[], None] | None = None) -> dict:
-    """One turn of the interview. Returns `{"reply", "written"}`.
+    """One turn of the interview. Returns `{"reply", "written", "questions"}`.
 
-    One model call, not a loop, and deliberately: the tool's effect is the board, and the board
-    is what the page is showing. Feeding "I wrote the script" back for a second turn would buy
-    a sentence the director can already see is true.
+    One model call, not a loop, and deliberately: the tool's effect is the board (or the form
+    the director is about to fill), and the board is what the page is showing. Feeding "I wrote
+    the script" back for a second turn would buy a sentence the director can already see is true.
     """
     developable(board)
     concept = str(board.data.get("concept") or message)
@@ -191,16 +397,21 @@ def turn(board: board_mod.Board, message: str, *,
             f"===== THIS STUDIO =====\n{history(board)}DIRECTOR: {message}"
         )},
     ]
-    assistant = gemini.chat(messages, tools=[write_tool()])
+    assistant = gemini.chat(messages, tools=[ask_tool(), write_tool()])
     reply = str(assistant.get("content") or "").strip()
-    calls = [args for name, args in gemini.calls_of(assistant) if name == "write_script"]
+    calls = gemini.calls_of(assistant)
+    writes = [args for name, args in calls if name == "write_script"]
+    asks = [args for name, args in calls if name == "ask_director"]
 
     written = False
-    if calls:
+    questions: list[dict] = []
+    if writes:
+        # Writing ends the interview. An ask in the same turn is dropped -- the form would sit
+        # under a finished script and the director would have nothing left to answer.
         if announce:
             announce()
         log("[develop] the interview is over; marking the draft against the brief")
-        draft = reviewed(calls[0], concept, log=log, medium_key=board.medium())
+        draft = reviewed(writes[0], concept, log=log, medium_key=board.medium())
         adopt(board, draft)
         written = True
         total = sum(b["seconds"] for b in board.ordered_beats())
@@ -208,17 +419,39 @@ def turn(board: board_mod.Board, message: str, *,
             f'Written: "{board.data.get("title")}" -- {len(board.data["beats"])} beats, '
             f"{total:.0f}s. Every line of it is yours to change from here."
         )
+    elif asks:
+        payload = asks[0] if isinstance(asks[0], dict) else {}
+        questions = normalise_questions(payload.get("questions"))
+        preamble = " ".join(str(payload.get("preamble") or "").split())
+        if preamble:
+            reply = preamble
+        elif questions:
+            reply = reply or "Answer these, or leave any as you decide."
+        else:
+            reply = reply or "…"
+
+    # Model dumped a numbered interview as prose and skipped the tool -- synthesize the same
+    # form the studio would have drawn from ask_director, so the director still gets fields.
+    if not written and not questions and reply:
+        questions = questions_from_prose(reply)
 
     chat = board.data.setdefault("chat", [])
     chat.append({"role": "user", "text": message})
-    chat.append({
+    entry: dict = {
         "role": "gemini",
         "text": reply or "…",
         "ops": [{"op": "set_script", "summary": "wrote the script from the interview"}]
-        if written else [],
-    })
+        if written else (
+            [{"op": "ask_director", "summary": f"asked {len(questions)} question"
+              f"{'' if len(questions) == 1 else 's'}"}]
+            if questions else []
+        ),
+    }
+    if questions:
+        entry["questions"] = questions
+    chat.append(entry)
     board.save()
-    return {"reply": reply, "written": written}
+    return {"reply": reply, "written": written, "questions": questions}
 
 
 def reviewed(draft: dict, concept: str, *, log: Callable[[str], None],

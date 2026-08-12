@@ -24,7 +24,9 @@ CONCEPT:
 is a directorial decision that belongs to the person you are working for, not to you.
 
 Read sections 1 and 2 so you understand what you are asking about, then ask exactly these
-questions in one short message and **stop and wait for the answers**:
+four questions and **stop and wait for the answers**. In Paper Reel / this studio, ask them
+through the structured interview form (`ask_director`) rather than as a long prose list —
+the director fills fields under each question and sends once.
 
 1. **Beat structure.** "The film is 40 seconds, built from beats that are each either 5s
    or 10s. How do you want it split?" Offer these, and say what each one feels like:
@@ -46,11 +48,12 @@ questions in one short message and **stop and wait for the answers**:
    verbatim instead of inventing a new one.
 4. **Tone and ending.** What should the last frame leave the viewer with?
 
-Keep the questions tight — one screen, no preamble, no restating the concept back at them.
+Keep the questions tight — short preamble, no restating the concept back at them.
 If the director replies "you decide" or "defaults", proceed immediately with `2 × 10s +
-4 × 5s` across 3 shots.
+4 × 5s` across 3 shots. A reply that only settles beat structure is not enough — ask
+again for the unanswered questions before writing.
 
-Only after you have answers do you write the script.
+Only after you have answers to all four do you write the script.
 
 ---
 

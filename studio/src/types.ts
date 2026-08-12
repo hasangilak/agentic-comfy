@@ -376,6 +376,14 @@ export interface Container {
   session_cost: number;
 }
 
+export interface InterviewQuestion {
+  id: string;
+  prompt: string;
+  /** choice = one option; multi = several; text = free answer. */
+  kind: "choice" | "multi" | "text";
+  options: string[];
+}
+
 export interface ChatTurn {
   /**
    * "studio" is the board speaking for itself -- e.g. what an imported script arrived as.
@@ -408,6 +416,11 @@ export interface ChatTurn {
   selection?: number[];
   ops?: { op: string; n?: number; summary: string }[];
   activity?: ActivityEvent[];
+  /**
+   * Structured interview questions from `ask_director`. Only on develop turns that are still
+   * waiting for answers -- the studio renders them as a form rather than parsing prose.
+   */
+  questions?: InterviewQuestion[];
 }
 
 export type StudioEvent =

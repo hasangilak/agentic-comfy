@@ -45,8 +45,9 @@ export function Script() {
       waiting={
         !written ? (
           <WaitingOn tone="quiet">
-            Nothing is written yet. Answer what it asks, or say <em>defaults</em> and it will
-            pick — the brief has its own answer for that.
+            Nothing is written yet. Fill in the form it shows — or leave any question as{" "}
+            <em>it&apos;s on you</em>, or skip straight to writing with the button under the
+            composer.
           </WaitingOn>
         ) : notes.length ? (
           <WaitingOn>

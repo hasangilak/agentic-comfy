@@ -1,0 +1,20 @@
+{
+  "beats": [],
+  "chat": [
+    {
+      "role": "user",
+      "text": "a music band of foxes are performing a music in the street for people."
+    },
+    {
+      "ops": [],
+      "role": "gemini",
+      "text": "Before we write the shooting script for this paper-cutout film, I need to confirm a few directorial decisions with you. Please answer these 4 questions:\n\n1. **Beat Structure (40s total)**\n   How would you like the 40 seconds split across beats?\n   - `2 \u00d7 10s + 4 \u00d7 5s` (Six beats: slow opening and closing around a quick middle \u2014 recommended)\n   - `8 \u00d7 5s` (Eight quick beats: highest energy, fast cuts)\n   - `4 \u00d7 10s` (Four long held beats: slow, film-like, contemplative)\n   - `1 \u00d7 10s + 6 \u00d7 5s` (Seven beats: one held moment, otherwise brisk)\n   - `3 \u00d7 10s + 2 \u00d7 5s` (Five beats: very deliberate with two fast accents)\n   - \"You choose\" (I will select `2 \u00d7 10s + 4 \u00d7 5s`)\n\n2. **Shot Count & Long Takes**\n   Roughly how many camera setups/shots would you like (e.g. 3 to 4 shots)? Do you want one long, unbroken chained take in the sequence?\n\n3. **Cast & Style Bible**\n   Do you have an existing style bible or pinned character look you need me to match verbatim, or should I design the fox band members and human audience puppets from scratch?\n\n4. **Tone & Ending**\n   What mood or visual image should the final frame leave with the audience?"
+    }
+  ],
+  "concept": "a music band of foxes are performing a music in the street for people.",
+  "seconds": 10.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "",
+  "title": "a music band of foxes are performing a music in the street f"
+}

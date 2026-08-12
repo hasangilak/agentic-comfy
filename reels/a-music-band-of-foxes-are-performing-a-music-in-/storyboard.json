@@ -1,0 +1,20 @@
+{
+  "beats": [],
+  "chat": [
+    {
+      "role": "user",
+      "text": "a music band of foxes are performing a music in the street for people."
+    },
+    {
+      "ops": [],
+      "role": "gemini",
+      "text": "Before I craft the script for your stop-motion film, I need a few key directorial choices from you:\n\n1. **Beat structure (40 seconds total):** How would you like to split the time?\n   - `2 \u00d7 10s + 4 \u00d7 5s` \u2014 (Recommended) Six beats. A slow open and slow close around a lively middle.\n   - `8 \u00d7 5s` \u2014 Eight quick beats. Busiest, high-energy cutting.\n   - `4 \u00d7 10s` \u2014 Four long held beats. Slow, contemplative, measured.\n   - `1 \u00d7 10s + 6 \u00d7 5s` \u2014 Seven beats. One held opening moment, then brisk pace.\n   - `3 \u00d7 10s + 2 \u00d7 5s` \u2014 Five beats. Very slow and cinematic, with two quick accents.\n   - Or state your preferred custom breakdown (or say \"you choose\").\n\n2. **Shot setups & camera take:**\n   - How many total camera setups do you prefer? (3\u20135 recommended to avoid AI slideshow look).\n   - Would you like one long, unbroken continuous take (a chained shot up to 15\u201320s) somewhere in the performance?\n\n3. **The cast & existing style:**\n   - How many band members/foxes and spectators are in the band?\n   - Do you have an existing `style_bible` or pinned character reference from a previous shot, or should I design the paper puppets and color palette from scratch? (If you have one, please paste it).\n\n4. **Tone & ending:**\n   - What visual moment or emotion should the final frame leave the viewer with?"
+    }
+  ],
+  "concept": "a music band of foxes are performing a music in the street for people.",
+  "seconds": 10.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "",
+  "title": "a music band of foxes are performing a music in the street f"
+}
