@@ -152,6 +152,7 @@ def handle_develop(job: Job, run: Runner) -> dict:
     run.log(job, f'[develop] {job.detail["message"]}')
     result = develop.turn(
         board, job.detail["message"],
+        answers=job.detail.get("answers"),
         log=lambda line: run.log(job, line),
         announce=lambda: run.update(job, phase="writing the script"),
     )
@@ -524,7 +525,14 @@ def develop_turn(slug: str, body: dict = Body(...)) -> dict:
         develop.developable(board)
     except develop.DevelopError as refused:
         raise HTTPException(refused.status, str(refused))
-    return {"job": runner.submit("develop", board.slug, {"message": message}).to_json()}
+    answers = body.get("answers")
+    if answers is not None and not isinstance(answers, dict):
+        raise HTTPException(422, "answers must be an object")
+    return {
+        "job": runner.submit(
+            "develop", board.slug, {"message": message, "answers": answers}
+        ).to_json()
+    }
 
 
 @app.post("/api/reels/import")

@@ -22,9 +22,21 @@ import { useStudio } from "../useStudio";
 /** Closed sets that match `develop.DEFAULT_OPTIONS` for older boards without server questions. */
 const DEFAULT_OPTIONS: Record<string, string[]> = {
   beats: ["8 × 5s", "4 × 10s", "2 × 10s + 4 × 5s", "1 × 10s + 6 × 5s", "3 × 10s + 2 × 5s"],
-  shots: ["3 setups", "4 setups", "5 setups", "one long chained take"],
+  shots: ["3 setups", "4 setups", "5 setups", "one long chained take", "no long chained take"],
   cast: ["design them", "I will paste a style bible"],
 };
+
+type InterviewTopic = "beats" | "shots" | "cast" | "tone";
+
+function topicOf(question: InterviewQuestion): InterviewTopic {
+  const id = question.id.trim().toLowerCase();
+  if (id === "beats" || id === "shots" || id === "cast" || id === "tone") return id;
+  const prompt = question.prompt.toLowerCase();
+  if (prompt.includes("beat") || prompt.includes("split") || prompt.includes("40s")) return "beats";
+  if (prompt.includes("cast") || prompt.includes("style_bible") || prompt.includes("puppet")) return "cast";
+  if (prompt.includes("shot") || prompt.includes("camera") || prompt.includes("setup")) return "shots";
+  return "tone";
+}
 
 function defaultOptionsFor(id: string, prompt: string): string[] {
   const key = id.trim().toLowerCase();
@@ -47,12 +59,16 @@ function withDefaults(question: InterviewQuestion): InterviewQuestion {
   if (question.kind === "choice" || question.kind === "multi") {
     if (question.options.length >= 2) return question;
     const filled = defaultOptionsFor(question.id, question.prompt);
-    if (filled.length >= 2) return { ...question, kind: "choice", options: filled };
+    if (filled.length >= 2) {
+      return { ...question, kind: topicOf(question) === "shots" ? "multi" : "choice", options: filled };
+    }
     return { ...question, kind: "text", options: [] };
   }
   if (question.options.length) return question;
   const filled = defaultOptionsFor(question.id, question.prompt);
-  if (filled.length >= 2) return { ...question, kind: "choice", options: filled };
+  if (filled.length >= 2) {
+    return { ...question, kind: topicOf(question) === "shots" ? "multi" : "choice", options: filled };
+  }
   return question;
 }
 
@@ -140,27 +156,36 @@ function emptyAnswer(): AnswerState {
   return { defer: false, choice: "", multi: [], text: "" };
 }
 
-function formatAnswers(questions: InterviewQuestion[], answers: Record<string, AnswerState>): string {
+function formatAnswers(
+  questions: InterviewQuestion[],
+  answers: Record<string, AnswerState>,
+): { message: string; values: Partial<Record<InterviewTopic, string>>; complete: boolean } {
   const lines: string[] = [];
+  const values: Partial<Record<InterviewTopic, string>> = {};
   let deferred = 0;
   for (const question of questions) {
     const state = answers[question.id] ?? emptyAnswer();
+    let value = "";
     if (state.defer) {
-      lines.push(`${question.prompt}: you decide`);
+      value = "you decide";
       deferred += 1;
-      continue;
-    }
-    if (state.text.trim()) {
-      lines.push(`${question.prompt}: ${state.text.trim()}`);
+    } else if (state.text.trim()) {
+      value = state.text.trim();
     } else if (question.kind === "choice" && state.choice) {
-      lines.push(`${question.prompt}: ${state.choice}`);
+      value = state.choice;
     } else if (question.kind === "multi" && state.multi.length) {
-      lines.push(`${question.prompt}: ${state.multi.join("; ")}`);
+      value = state.multi.join("; ");
     }
+    if (!value) continue;
+    values[topicOf(question)] = value;
+    lines.push(`${question.prompt}: ${value}`);
   }
-  if (!lines.length) return "";
-  if (deferred === questions.length) return "defaults";
-  return lines.join("\n");
+  const complete = Object.keys(values).length === questions.length;
+  return {
+    message: deferred === questions.length ? "defaults" : lines.join("\n"),
+    values,
+    complete,
+  };
 }
 
 export function TalkItOut() {
@@ -177,11 +202,11 @@ export function TalkItOut() {
       (job.state === "queued" || job.state === "running"),
   );
 
-  const send = (text: string) => {
+  const send = (text: string, answers?: Partial<Record<InterviewTopic, string>>) => {
     const trimmed = text.trim();
     if (!trimmed || thinking) return;
     setMessage("");
-    void studio.guard(() => api.develop(board.slug, trimmed));
+    void studio.guard(() => api.develop(board.slug, trimmed, answers));
   };
 
   const lastIndex = (() => {
@@ -223,7 +248,7 @@ export function TalkItOut() {
                 <InterviewForm
                   questions={formQuestions}
                   disabled={thinking}
-                  onSubmit={(text) => send(text)}
+                  onSubmit={(text, answers) => send(text, answers)}
                   onDeferAll={() => send("defaults")}
                 />
               </div>
@@ -305,7 +330,7 @@ function InterviewForm({
 }: {
   questions: InterviewQuestion[];
   disabled: boolean;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, answers: Partial<Record<InterviewTopic, string>>) => void;
   onDeferAll: () => void;
 }) {
   const [answers, setAnswers] = useState<Record<string, AnswerState>>(() =>
@@ -324,8 +349,8 @@ function InterviewForm({
     }));
   };
 
-  const body = formatAnswers(questions, answers);
-  const canSend = Boolean(body) && !disabled;
+  const submission = formatAnswers(questions, answers);
+  const canSend = Boolean(submission.message) && submission.complete && !disabled;
 
   return (
     <div className="space-y-3 rounded-2xl border border-edge bg-panel p-3">
@@ -410,14 +435,24 @@ function InterviewForm({
                           key={option}
                           type="button"
                           disabled={disabled}
-                          onClick={() =>
-                            patch(question.id, {
-                              multi: on
-                                ? state.multi.filter((item) => item !== option)
-                                : [...state.multi, option],
-                              text: "",
-                            })
-                          }
+                          onClick={() => {
+                            let multi = on
+                              ? state.multi.filter((item) => item !== option)
+                              : [...state.multi, option];
+                            if (!on && topicOf(question) === "shots") {
+                              if (option.includes("setups")) {
+                                multi = multi.filter(
+                                  (item) => item === option || !item.includes("setups"),
+                                );
+                              } else if (option.includes("long chained take")) {
+                                multi = multi.filter(
+                                  (item) =>
+                                    item === option || !item.includes("long chained take"),
+                                );
+                              }
+                            }
+                            patch(question.id, { multi, text: "" });
+                          }}
                           className={`rounded-full px-3 py-1.5 text-[11px] transition-colors
                             disabled:opacity-40 ${
                               on
@@ -458,12 +493,17 @@ function InterviewForm({
       <button
         type="button"
         disabled={!canSend}
-        onClick={() => onSubmit(body)}
+        onClick={() => onSubmit(submission.message, submission.values)}
         className="w-full rounded-xl bg-solid px-3 py-2 text-[12px] text-white
           transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30"
       >
-        {body === "defaults" ? "it's on you — write it now" : "send answers"}
+        {submission.message === "defaults" ? "it's on you — write it now" : "send answers"}
       </button>
+      {!submission.complete ? (
+        <p className="text-center text-[10px] text-zinc-400">
+          Answer each question or leave it to the model.
+        </p>
+      ) : null}
     </div>
   );
 }

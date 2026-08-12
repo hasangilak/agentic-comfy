@@ -97,12 +97,15 @@ DEFAULT_OPTIONS = {
         "4 setups",
         "5 setups",
         "one long chained take",
+        "no long chained take",
     ),
     "cast": (
         "design them",
         "I will paste a style bible",
     ),
 }
+
+INTERVIEW_TOPICS = ("beats", "shots", "cast", "tone")
 
 
 class DevelopError(RuntimeError):
@@ -318,6 +321,122 @@ def questions_from_prose(text: str) -> list[dict]:
     return normalise_questions(found)
 
 
+def _answer_values(raw) -> dict[str, str]:
+    """The form's machine-readable answers, narrowed to the four interview topics."""
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        topic: " ".join(str(raw.get(topic) or "").split())
+        for topic in INTERVIEW_TOPICS
+        if str(raw.get(topic) or "").strip()
+    }
+
+
+def _deferred(value: str) -> bool:
+    lower = value.lower()
+    return "you decide" in lower or lower == "defaults"
+
+
+def _beat_total(value: str) -> int | None:
+    """Read explicit `N x 5s + M x 10s` answers; prose remains a clarification."""
+    parts = re.findall(r"(\d+)\s*[x×]\s*(5|10)\s*s?", value.lower())
+    if not parts:
+        return None
+    return sum(int(count) * int(seconds) for count, seconds in parts)
+
+
+def _clarifications(answers: dict[str, str]) -> list[dict]:
+    """Questions that remain incomplete, independent of what the model tried to do."""
+    questions: list[dict] = []
+
+    beats = answers.get("beats", "")
+    if not beats:
+        beat_prompt = "How should the required 40 seconds be split across 5s and 10s beats?"
+    elif not _deferred(beats) and _beat_total(beats) != 40:
+        total = _beat_total(beats)
+        measured = f"{total}s" if total is not None else "an unclear total"
+        beat_prompt = (
+            f"That beat split adds up to {measured}, but the film must total exactly 40s. "
+            "Choose a valid split or write another combination."
+        )
+    else:
+        beat_prompt = ""
+    if beat_prompt:
+        questions.append({
+            "id": "beats",
+            "prompt": beat_prompt,
+            "kind": "choice",
+            "options": list(DEFAULT_OPTIONS["beats"]),
+        })
+
+    shots = answers.get("shots", "")
+    shot_lower = shots.lower()
+    shot_counts = set(re.findall(r"\b[345]\b", shot_lower))
+    has_count = len(shot_counts) == 1
+    chooses_no_take = "no long" in shot_lower
+    affirmative = shot_lower.replace("no long chained take", "")
+    chooses_take = (
+        "long" in affirmative or "chain" in affirmative
+        or "unbroken" in affirmative or "continuous" in affirmative
+    )
+    has_take_choice = chooses_take != chooses_no_take
+    if not shots or (not _deferred(shots) and (not has_count or not has_take_choice)):
+        missing = []
+        if not has_count:
+            missing.append("a total shot count")
+        if not has_take_choice:
+            missing.append("whether to include a long chained take")
+        detail = f" Please choose {' and '.join(missing)}." if missing else ""
+        questions.append({
+            "id": "shots",
+            "prompt": f"Set the camera plan: 3–5 setups, plus yes or no to one long chained take.{detail}",
+            "kind": "multi",
+            "options": list(DEFAULT_OPTIONS["shots"]),
+        })
+
+    if not answers.get("cast"):
+        questions.append({
+            "id": "cast",
+            "prompt": "Should the model design the cast, or will you provide a locked style bible?",
+            "kind": "choice",
+            "options": list(DEFAULT_OPTIONS["cast"]),
+        })
+
+    if not answers.get("tone"):
+        questions.append({
+            "id": "tone",
+            "prompt": "What mood or final image should the film leave with the audience?",
+            "kind": "text",
+            "options": [],
+        })
+    return questions
+
+
+def _hold_for_answers(board: board_mod.Board, message: str, raw_answers) -> dict | None:
+    """Persist valid progress and return a clarification turn while anything is incomplete."""
+    if raw_answers is None:
+        return None
+    merged = _answer_values(board.data.get("interview_answers"))
+    merged.update(_answer_values(raw_answers))
+    board.data["interview_answers"] = merged
+    questions = _clarifications(merged)
+    if not questions:
+        return None
+
+    chat = board.data.setdefault("chat", [])
+    chat.append({"role": "user", "text": message})
+    reply = "A couple of answers still need to be settled before I can write the script."
+    chat.append({
+        "role": "gemini",
+        "text": reply,
+        "ops": [{"op": "ask_director", "summary": f"clarified {len(questions)} answer"
+                 f"{'' if len(questions) == 1 else 's'}"}],
+        "questions": questions,
+    })
+    board.save()
+    return {"reply": reply, "written": False, "questions": questions}
+
+
 def start(message: str) -> board_mod.Board:
     """The empty board a conversation begins on.
 
@@ -380,6 +499,7 @@ def history(board: board_mod.Board, limit: int = 20) -> str:
 
 
 def turn(board: board_mod.Board, message: str, *,
+         answers=None,
          log: Callable[[str], None] = print,
          announce: Callable[[], None] | None = None) -> dict:
     """One turn of the interview. Returns `{"reply", "written", "questions"}`.
@@ -389,6 +509,9 @@ def turn(board: board_mod.Board, message: str, *,
     the script" back for a second turn would buy a sentence the director can already see is true.
     """
     developable(board)
+    held = _hold_for_answers(board, message, answers)
+    if held:
+        return held
     concept = str(board.data.get("concept") or message)
     messages = [
         {"role": "system", "content": SYSTEM},
@@ -487,6 +610,7 @@ def adopt(board: board_mod.Board, draft: dict) -> None:
     plan = script.normalise(draft)
     for key in ("title", "concept", "style_bible", "beats", "seconds"):
         board.data[key] = plan[key]
+    board.data.pop("interview_answers", None)
     board.data.setdefault("steps", plan["steps"])
     board.data.setdefault("seed", plan["seed"])
     board.save()

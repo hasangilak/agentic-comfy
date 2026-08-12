@@ -1,5 +1,60 @@
 {
-  "beats": [],
+  "beats": [
+    {
+      "action": "Under the warm lamp, the lead fox compresses his paper accordion bellows slowly inward. The bass fox, cellist fox, human spectator puppets, and townhouse background stay completely motionless.",
+      "asset_prompt": "FOREGROUND: Cut dark-brown cardstock cobblestones at the lower frame edge, casting short soft contact shadows upward onto the street. MIDGROUND: A three-piece fox band arranged on the cobblestones. Positioned on the left third, a lead fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 35cm tall, wearing a mustard-yellow wool-paper waistcoat fastened with a tiny brown card button, holding a dark-brown paper accordion with black pleated paper bellows and white paper keys, jointed at shoulders, elbows, hips, and knees with brass split pins, holds the accordion compressed slightly inward. In the centre-left, a double-bass fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 38cm tall standing, wearing a forest-green paper jacket fastened with two black card buttons, holding a tall cut-kraft-paper upright bass with tan paper strings, jointed at shoulders, elbows, hips, and knees with brass split pins, stands facing forward. On the right third, a cellist fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 30cm tall seated on a brown cardstock stool, wearing a slate-blue paper vest, holding a cut-kraft-paper cello and dark brown paper bow, jointed at shoulders, elbows, hips, and knees with brass split pins, sits holding his bow against the strings. Behind them, three simplified human bystander puppets in flat slate-blue and dusty ochre cardstock coats stand motionless. Leave open space on the left third for the accordion bellows to expand outward later in the shot. BACKGROUND: Flat layered cut-paper facades of old townhouses in slate-grey and dusty ochre, stacked in three parallel planes with subtle contact shadows. UPPER THIRD: A string of cut-paper teardrop festoon lamps strung between slate-grey paper eaves, unlit. LIGHT: Single warm 3200K key light angled from the upper left at 45 degrees, casting clean, distinct soft contact shadows to the right across the paper texture. COMPOSITION: Vertical 9:16 portrait framing, wide establishing setup showing all three fox musicians in full, unobstructed, and clearly lit across the middle horizontal third.",
+      "blocking": "",
+      "n": 1,
+      "scene": "Cobblestone town street at dusk, wide shot",
+      "seconds": 10.0,
+      "source": "reference"
+    },
+    {
+      "action": "Continuing from the compressed state without pause, the lead fox pulls his paper accordion bellows wide open to the left. The bass fox, cellist fox, audience puppets, and background remain perfectly still.",
+      "asset_prompt": "FOREGROUND: Cut dark-brown cardstock cobblestones at the lower frame edge, casting short soft contact shadows upward onto the street. MIDGROUND: Same three-piece fox band in exact positions on the cobblestones. Positioned on the left third, the lead fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 35cm tall, wearing a mustard-yellow wool-paper waistcoat fastened with a tiny brown card button, holding a dark-brown paper accordion with black pleated paper bellows and white paper keys, jointed at shoulders, elbows, hips, and knees with brass split pins, has pulled the black paper bellows fully open to the left. In the centre-left, the double-bass fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 38cm tall standing, wearing a forest-green paper jacket fastened with two black card buttons, holding a tall cut-kraft-paper upright bass with tan paper strings, jointed at shoulders, elbows, hips, and knees with brass split pins, stands still. On the right third, the cellist fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 30cm tall seated on a brown cardstock stool, wearing a slate-blue paper vest, holding a cut-kraft-paper cello and dark brown paper bow, jointed at shoulders, elbows, hips, and knees with brass split pins, stays motionless. Behind them, three human spectator puppets in slate-blue and dusty ochre coats stand motionless. BACKGROUND: Flat layered cut-paper facades of old townhouses in slate-grey and dusty ochre, stacked in three parallel planes with subtle contact shadows. UPPER THIRD: String of unlit paper teardrop festoon lamps strung between slate-grey paper eaves. LIGHT: Single warm 3200K key light from the upper left at 45 degrees, casting clean contact shadows to the right across paper planes. COMPOSITION: Vertical 9:16 portrait framing, identical wide shot setup, with the expanded accordion bellows occupying the left third space.",
+      "blocking": "",
+      "n": 2,
+      "scene": "Cobblestone town street at dusk, wide shot",
+      "seconds": 10.0,
+      "source": "chain"
+    },
+    {
+      "action": "The lead fox's right paw pivots at the wrist pin to press a white paper key while the accordion bellows expand outward by three visible paper folds. The left paw, body, and background stay completely still.",
+      "asset_prompt": "FOREGROUND: Out-of-focus cut-paper cobblestone edge at the lower frame border. MIDGROUND: Tight close-up on the chest and paws of the lead fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 35cm tall, wearing a mustard-yellow wool-paper waistcoat fastened with a tiny brown card button, holding a dark-brown paper accordion with black pleated paper bellows and white paper keys, jointed at shoulders, elbows, hips, and knees with brass split pins. Positioned off-centre on the left third, the fox's rust-orange cardstock paws with visible brass split pin wrist joints hold the dark-brown paper accordion. The right paw rests against the white paper keys, and the pleated black paper bellows are compressed. Leave empty space on the right third for the bellows to expand into. BACKGROUND: Blurred slate-grey paper townhouse wall plane. UPPER THIRD: Lower edge of the fox's white paper chin cutout and black paper nose cap visible. LIGHT: Single warm 3200K key light from upper left raking across the textured paper grain, casting soft contact shadows to the right. COMPOSITION: Vertical 9:16 portrait framing, tight macro close-up focused off-centre on the accordion instrument and right paw.",
+      "blocking": "",
+      "n": 3,
+      "scene": "Close-up on lead fox paws playing the accordion",
+      "seconds": 5.0,
+      "source": "reference"
+    },
+    {
+      "action": "Carrying straight on from the expanded state, the lead fox's right paw lifts off the paper keys while the accordion bellows slide back closed into a compact stack. The body, snout, and background remain completely motionless.",
+      "asset_prompt": "FOREGROUND: Out-of-focus cut-paper cobblestone edge at the lower frame border. MIDGROUND: Same tight close-up framing on the lead fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 35cm tall, wearing a mustard-yellow wool-paper waistcoat fastened with a tiny brown card button, holding a dark-brown paper accordion with black pleated paper bellows and white paper keys, jointed at shoulders, elbows, hips, and knees with brass split pins. Positioned on the left third, the accordion's black paper bellows are now fully compressed back into a tight stack, and the fox's rust-orange right paw is lifted 1cm above the white paper keys in its landing state. BACKGROUND: Blurred slate-grey paper townhouse wall plane. UPPER THIRD: Lower edge of the fox's white paper chin cutout and black paper nose cap visible. LIGHT: Single warm 3200K key light from upper left raking across the folded paper edges, casting soft contact shadows to the right. COMPOSITION: Vertical 9:16 portrait framing, tight macro close-up anchored on the compressed accordion and raised paw.",
+      "blocking": "",
+      "n": 4,
+      "scene": "Close-up on lead fox paws playing the accordion",
+      "seconds": 5.0,
+      "source": "bridge"
+    },
+    {
+      "action": "A female spectator puppet on the right raises her two flat cut-paper hands upward in a single motion to clap. The child puppet beside her, foreground figures, background fox trio, and townhouses remain completely still.",
+      "asset_prompt": "FOREGROUND: Backs of two human spectator puppets in flat slate-blue and dusty ochre cardstock coats, positioned on the lower left and right thirds, facing inward. MIDGROUND: Reverse mid-shot. On the right third, a female human spectator puppet in a slate-blue coat rests her cut-paper arms at her sides before clapping. Beside her, a child puppet in a dusty ochre coat stands motionless. In the upper-center background street space, the fox band is visible in soft focus: the lead fox puppet in mustard-yellow waistcoat, the bass fox puppet in forest-green jacket, and the cellist fox puppet in slate-blue vest. BACKGROUND: Layered slate-grey and dusty ochre paper townhouse facades. UPPER THIRD: String of unlit paper festoon lamps spanning upper third. LIGHT: Single warm 3200K key light from upper left casting shadows from the audience puppets forward onto the dark-brown cobblestone street. COMPOSITION: Vertical 9:16 portrait framing, reverse mid-shot off-centre on the foreground audience on the right third, with the band framed in the upper background.",
+      "blocking": "",
+      "n": 5,
+      "scene": "Street crowd watching the fox band, reverse mid-shot",
+      "seconds": 5.0,
+      "source": "reference"
+    },
+    {
+      "action": "Under the warm lamp, the cellist fox tilts his snout upward five degrees at the neck pin into a final held note pose. The lead fox, bass fox, human spectators, background facades, and paper leaf remain completely still.",
+      "asset_prompt": "FOREGROUND: Cut dark-brown cardstock cobblestones at the lower frame edge, casting short soft contact shadows upward onto the street. MIDGROUND: Wide shot of the street diorama. On the right third, the cellist fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 30cm tall seated on a brown cardstock stool, wearing a slate-blue paper vest, holding a cut-kraft-paper cello and dark brown paper bow, jointed at shoulders, elbows, hips, and knees with brass split pins, holds his head level. On the left third, the lead fox puppet wearing his mustard-yellow waistcoat holds his accordion stationary. In the centre-left, the bass fox puppet in his forest-green jacket stands motionless. Human bystander puppets in slate-blue and dusty ochre coats stand frozen. BACKGROUND: Layered slate-grey and dusty ochre townhouse facades with paper window frames. UPPER THIRD: String of unlit paper festoon lamps hanging motionless across the upper third. A single cut dusty ochre paper leaf hangs from an eaves layer on the left third. LIGHT: Single warm 3200K key light from upper left raking across paper surfaces, casting long contact shadows to the right. COMPOSITION: Vertical 9:16 portrait framing, wide static shot, off-balance composition weighted toward the cellist fox on the right third.",
+      "blocking": "",
+      "n": 6,
+      "scene": "Cobblestone town street at dusk, wide shot",
+      "seconds": 5.0,
+      "source": "reference"
+    }
+  ],
   "chat": [
     {
       "role": "user",
@@ -9,12 +64,26 @@
       "ops": [],
       "role": "gemini",
       "text": "Before we write the shooting script for this paper-cutout film, I need to confirm a few directorial decisions with you. Please answer these 4 questions:\n\n1. **Beat Structure (40s total)**\n   How would you like the 40 seconds split across beats?\n   - `2 \u00d7 10s + 4 \u00d7 5s` (Six beats: slow opening and closing around a quick middle \u2014 recommended)\n   - `8 \u00d7 5s` (Eight quick beats: highest energy, fast cuts)\n   - `4 \u00d7 10s` (Four long held beats: slow, film-like, contemplative)\n   - `1 \u00d7 10s + 6 \u00d7 5s` (Seven beats: one held moment, otherwise brisk)\n   - `3 \u00d7 10s + 2 \u00d7 5s` (Five beats: very deliberate with two fast accents)\n   - \"You choose\" (I will select `2 \u00d7 10s + 4 \u00d7 5s`)\n\n2. **Shot Count & Long Takes**\n   Roughly how many camera setups/shots would you like (e.g. 3 to 4 shots)? Do you want one long, unbroken chained take in the sequence?\n\n3. **Cast & Style Bible**\n   Do you have an existing style bible or pinned character look you need me to match verbatim, or should I design the fox band members and human audience puppets from scratch?\n\n4. **Tone & Ending**\n   What mood or visual image should the final frame leave with the audience?"
+    },
+    {
+      "role": "user",
+      "text": "Beat Structure (40s total) How would you like the 40 seconds split across beats? \"You choose\" (I will select `2 \u00d7 10s + 4 \u00d7 5s`): 2 x 10s\nShot Count & Long Takes Roughly how many camera setups/shots would you like (e.g. 3 to 4 shots)? Do you want one long, unbroken chained take in the sequence?: one long chained take\nCast & Style Bible Do you have an existing style bible or pinned character look you need me to match verbatim, or should I design the fox band members and human audience puppets from scratch?: design them\nTone & Ending What mood or visual image should the final frame leave with the audience?: its a musical show"
+    },
+    {
+      "ops": [
+        {
+          "op": "set_script",
+          "summary": "wrote the script from the interview"
+        }
+      ],
+      "role": "gemini",
+      "text": "Written: \"The Street Fox Trio\" -- 6 beats, 40s. Every line of it is yours to change from here."
     }
   ],
-  "concept": "a music band of foxes are performing a music in the street for people.",
+  "concept": "A trio of paper-cutout fox street musicians perform a music concert for townspeople on a cobblestone street.",
   "seconds": 10.0,
   "seed": 1101,
   "steps": 8,
-  "style_bible": "",
-  "title": "a music band of foxes are performing a music in the street f"
+  "style_bible": "Handcrafted layered paper-cutout stop motion photographed on a tabletop diorama rig. Built from heavy 300gsm cold-press cardstock with visible paper tooth, textured brown kraft paper, and translucent vellum. Every layer stands 2-4mm proud of the next, casting distinct soft contact shadows. Edges are hand-cut with a craft knife, crisp but showing a clean pale paper core along cuts. Visible paper fibre and subtle registration misalignment throughout. Jointed puppets pivot at visible brass split pins at shoulders, elbows, hips, and knees, with thin dark brown ink lines drawn inside cut edges. Expressions and movements swap discrete cut paper shapes; no digital morphing, no gradients, no fluid simulation. Animated on twos with subtle paper stutters. The cast includes three recurring puppets: a lead fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 35cm tall, wearing a mustard-yellow wool-paper waistcoat fastened with a tiny brown card button, holding a dark-brown paper accordion with black pleated paper bellows and white paper keys, jointed at shoulders, elbows, hips, and knees with brass split pins; a double-bass fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 38cm tall standing, wearing a forest-green paper jacket fastened with two black card buttons, holding a tall cut-kraft-paper upright bass with tan paper strings, jointed at shoulders, elbows, hips, and knees with brass split pins; and a cellist fox puppet built from rust-orange cardstock with a crisp white paper chin cutout, glossy black pin-head bead eyes, a black paper nose cap, pointed ears with black tips, a bushy rust-orange tail with a white tip, measuring 30cm tall seated on a brown cardstock stool, wearing a slate-blue paper vest, holding a cut-kraft-paper cello and dark brown paper bow, jointed at shoulders, elbows, hips, and knees with brass split pins. Bystander puppets are made from flat slate-blue and dusty ochre cardstock coats. World elements include a dark-brown cardstock cobblestone street in a fan pattern and stacked slate-grey and dusty ochre townhouse facades with dark grey paper window frames. Palette: rust-orange, mustard-yellow, forest-green, slate-blue, slate-grey, dusty ochre, dark-brown. Lighting rig: single warm 3200K key light angled from upper-left at 45 degrees, casting clean 45-degree soft contact shadows to the right across paper planes. Vertical 9:16 portrait framing.",
+  "title": "The Street Fox Trio"
 }

@@ -67,8 +67,8 @@ export const api = {
     post<{ slug: string; board: Board; job: Job }>("/api/reels/develop", { message }),
 
   /** One more turn of that interview. 409 once any beat has been rendered. */
-  develop: (slug: string, message: string) =>
-    post<{ job: Job }>(`/api/reels/${slug}/develop`, { message }).then((r) => r.job),
+  develop: (slug: string, message: string, answers?: Record<string, string>) =>
+    post<{ job: Job }>(`/api/reels/${slug}/develop`, { message, answers }).then((r) => r.job),
 
   /**
    * The authoring brief itself. Shown beside the conversation so the director can read what
