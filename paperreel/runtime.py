@@ -32,11 +32,62 @@ chat turn:
 
 from __future__ import annotations
 
+import itertools
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Callable
 
 from . import board as board_mod
 from . import config, llm as llm_mod, skills
+
+
+class ActivityCollector:
+    """Structured events for one turn, mirrored to SSE and persisted on the chat turn."""
+
+    def __init__(self, emit: Callable[[dict], None] | None = None) -> None:
+        self.events: list[dict] = []
+        self._emit = emit
+        self._seq = itertools.count()
+
+    def _publish(self, event: dict) -> None:
+        self.events.append(event)
+        if self._emit is not None:
+            self._emit(event)
+
+    def start(self, kind: str, **fields: object) -> str:
+        event_id = uuid.uuid4().hex[:8]
+        self._publish({
+            "id": event_id,
+            "kind": kind,
+            "status": "running",
+            "started_at": time.time(),
+            **fields,
+        })
+        return event_id
+
+    def finish(self, event_id: str, *, status: str = "done", summary: str | None = None) -> None:
+        for event in self.events:
+            if event.get("id") != event_id:
+                continue
+            event["status"] = status
+            event["ended_at"] = time.time()
+            if summary is not None:
+                event["summary"] = summary
+            if self._emit is not None:
+                self._emit(event)
+            return
+
+    def note(self, kind: str, **fields: object) -> None:
+        """One-shot event (round markers, failures with no start)."""
+        self._publish({
+            "id": uuid.uuid4().hex[:8],
+            "kind": kind,
+            "status": fields.pop("status", "done"),
+            "started_at": time.time(),
+            "ended_at": time.time(),
+            **fields,
+        })
 
 
 @dataclass(frozen=True)
@@ -61,6 +112,7 @@ class Hooks:
     # four agents across three stages, and a job strip that says "crew" for six minutes tells
     # the director nothing about which of them is thinking or what it has done so far.
     phase: Callable[[str], None] | None = None
+    activity: Callable[[dict], None] | None = None
 
     def stopping(self) -> bool:
         return bool(self.cancelled and self.cancelled())
@@ -75,6 +127,9 @@ class Hooks:
     def doing(self, what: str) -> None:
         if self.phase is not None:
             self.phase(what)
+
+    def track(self) -> ActivityCollector:
+        return ActivityCollector(self.activity)
 
 
 @dataclass
@@ -142,6 +197,7 @@ class Turn:
     data: dict | None = None
     board: board_mod.Board | None = None
     agent: str = ""
+    activity: list[dict] = field(default_factory=list)
 
 
 def build(name: str, *, llm: llm_mod.LLM | None = None,
@@ -161,7 +217,12 @@ def build(name: str, *, llm: llm_mod.LLM | None = None,
     # The toolbox is built against the provider, not against a module-level default: a tool
     # declaration is written in the provider's own dialect (`llm.tool`), so building it once at
     # import would bake one provider's shape into every agent.
-    available = toolbox if toolbox is not None else tools_mod.toolbox(speaker)
+    if toolbox is not None:
+        available = toolbox
+    elif name == "director":
+        available = tools_mod.director_toolbox(speaker)
+    else:
+        available = tools_mod.toolbox(speaker)
     chosen: dict[str, Tool] = {}
     for wanted in skill.tools:
         found = available.get(wanted)
@@ -175,7 +236,8 @@ def build(name: str, *, llm: llm_mod.LLM | None = None,
 
 
 def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
-        prelude: str = "", hooks: Hooks = Hooks(), state: dict | None = None) -> Turn:
+        prelude: str = "", hooks: Hooks = Hooks(), state: dict | None = None,
+        collector: ActivityCollector | None = None) -> Turn:
     """One agent, one message, tools and all.
 
     `prelude` is where everything per-run goes -- the board digest, the beat list, the
@@ -187,6 +249,7 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
     skill = agent.skill
     context = Context(board=board, hooks=hooks, llm=agent.llm,
                       state=state if state is not None else {})
+    trace = collector if collector is not None else hooks.track()
 
     if skill.schema is not None:
         # One structured call, no loop. A skill whose whole output is one object has nothing to
@@ -198,7 +261,7 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
              {"role": "user", "content": prelude + message}],
             skill.schema, think=skill.think, temperature=skill.temperature, model=skill.model)
         return Turn(reply="", ops=[], rounds=1, stopped="answered", data=data,
-                    board=context.board, agent=skill.name)
+                    board=context.board, agent=skill.name, activity=trace.events)
 
     messages: list[dict] = [
         {"role": "system", "content": skill.system},
@@ -210,6 +273,7 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
     rounds = 0
     for rounds in range(1, skill.max_rounds + 1):
         hooks.doing(f"{skill.name} · round {rounds}")
+        trace.note("round", agent=skill.name, summary=f"round {rounds}")
         assistant = agent.llm.chat(messages, tools=agent.declarations, think=skill.think,
                                    temperature=skill.temperature, model=skill.model)
         spoken = str(assistant.get("content") or "").strip()
@@ -220,7 +284,7 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
             break
         results: list[tuple[str, str]] = []
         for name, arguments in calls:
-            outcome, summaries = _dispatch(agent, context, name, arguments)
+            outcome, summaries = _dispatch(agent, context, name, arguments, trace)
             results.append((name, outcome))
             applied += summaries
         messages += agent.llm.answered(assistant, results)
@@ -243,10 +307,11 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
         reply = ("Done: " + "; ".join(op["summary"] for op in applied) if applied
                  else "Nothing to change.")
     return Turn(reply=reply, ops=applied, rounds=rounds, stopped=stopped,
-                board=context.board, agent=skill.name)
+                board=context.board, agent=skill.name, activity=trace.events)
 
 
-def _dispatch(agent: Agent, context: Context, name: str, arguments: dict) -> Outcome:
+def _dispatch(agent: Agent, context: Context, name: str, arguments: dict,
+              trace: ActivityCollector) -> Outcome:
     """One tool call, with every way it can go wrong turned into a sentence for the model.
 
     The blanket `except Exception` is the same judgement `agent._run_tool` makes and
@@ -256,18 +321,23 @@ def _dispatch(agent: Agent, context: Context, name: str, arguments: dict) -> Out
     """
     tool = agent.tools.get(name)
     if tool is None:
-        # Verbatim from `agent._run_tool`: a model that called a tool it invented recovers as
-        # soon as it is told the name is wrong, and phrasing it the same way in both loops means
-        # one wording to get right.
+        trace.note("tool_call", tool=name, agent=agent.skill.name, status="failed",
+                   summary=f"unknown tool {name}")
         return f"there is no tool called {name}", []
+    event_id = trace.start("tool_call", tool=name, agent=agent.skill.name)
     try:
-        return tool.run(context, arguments if isinstance(arguments, dict) else {})
+        outcome, summaries = tool.run(context, arguments if isinstance(arguments, dict) else {})
     except ToolRefused as refused:
         context.hooks.say(f"[{agent.skill.name}] {name}: {refused}")
+        trace.finish(event_id, status="failed", summary=str(refused))
         return str(refused), []
     except Exception as failed:  # noqa: BLE001 -- see the docstring
         context.hooks.say(f"[{agent.skill.name}] {name} failed: {failed}")
+        trace.finish(event_id, status="failed", summary=str(failed))
         return f"that did not work: {failed}", []
+    summary = "; ".join(item["summary"] for item in summaries) if summaries else outcome[:120]
+    trace.finish(event_id, status="done", summary=summary)
+    return outcome, summaries
 
 
 def remember(board: board_mod.Board, agent: str, message: str, turn: Turn) -> None:
@@ -284,7 +354,10 @@ def remember(board: board_mod.Board, agent: str, message: str, turn: Turn) -> No
     """
     chat = board.data.setdefault("chat", [])
     chat.append({"role": "user", "text": message})
-    chat.append({"role": agent, "text": turn.reply, "ops": turn.ops})
+    entry: dict = {"role": agent, "text": turn.reply, "ops": turn.ops}
+    if turn.activity:
+        entry["activity"] = turn.activity
+    chat.append(entry)
     board.save()
 
 

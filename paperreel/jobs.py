@@ -23,6 +23,7 @@ from typing import Any, Callable
 from . import config
 
 MAX_LOG_LINES = 400  # per job, kept in memory for late-joining browsers
+MAX_ACTIVITY = 200  # structured agent/tool events for the activity timeline
 
 
 @dataclass
@@ -47,6 +48,8 @@ class Job:
     step_max: int = 0
     beat_started_at: float | None = None
     cancelling: bool = False
+    # Structured agent/tool/subagent events for the activity timeline in the studio.
+    activity: list[dict] = field(default_factory=list)
 
     def to_json(self) -> dict:
         return {
@@ -69,6 +72,7 @@ class Job:
             "beat_started_at": self.beat_started_at,
             "cancelling": self.cancelling,
             "log": self.log[-MAX_LOG_LINES:],
+            "activity": self.activity[-MAX_ACTIVITY:],
         }
 
 
@@ -190,6 +194,21 @@ class Runner:
         job.log.append(line)
         del job.log[:-MAX_LOG_LINES]
         self.publish({"type": "log", "job_id": job.id, "line": line})
+
+    def emit_activity(self, job: Job, event: dict) -> None:
+        """Append or replace one structured activity event and fan it out over SSE."""
+        event_id = event.get("id")
+        if event_id is not None:
+            for index, existing in enumerate(job.activity):
+                if existing.get("id") == event_id:
+                    job.activity[index] = event
+                    break
+            else:
+                job.activity.append(event)
+        else:
+            job.activity.append(event)
+        del job.activity[:-MAX_ACTIVITY]
+        self.publish({"type": "activity", "job_id": job.id, "event": event})
 
     def update(self, job: Job, **fields: Any) -> None:
         for key, value in fields.items():
