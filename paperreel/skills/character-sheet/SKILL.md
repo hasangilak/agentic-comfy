@@ -29,7 +29,7 @@ a second puppet on the next cut. Your sheets are identity locks, not storyboards
 
 - `kind: character` only. A signature held prop that defines the puppet (a lantern that is
   part of who they are) may be a `prop` you mint with them; environments and set dressing are
-  the style artist's.
+  the set-designer's.
 - `note` -- forensic look text that reaches prompts and reference roles: paper or clay of each
   part, colours, eyes, joints, garments, unmistakable marks. Use the style bible's **exact
   wording** for anything it already locked; never paraphrase a cast description.
@@ -41,12 +41,17 @@ a second puppet on the next cut. Your sheets are identity locks, not storyboards
 
 ## What a sheet must look like
 
-An identity lock, not a story moment:
+An identity lock, not a story moment — and preferably a **one-image turnaround** so H3 sees
+more angles without spending extra reference slots:
 
-- Subject complete and centred, full body, every marking visible and clearly lit.
-- Neutral, readable pose -- standing or sitting at rest, facing the camera or three-quarter.
-- Plain neutral ground. No scenery, no other characters, no dramatic action pose.
-- No back view, no heavy silhouette, no crop at the frame edge, no extreme long shot.
+- Pack **front + three-quarter** (and **back** if markings differ on the reverse) into a
+  single sheet on a plain neutral ground, subjects complete and clearly lit, labeled or
+  spaced as distinct views of the SAME puppet.
+- Every marking visible across the views. Neutral readable poses — standing or sitting at
+  rest, not mid-action.
+- No scenery, no other characters, no dramatic heroic pose, no heavy silhouette, no crop at
+  the frame edge.
+- Still one `draw_design` and one file. Do not mint a second sheet for a second angle.
 
 Story poses belong in stills and panels. A sheet frozen mid-leap becomes a second character the
 model tries to "perform" instead of a look to hold.

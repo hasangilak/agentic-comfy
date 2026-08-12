@@ -181,7 +181,67 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             return "there is no board yet -- nothing has been written", []
         return agent_mod.board_digest(context.board), []
 
-    return [Tool(spec=borrowed(llm, "read_board"), run=read_board)]
+    def preview_video_prompt(context: Context, arguments: dict) -> Outcome:
+        """The exact H3 prompt this beat would send, plus its wired reference roles.
+
+        Read-only: no Gemini, no Papercut, no Comfy, no Modal. Continuity (and the director)
+        use it to audit seams against the scaffold `config.build_prompt` actually composes,
+        rather than guessing from the board digest alone.
+        """
+        board = context.need_board()
+        n = _beat_number(board, arguments)
+        beat = board.beat(n)
+        source = board.source_for(beat)
+        pictures = board.pictures_for(n)
+        carry = board.carries_motion(beat)
+        opens_on = board.opens_on_still(beat)
+        prompt = config.build_prompt(
+            beat.get("action", ""),
+            scene=beat.get("scene", ""),
+            mute=bool(board.data.get("mute")),
+            identity=board.identity(),
+            continues=board_mod.chains(source),
+            lands=source == board_mod.SOURCE_BRIDGE,
+            refs=len(pictures),
+            ref_notes=[note for _, note in pictures] or None,
+            opens_on=opens_on,
+            staging=board.staging_text(n, pictures),
+            blocking=beat.get("blocking", ""),
+            medium_key=board.medium(),
+            ref_videos=1 if carry else 0,
+            mentions=board.mentions(n, pictures),
+        )
+        lines = [
+            f"beat {n} join={source}"
+            + (f", carrying upstream motion as <Video 1>" if carry else "")
+            + (f", opens on its own still as <Picture 1>" if opens_on else ""),
+            "references:",
+        ]
+        if pictures:
+            for index, (path, role) in enumerate(pictures, start=1):
+                on_disk = "on disk" if path.is_file() else "MISSING"
+                lines.append(f"  <Picture {index}> ({on_disk}): {role}")
+        else:
+            lines.append("  (none -- keyframe path, not ref2va)")
+        if carry:
+            lines.append("  <Video 1>: previous clip's tail")
+        lines.append("prompt:")
+        lines.append(prompt)
+        return "\n".join(lines), []
+
+    return [
+        Tool(spec=borrowed(llm, "read_board"), run=read_board),
+        Tool(spec=llm.tool(
+            "preview_video_prompt",
+            "Read the exact MiniMax-H3 video prompt one beat would send, plus the "
+            "<Picture N> roles wired into it. Read-only: changes nothing and spends no "
+            "render. Use before fixing a chain or bridge seam.",
+            {
+                "n": {"type": "integer", "description": "which beat, 1-based"},
+            },
+            ["n"],
+        ), run=preview_video_prompt),
+    ]
 
 
 # ## The script writer
@@ -892,8 +952,8 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
             {
                 "agent": {"type": "string",
                           "description": ("skill name, e.g. script-writer, style-paper-cutout, "
-                                          "character-sheet, mise-en-scene, storyboarder, "
-                                          "asset-maker")},
+                                          "character-sheet, set-designer, continuity, "
+                                          "mise-en-scene, storyboarder, asset-maker")},
                 "brief": {"type": "string",
                           "description": "what this specialist should do on this board"},
             },

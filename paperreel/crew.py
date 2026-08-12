@@ -9,7 +9,7 @@ prevent -- and a director agent would spend a model turn per decision on a quest
 statements answer for nothing.
 
     script      no beats yet          script-writer, then the style artist
-    storyboard  no panel written      style, character-sheet, mise-en-scene, then panels
+    storyboard  no panel written      style, character-sheet, set-designer, mise, continuity, panels
     assets      beats waiting on a still   asset-maker, then three agents check its work
     None        nothing left that does not cost GPU money
 
@@ -47,16 +47,17 @@ STYLE = "@style"
 # Who works each stage, in the order they work it. Order matters and is not alphabetical:
 #
 #   script      the writer first, because there is nothing to style until there are beats.
-#   storyboard  the style artist first (bible, medium, sets and non-cast props), then
-#               character-sheet (cast identity locks for ref2va), then mise-en-scene binds
-#               designs it can finally see -- and the panels come last because
-#               `panels._digest` names the designs a beat binds, so a panel written before the
-#               binding is a panel written about a cast it could not see.
+#   storyboard  the style artist first (bible + medium), then character-sheet (cast locks),
+#               then set-designer (place locks), then mise-en-scene binds, then continuity
+#               audits seams -- and the panels come last because `panels._digest` names the
+#               designs a beat binds, so a panel written before the binding is a panel written
+#               about a cast it could not see.
 #   assets      the maker first and the three checkers after, which is the only order that
 #               makes sense for a check.
 STAGE_CAST: dict[str, tuple[str, ...]] = {
     "script": ("script-writer", STYLE),
-    "storyboard": (STYLE, "character-sheet", "mise-en-scene", "storyboarder"),
+    "storyboard": (STYLE, "character-sheet", "set-designer", "mise-en-scene",
+                   "continuity", "storyboarder"),
     "assets": ("asset-maker", STYLE, "mise-en-scene", "script-writer"),
 }
 
@@ -83,19 +84,25 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
     ("script", "script-writer"): "Write this reel's script. Follow the brief, interview included.",
     ("script", STYLE): ("Set the medium if it is not set, then write this reel's style bible "
                         "from the script. Do not draw anything yet."),
-    ("storyboard", STYLE): ("Design the sets and non-cast props this film reuses and draw "
-                            "their sheets. Leave recurring characters to the character-sheet "
-                            "artist -- do not mint or draw character designs."),
+    ("storyboard", STYLE): ("Set the medium if needed and polish this reel's style bible. "
+                            "Do not mint or draw designs -- characters belong to "
+                            "character-sheet, environments to set-designer."),
     ("storyboard", "character-sheet"): ("Develop every recurring character as an identity-lock "
                                         "design sheet from the script and style bible, draw "
                                         "each sheet once, and bind them into the beats that "
                                         "feature them."),
+    ("storyboard", "set-designer"): ("Develop every recurring environment as a place-lock "
+                                     "design sheet from the script and style bible, draw each "
+                                     "sheet once, and bind them into the beats that use them."),
     ("storyboard", "mise-en-scene"): ("Block every shot: what each frame holds and where "
                                       "everything stands in it. Bind the designs each shot "
                                       "contains."),
-    ("storyboard", "storyboarder"): ("Storyboard every shot. The designs and the blocking are "
-                                     "already on the board -- write the shot grammar and draw "
-                                     "the panels."),
+    ("storyboard", "continuity"): ("Audit every chain and bridge seam: identical scene lines "
+                                   "within a shot, continuity phrases, bridge landings, no "
+                                   "three pure chains, no shot past 20 seconds. Fix what fails."),
+    ("storyboard", "storyboarder"): ("Storyboard every shot. The designs, blocking and seams "
+                                     "are already on the board -- write the shot grammar and "
+                                     "draw the panels."),
     ("assets", "asset-maker"): ("Render the opening still for every beat waiting on one, look "
                                 "at what came back, and fix what is wrong before you render "
                                 "anything twice."),

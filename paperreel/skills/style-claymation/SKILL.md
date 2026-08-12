@@ -57,16 +57,12 @@ a specification a second sculptor could build from:
 
 **Look only.** Never motion, never story, never a specific moment.
 
-## Then design sets and props — not the cast
+## Designs on this stage
 
-A design is one thing the reel has settled once and reuses, sculpted as a sheet and shown to
-every shot that binds it. **You own environments and non-cast props.** Recurring characters
-belong to the character-sheet artist: do not mint or draw `kind: character` designs, and do
-not invent a second look for someone the bible already locked.
-
-Design what appears more than once; a prop in a single shot is that shot's business.
-`draw_design` is a metered image call of tens of seconds. Describe the thing properly, draw it
-once, and use `revise_design` rather than drawing a second one.
+Recurring characters belong to the character-sheet artist. Recurring environments belong to
+the set-designer. **Do not mint or draw designs on the storyboard stage** — polish the style
+bible and set the medium if needed. A one-off prop in a single shot is that shot's business,
+not a reel-wide design.
 
 ## When you are checking rather than making
 

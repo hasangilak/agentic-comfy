@@ -733,12 +733,26 @@ class Board:
         animal -- so a role that read "the fox mother, warm orange" would describe the sheet
         perfectly and still leave the model free to put a second fox on screen. That is the
         two-of-the-same-character failure `ref_prompts` was written for, one level up.
+
+        For characters, MiniMax-H3's ref2va path needs the role to say appearance-only: the
+        sheet fixes look, not this shot's pose or framing. Without that clause the model treats
+        a design sheet as a scene to replay. Environments keep place wording -- they *are* the
+        place.
         """
         name = self.stage_name(entry)
+        kind = self.stage_kind(entry)
         note = " ".join(str(self.stage_field(entry, "note")).split()).strip().rstrip(".")
         if note:
-            return f"{name}, {note}"
-        return config.STAGE_ROLE[self.stage_kind(entry)].format(name=name)
+            role = f"{name}, {note}"
+        else:
+            role = config.STAGE_ROLE[kind].format(name=name)
+        if kind == config.STAGE_CHARACTER and note:
+            role = (
+                f"{role} -- appearance reference only: fixes what {name} looks like, "
+                f"not this shot's pose or framing, and the same single {name} performs "
+                f"the action below"
+            )
+        return role
 
     def bound_staging(self, n: int) -> list[dict]:
         """The staging entries beat `n` binds, in bind order, skipping ids that have gone.

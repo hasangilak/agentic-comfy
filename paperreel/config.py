@@ -662,7 +662,9 @@ PAPERCUT_SET_ASPECT = PAPERCUT_ASPECT
 # own words about their own design always win.
 STAGE_ROLE = {
     STAGE_CHARACTER: "{name}, one of this reel's characters -- this sheet is that character's "
-                     "locked design, and the same single {name} performs the action below",
+                     "appearance reference only: it fixes what {name} looks like (shapes, "
+                     "markings, colours, materials), not this shot's pose or framing, and the "
+                     "same single {name} performs the action below",
     STAGE_ENVIRONMENT: "{name}, the set this shot takes place in -- this sheet is that set's "
                        "locked design, empty of characters",
     STAGE_PROP: "{name}, a prop in this film -- this sheet is its locked design",

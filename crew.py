@@ -5,9 +5,9 @@
 """A crew that walks a reel from a concept to stills on disk, and stops there.
 
 Three stages, each worked by a cast rather than by one agent -- a writer and a style artist,
-then the style artist with the character-sheet artist, mise-en-scene and the storyboarder,
-then the asset maker with three agents checking what it made through three different lenses.
-`paperreel/crew.py` is the order and the reasons.
+then the style artist with character-sheet, set-designer, mise-en-scene, continuity and the
+storyboarder, then the asset maker with three agents checking what it made through three
+different lenses. `paperreel/crew.py` is the order and the reasons.
 
     uv run crew.py --concept "a clay pig finds a pond" --medium claymation
     uv run crew.py --name <slug>                      # carry on from wherever it is

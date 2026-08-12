@@ -342,6 +342,8 @@ const AGENT_ROLES = new Set([
   "asset-maker",
   "mise-en-scene",
   "character-sheet",
+  "set-designer",
+  "continuity",
   "style-paper-cutout",
   "style-claymation",
 ]);
