@@ -404,21 +404,37 @@ def crew_hooks(job: Job, run: Runner, slug: str) -> runtime.Hooks:
 
 
 def handle_crew(job: Job, run: Runner) -> dict:
-    """Walk the board forward until only the stage that costs GPU money is left.
+    """Run the next crew phase -- or a whole stage when `ungated` is set.
 
-    One job rather than one per stage, because the stage boundaries are where the orchestrator
-    decides and a job per stage would make the queue the thing deciding. Cancellation still
-    lands between rounds and between stages -- `Hooks.cancelled` reads `job.cancelling`, which
-    is the same cooperative flag every other long handler uses.
+    Default is one gated phase so the director can approve sheets or seams before the next
+    specialists run. `ungated` is the escape hatch that burns through stages the way this
+    handler used to. Cancellation still lands between rounds and between members --
+    `Hooks.cancelled` reads `job.cancelling`, which is the same cooperative flag every other
+    long handler uses.
     """
     board = load(job.slug)
     hooks = crew_hooks(job, run, board.slug)
+    ungated = bool(job.detail.get("ungated"))
+    phase = job.detail.get("phase") or None
+    stage = job.detail.get("stage") or None
+    if phase is None and stage and not ungated:
+        # A stage button without ungated means "the next gate on this stage", not the whole cast.
+        awaiting = crew.awaiting_phase(board)
+        if awaiting and crew.PHASE_STAGE.get(awaiting) == stage:
+            phase = awaiting
+        else:
+            remaining = [name for name in crew.phases_for(stage)
+                         if name not in crew.crew_record(board)["done"]]
+            phase = remaining[0] if remaining else None
     turns = crew.run(board, note=job.detail.get("note") or "",
-                     stop_after=job.detail.get("stage"), hooks=hooks)
+                     stop_after=stage if ungated else None,
+                     phase=phase, ungated=ungated, hooks=hooks)
+    board = load(job.slug)
     run.publish_board(board.slug)
+    summary = crew.plan_summary(board)
     return {"turns": [{"agent": turn.agent, "reply": turn.reply, "stopped": turn.stopped,
                        "rounds": turn.rounds, "ops": turn.ops} for turn in turns],
-            "stage": crew.next_stage(load(job.slug))}
+            "stage": summary["stage"], "awaiting": summary["awaiting"], "done": summary["done"]}
 
 
 def handle_agent(job: Job, run: Runner) -> dict:
@@ -1493,6 +1509,11 @@ def list_agents() -> dict:
             # The cast per stage, with the style role already resolved -- against no board, so
             # this is the default medium's artist. A slug's own casts are in `plan_of` below.
             "cast": {name: crew.cast_for(name, None) for name in crew.STAGES},
+            "phases": {
+                stage: [{"id": phase, "agents": crew.cast_for_phase(phase, None)}
+                        for phase, _roles in crew.STAGE_PHASES[stage]]
+                for stage in crew.STAGES
+            },
             "lenses": crew.lenses(),
             "mediums": [{"key": entry.key, "name": entry.name}
                         for entry in config.MEDIUMS.values()]}
@@ -1500,7 +1521,7 @@ def list_agents() -> dict:
 
 @app.post("/api/reels/{slug}/crew")
 def run_crew(slug: str, body: dict = Body(default={})) -> dict:
-    """Run the crew from wherever this board is, up to the stage a human pays for.
+    """Run the next gated crew phase, or a whole stage when `ungated` is set.
 
     `require_structure_idle` first, and not only out of politeness: the script agent adds and
     removes beats, and beat positions are how every queued job names its work.
@@ -1508,19 +1529,24 @@ def run_crew(slug: str, body: dict = Body(default={})) -> dict:
     board = load(slug)
     require_structure_idle(slug)
     stage = body.get("stage")
+    phase = body.get("phase")
+    ungated = bool(body.get("ungated"))
     if stage is not None and stage not in crew.STAGES:
         raise HTTPException(422, f"stage has to be one of {', '.join(crew.STAGES)}")
+    if phase is not None and phase not in crew.PHASE_STAGE:
+        raise HTTPException(422, f"phase has to be one of {', '.join(crew.PHASES)}")
+    if phase is not None and stage is not None and crew.PHASE_STAGE[phase] != stage:
+        raise HTTPException(422, f"phase {phase!r} belongs to {crew.PHASE_STAGE[phase]}, not {stage}")
+    summary = crew.plan_summary(board)
     job = runner.submit("crew", slug,
                         {"note": str(body.get("note") or ""), "stage": stage,
+                         "phase": phase, "ungated": ungated,
                          # Resolved once, at submit, so the strip can show the whole cast
                          # before the first agent has said anything -- and so what it shows is
                          # what this run actually decided rather than a re-read that could
                          # answer differently once the board starts moving.
-                         "plan": crew.plan_of(board)})
-    return {"job": job.to_json(), "stage": crew.next_stage(board),
-            # What this run is about to do, resolved against THIS board -- so the browser can
-            # show the casts before the first agent has said anything. Free.
-            "plan": crew.plan_of(board)}
+                         "plan": summary["plan"]})
+    return {"job": job.to_json(), **summary, "medium": board.medium(), "lenses": crew.lenses()}
 
 
 @app.post("/api/reels/{slug}/agents/{name}")
@@ -1548,12 +1574,12 @@ def crew_plan(slug: str) -> dict:
     """What the crew would do to this board next, and who would do it. Free, calls nothing.
 
     Resolved against THIS board, so the style role has already become the artist its medium
-    calls for. `GET /api/agents` answers the same question with no board, which is the default
-    medium's answer and not necessarily this reel's.
+    calls for. Includes gated phases and the awaiting cursor. `GET /api/agents` answers the
+    same question with no board, which is the default medium's answer and not necessarily
+    this reel's.
     """
     board = load(slug)
-    return {"stage": crew.next_stage(board), "plan": crew.plan_of(board),
-            "medium": board.medium(), "lenses": crew.lenses()}
+    return {**crew.plan_summary(board), "medium": board.medium(), "lenses": crew.lenses()}
 
 
 @app.post("/api/reels/{slug}/beats/{n}/inspect")

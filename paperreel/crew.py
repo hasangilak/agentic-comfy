@@ -20,6 +20,13 @@ block the frame answers about whichever of the three it noticed first. Each memb
 runs in turn on the same board, reading what the one before it left -- the board IS the
 message passing, which is why no agent needs to be handed another's output.
 
+**A phase is a slice of a cast that stops at a gate.** Storyboard and assets are long enough
+that running the whole cast in one job never gives the director a moment to approve sheets or
+seams before the next specialist builds on them. Default crew work therefore runs one phase
+and writes `data["crew"]` so the studio can show the gate; `ungated` is the escape hatch that
+burns through a stage the way this module used to. The cursor is intentional workflow state --
+like `chat`, not like a fingerprint -- and it is in no render hash.
+
 The assets cast is the one with a shape of its own: the asset-maker renders, and then three
 agents look at what came back through three different lenses -- craft, staging, story. They
 **report and suggest; they never re-render.** See `critique.py` for why that bound is where it
@@ -28,7 +35,9 @@ is. Three vision calls per still, once, is the cost.
 That last row of the table is the design. There is no fourth stage in `STAGES` and no cast a
 fourth could resolve through, so "the crew is finished" and "only the paid stage is left" are
 literally the same value. The studio's own `resolveStage` answers `"studio"` where this answers
-`None`, and the difference is the whole boundary this module is drawn around.
+`None`, and the difference is the whole boundary this module is drawn around. The `inspect`
+phase is the one exception that can still be awaiting after `next_stage` has answered None:
+stills exist, so the stage read says "studio", but the checkers have not run yet.
 """
 
 from __future__ import annotations
@@ -59,6 +68,32 @@ STAGE_CAST: dict[str, tuple[str, ...]] = {
     "storyboard": (STYLE, "character-sheet", "set-designer", "mise-en-scene",
                    "continuity", "storyboarder"),
     "assets": ("asset-maker", STYLE, "mise-en-scene", "script-writer"),
+}
+
+# Named gates inside a stage. Each phase is a contiguous slice of `STAGE_CAST` for that stage
+# -- never a second cast table -- so adding a specialist means editing STAGE_CAST and the
+# slice that should include it. Script has one phase (no mid-stage gate): the consistency
+# problem the gates exist for lives on storyboard and assets.
+STAGE_PHASES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    "script": (
+        ("script", ("script-writer", STYLE)),
+    ),
+    "storyboard": (
+        ("designs", (STYLE, "character-sheet", "set-designer")),
+        ("seams", ("mise-en-scene", "continuity")),
+        ("panels", ("storyboarder",)),
+    ),
+    "assets": (
+        ("stills", ("asset-maker",)),
+        ("inspect", (STYLE, "mise-en-scene", "script-writer")),
+    ),
+}
+
+PHASES: tuple[str, ...] = tuple(
+    phase for stage in STAGES for phase, _roles in STAGE_PHASES[stage]
+)
+PHASE_STAGE: dict[str, str] = {
+    phase: stage for stage, slices in STAGE_PHASES.items() for phase, _roles in slices
 }
 
 # Which agents in a cast are there to CHECK the work rather than do it. They run only after
@@ -132,8 +167,28 @@ def style_artist(board: board_mod.Board | None) -> str:
 
 def cast_for(stage: str, board: board_mod.Board | None) -> list[str]:
     """The skill names that work one stage, in order, with the style role resolved."""
-    return [style_artist(board) if name is STYLE or name == STYLE else name
-            for name in STAGE_CAST.get(stage, ())]
+    return [_resolve(name, board) for name in STAGE_CAST.get(stage, ())]
+
+
+def roles_for_phase(phase: str) -> tuple[str, ...]:
+    """The STAGE_CAST roles that make up one named phase."""
+    stage = PHASE_STAGE.get(phase)
+    if stage is None:
+        raise ValueError(f"no phase called {phase!r}. Phases: {', '.join(PHASES)}")
+    for name, roles in STAGE_PHASES[stage]:
+        if name == phase:
+            return roles
+    raise ValueError(f"no phase called {phase!r}. Phases: {', '.join(PHASES)}")
+
+
+def cast_for_phase(phase: str, board: board_mod.Board | None) -> list[str]:
+    """Skill names for one phase, style role resolved."""
+    return [_resolve(name, board) for name in roles_for_phase(phase)]
+
+
+def phases_for(stage: str) -> list[str]:
+    """Phase ids for a stage, in order."""
+    return [name for name, _roles in STAGE_PHASES.get(stage, ())]
 
 
 def next_stage(board: board_mod.Board | None) -> str | None:
@@ -154,6 +209,87 @@ def next_stage(board: board_mod.Board | None) -> str | None:
     if not board.data.get("manual_stills") and board.to_json()["assets_needed"]:
         return "assets"
     return None
+
+
+def crew_record(board: board_mod.Board | None) -> dict:
+    """The persisted phase cursor, or empty when the board never started a gated run.
+
+    Absent means default -- same rule as medium. Not derived render state and not in any
+    fingerprint: editing it re-prices nothing.
+    """
+    if board is None:
+        return {"done": [], "awaiting": None}
+    raw = board.data.get("crew")
+    if not isinstance(raw, dict):
+        return {"done": [], "awaiting": None}
+    done = [str(item) for item in (raw.get("done") or []) if str(item) in PHASE_STAGE]
+    awaiting = raw.get("awaiting")
+    awaiting = str(awaiting) if awaiting in PHASE_STAGE else None
+    return {"done": done, "awaiting": awaiting}
+
+
+def awaiting_phase(board: board_mod.Board | None) -> str | None:
+    """Which phase the director should run or approve next.
+
+    Prefers an explicit `awaiting` on the board (including `inspect` after stills, when
+    `next_stage` has already answered None). Otherwise the first incomplete phase of the
+    current stage. Boards that never gated start at the first phase of `next_stage`.
+    """
+    record = crew_record(board)
+    if record["awaiting"] is not None:
+        return record["awaiting"]
+    where = next_stage(board)
+    if where is None:
+        return None
+    done = set(record["done"])
+    for phase in phases_for(where):
+        if phase not in done:
+            return phase
+    return None
+
+
+def write_crew(board: board_mod.Board, *, done: list[str], awaiting: str | None) -> None:
+    """Persist the phase cursor. Workflow state only -- never fingerprinted.
+
+    Deletes the key when both are empty so a board that finished every gate looks like one
+    that never started, the same way setting medium back to paper deletes the key.
+    """
+    clean_done = [phase for phase in done if phase in PHASE_STAGE]
+    clean_await = awaiting if awaiting in PHASE_STAGE else None
+    if not clean_done and clean_await is None:
+        board.data.pop("crew", None)
+    else:
+        board.data["crew"] = {"done": clean_done, "awaiting": clean_await}
+    board.save()
+
+
+def mark_phase_done(board: board_mod.Board, phase: str) -> None:
+    """Record that a phase finished and point awaiting at the next gate (or clear it).
+
+    Re-running an earlier phase drops every later phase from `done` -- sheets redrawn after
+    seams ran would otherwise leave a stale "seams done" flag over a board that no longer
+    matches what continuity audited.
+    """
+    if phase not in PHASE_STAGE:
+        raise ValueError(f"no phase called {phase!r}. Phases: {', '.join(PHASES)}")
+    stage = PHASE_STAGE[phase]
+    order = phases_for(stage)
+    index = order.index(phase)
+    # Keep phases from other stages (e.g. storyboard done while on assets), then this stage
+    # up through the one just finished.
+    other = [item for item in crew_record(board)["done"] if PHASE_STAGE.get(item) != stage]
+    done = other + order[: index + 1]
+    awaiting = order[index + 1] if index + 1 < len(order) else None
+    write_crew(board, done=done, awaiting=awaiting)
+
+
+def mark_stage_done(board: board_mod.Board, stage: str) -> None:
+    """Mark every phase of a stage complete -- what an ungated stage run leaves behind."""
+    if stage not in STAGE_PHASES:
+        raise ValueError(f"no stage called {stage!r}. Stages: {', '.join(STAGES)}")
+    order = phases_for(stage)
+    other = [item for item in crew_record(board)["done"] if PHASE_STAGE.get(item) != stage]
+    write_crew(board, done=other + order, awaiting=None)
 
 
 def one(name: str, board: board_mod.Board | None, message: str, *,
@@ -193,12 +329,16 @@ def one(name: str, board: board_mod.Board | None, message: str, *,
 
 
 def stage(name: str, board: board_mod.Board, *, note: str = "",
+          phase: str | None = None,
           hooks: runtime.Hooks = runtime.Hooks(),
           llm: llm_mod.LLM | None = None,
           state: dict | None = None,
           via_director: bool = False,
           collector: runtime.ActivityCollector | None = None) -> list[runtime.Turn]:
-    """One stage: every agent in its cast, in order, on the same board.
+    """One stage -- or one phase of it -- every agent in that slice, in order.
+
+    `phase` narrows the cast to that gate's slice and writes the crew cursor when it finishes.
+    Without it the whole stage runs (ungated) and every phase is marked done.
 
     The board is reloaded between members for the reason `run` reloads between stages -- an
     agent that replaced `board.data` rather than mutating it would otherwise hand the next one
@@ -211,19 +351,29 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
     """
     if name not in STAGE_CAST:
         raise ValueError(f"no stage called {name!r}. Stages: {', '.join(STAGES)}")
+    if phase is not None:
+        if phase not in PHASE_STAGE:
+            raise ValueError(f"no phase called {phase!r}. Phases: {', '.join(PHASES)}")
+        if PHASE_STAGE[phase] != name:
+            raise ValueError(f"phase {phase!r} belongs to {PHASE_STAGE[phase]}, not {name}")
+        roles = roles_for_phase(phase)
+    else:
+        roles = STAGE_CAST[name]
     shared = state if state is not None else {}
     turns: list[runtime.Turn] = []
-    for role, who in zip(STAGE_CAST[name], cast_for(name, board)):
+    for role in roles:
         if hooks.stopping():
             hooks.say("[crew] cancelled")
             break
+        who = _resolve(role, board)
         lens = CHECKERS.get(role) if _is_check(name, role) else None
         if lens and not _checkable(board):
             hooks.say(f"[crew] {who}: nothing to check yet")
             continue
         message = _brief(name, role, lens, note)
-        hooks.say(f"[crew] {name}/{who}")
-        hooks.doing(f"{name} · {who}" + (f" · {lens}" if lens else ""))
+        label = f"{name} · {phase} · {who}" if phase else f"{name} · {who}"
+        hooks.say(f"[crew] {name}/{who}" + (f" ({phase})" if phase else ""))
+        hooks.doing(label + (f" · {lens}" if lens else ""))
         try:
             turns.append(one(who, board, message, hooks=hooks, llm=llm, state=shared,
                              via_director=via_director, collector=collector))
@@ -234,7 +384,32 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
             trace = collector if collector is not None else hooks.track()
             trace.note("agent_failed", agent=who, status="failed", summary=str(failed))
         board = board_mod.Board.load(board.slug)
+    if not hooks.stopping():
+        if phase is not None:
+            mark_phase_done(board, phase)
+            hooks.say(f"[crew] phase {phase} done; awaiting {crew_record(board)['awaiting'] or 'nothing'}")
+        else:
+            mark_stage_done(board, name)
+            hooks.say(f"[crew] stage {name} done ungated")
+        hooks.changed()
     return turns
+
+
+def run_phase(board: board_mod.Board, phase: str | None = None, *, note: str = "",
+              hooks: runtime.Hooks = runtime.Hooks(),
+              llm: llm_mod.LLM | None = None,
+              state: dict | None = None,
+              via_director: bool = False,
+              collector: runtime.ActivityCollector | None = None) -> list[runtime.Turn]:
+    """Run one phase and stop at its gate. Default phase is whatever `awaiting_phase` says."""
+    target = phase or awaiting_phase(board)
+    if target is None:
+        hooks.say("[crew] nothing left that does not cost money to render")
+        return []
+    if target not in PHASE_STAGE:
+        raise ValueError(f"no phase called {target!r}. Phases: {', '.join(PHASES)}")
+    return stage(PHASE_STAGE[target], board, note=note, phase=target, hooks=hooks, llm=llm,
+                 state=state, via_director=via_director, collector=collector)
 
 
 def start(concept: str, *, beats: int = 4, seconds: float = config.BEAT_LENGTHS[-1],
@@ -266,16 +441,23 @@ def start(concept: str, *, beats: int = 4, seconds: float = config.BEAT_LENGTHS[
 
 
 def run(board: board_mod.Board, *, note: str = "", stop_after: str | None = None,
+        phase: str | None = None, ungated: bool = False,
         hooks: runtime.Hooks = runtime.Hooks(),
         llm: llm_mod.LLM | None = None) -> list[runtime.Turn]:
-    """Walk the board forward until nothing is left that does not cost GPU money.
+    """Walk the board forward.
 
-    `state` is shared across every agent of every stage on purpose: it carries the still
-    budget, and a budget that reset between agents would not be one.
+    Default (gated): run the next awaiting phase and stop so the director can approve.
+    `ungated=True`: run whole stages until money, optionally stopping after `stop_after`.
+    `phase=...`: run exactly that phase, gated, regardless of awaiting.
     """
     if stop_after is not None and stop_after not in STAGES:
         raise ValueError(f"stop_after has to be one of {', '.join(STAGES)}")
+    if phase is not None and phase not in PHASE_STAGE:
+        raise ValueError(f"no phase called {phase!r}. Phases: {', '.join(PHASES)}")
     shared: dict = {}
+    if not ungated:
+        return run_phase(board, phase, note=note, hooks=hooks, llm=llm, state=shared)
+
     turns: list[runtime.Turn] = []
     done: str | None = None
     while True:
@@ -284,7 +466,14 @@ def run(board: board_mod.Board, *, note: str = "", stop_after: str | None = None
             break
         where = next_stage(board)
         if where is None:
-            hooks.say("[crew] nothing left that does not cost money to render")
+            # Inspect can still be awaiting after stills cleared assets_needed.
+            leftover = awaiting_phase(board)
+            if leftover == "inspect":
+                turns += run_phase(board, "inspect", note=note, hooks=hooks, llm=llm,
+                                   state=shared)
+                board = board_mod.Board.load(board.slug)
+            else:
+                hooks.say("[crew] nothing left that does not cost money to render")
             break
         if where == done:
             # `next_stage` is a pure read, so a stage that ran and left the board in the same
@@ -302,6 +491,10 @@ def run(board: board_mod.Board, *, note: str = "", stop_after: str | None = None
             hooks.say(f"[crew] stopping after {where}, as asked")
             break
     return turns
+
+
+def _resolve(role: str, board: board_mod.Board | None) -> str:
+    return style_artist(board) if role is STYLE or role == STYLE else role
 
 
 def _is_check(stage_name: str, role: str) -> bool:
@@ -355,18 +548,54 @@ def catalogue() -> list[dict]:
 def plan_of(board: board_mod.Board | None) -> list[dict]:
     """What the crew would do to this board, without doing any of it. Calls nothing.
 
-    Free, and it is what `--where` prints in long form: the stages left, who works each, and
-    which of them are there to check rather than to make.
+    Free, and it is what `--where` prints in long form: the stages left, who works each, which
+    of them are there to check, and how the cast is sliced into gated phases. `awaiting` is the
+    next phase the UI should offer; `inspect` can still appear after `next_stage` is None.
     """
     where = next_stage(board)
-    if where is None:
-        return []
-    remaining = STAGES[STAGES.index(where):]
-    return [{"stage": name,
-             "cast": [{"agent": who,
-                       "lens": CHECKERS.get(role) if _is_check(name, role) else None}
-                      for role, who in zip(STAGE_CAST[name], cast_for(name, board))]}
-            for name in remaining]
+    record = crew_record(board)
+    awaiting = awaiting_phase(board)
+    remaining: list[str] = []
+    if where is not None:
+        remaining = list(STAGES[STAGES.index(where):])
+    elif awaiting == "inspect":
+        remaining = ["assets"]
+    plan = []
+    for name in remaining:
+        phases = []
+        for phase, roles in STAGE_PHASES[name]:
+            agents = []
+            for role in roles:
+                who = _resolve(role, board)
+                lens = CHECKERS.get(role) if _is_check(name, role) else None
+                agents.append({"agent": who, "lens": lens})
+            status = (
+                "done" if phase in record["done"]
+                else "awaiting" if phase == awaiting
+                else "pending"
+            )
+            phases.append({"id": phase, "agents": agents, "status": status})
+        plan.append({
+            "stage": name,
+            "cast": [
+                {"agent": who,
+                 "lens": CHECKERS.get(role) if _is_check(name, role) else None}
+                for role, who in zip(STAGE_CAST[name], cast_for(name, board))
+            ],
+            "phases": phases,
+        })
+    return plan
+
+
+def plan_summary(board: board_mod.Board | None) -> dict:
+    """Plan plus the cursor fields the studio reads once per fetch."""
+    return {
+        "stage": next_stage(board),
+        "awaiting": awaiting_phase(board),
+        "done": crew_record(board)["done"],
+        "plan": plan_of(board),
+        "phases": list(PHASES),
+    }
 
 
 # Re-exported so a caller that wants to look at one still without an agent -- the studio, a

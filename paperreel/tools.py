@@ -879,16 +879,22 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
     def crew_plan(context: Context, _arguments: dict) -> Outcome:
         from . import crew as crew_mod
 
-        plan = crew_mod.plan_of(context.board)
-        if not plan:
+        summary = crew_mod.plan_summary(context.board)
+        plan = summary["plan"]
+        if not plan and not summary["awaiting"]:
             return "nothing left for the crew -- only the render remains, which no agent can start", []
         lines = []
+        if summary["awaiting"]:
+            lines.append(f"awaiting phase: {summary['awaiting']}")
+        if summary["done"]:
+            lines.append("done: " + ", ".join(summary["done"]))
         for entry in plan:
-            cast = ", ".join(
-                f"{member['agent']}" + (f" ({member['lens']})" if member.get("lens") else "")
-                for member in entry["cast"]
-            )
-            lines.append(f"{entry['stage']}: {cast}")
+            for phase in entry.get("phases") or []:
+                agents = ", ".join(
+                    f"{member['agent']}" + (f" ({member['lens']})" if member.get("lens") else "")
+                    for member in phase["agents"]
+                )
+                lines.append(f"{entry['stage']}/{phase['id']} [{phase['status']}]: {agents}")
         return "Remaining crew work:\n" + "\n".join(lines), []
 
     def delegate_agent(context: Context, arguments: dict) -> Outcome:
@@ -925,22 +931,46 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
         if stage not in crew_mod.STAGES:
             raise ToolRefused(f"stage has to be one of {', '.join(crew_mod.STAGES)}")
         note = str(arguments.get("note") or "").strip()
-        turns = crew_mod.stage(stage, board, note=note, hooks=context.hooks,
-                               state=context.state, via_director=True)
+        ungated = bool(arguments.get("ungated"))
+        phase = str(arguments.get("phase") or "").strip() or None
+        if phase is not None and phase not in crew_mod.PHASE_STAGE:
+            raise ToolRefused(f"phase has to be one of {', '.join(crew_mod.PHASES)}")
+        if ungated:
+            turns = crew_mod.stage(stage, board, note=note, hooks=context.hooks,
+                                   state=context.state, via_director=True)
+            label = f"ran {stage} stage ungated"
+        else:
+            if phase is None:
+                awaiting = crew_mod.awaiting_phase(board)
+                if awaiting and crew_mod.PHASE_STAGE.get(awaiting) == stage:
+                    phase = awaiting
+                else:
+                    remaining = [name for name in crew_mod.phases_for(stage)
+                                 if name not in crew_mod.crew_record(board)["done"]]
+                    phase = remaining[0] if remaining else None
+            if phase is None:
+                return (f"nothing left to run on the {stage} stage -- approve what is awaiting "
+                        "or say ungated if you really want the whole cast again"), []
+            turns = crew_mod.stage(stage, board, note=note, phase=phase, hooks=context.hooks,
+                                   state=context.state, via_director=True)
+            label = f"ran {stage}/{phase} (stopped at gate)"
         board = board_mod.Board.load(board.slug)
-        lines = [f"stage {stage} finished with {len(turns)} agent(s):"]
+        lines = [f"{label} with {len(turns)} agent(s):"]
         for turn in turns:
             lines.append(f"  {turn.agent}: {turn.reply[:200]}")
+        cursor = crew_mod.crew_record(board)
+        if cursor["awaiting"]:
+            lines.append(f"awaiting next: {cursor['awaiting']} -- stop and let the director approve")
         findings = _checker_verdicts(board)
         if findings:
             lines.append("checker verdicts:\n" + findings)
-        return "\n".join(lines), [{"op": "run_crew_stage", "summary": f"ran {stage} stage"}]
+        return "\n".join(lines), [{"op": "run_crew_stage", "summary": label}]
 
     return [
         Tool(spec=llm.tool(
             "crew_plan",
             "Read what the crew would do next on this board, without doing any of it. "
-            "Returns the remaining stages and which specialists work each.",
+            "Returns remaining stages, gated phases, and which phase is awaiting approval.",
             {},
         ), run=crew_plan),
         Tool(spec=llm.tool(
@@ -961,14 +991,21 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
         ), run=delegate_agent),
         Tool(spec=llm.tool(
             "run_crew_stage",
-            "Run every specialist in one stage, in order, on this board. Use when the director "
-            "wants a whole phase done -- script, storyboard, or assets -- rather than one "
-            "specialist at a time.",
+            "Run the next gated phase of a stage (designs, seams, panels, stills, or inspect) "
+            "and stop so the director can approve. Pass ungated=true only when the director "
+            "explicitly wants the whole stage without pausing. Prefer this over burning through "
+            "every specialist at once.",
             {
                 "stage": {"type": "string", "enum": ["script", "storyboard", "assets"],
                           "description": "script, storyboard, or assets"},
+                "phase": {"type": "string",
+                          "description": ("optional phase id: script, designs, seams, panels, "
+                                          "stills, inspect. Default is the awaiting phase.")},
                 "note": {"type": "string",
                          "description": "anything specific the director wants them to know"},
+                "ungated": {"type": "boolean",
+                            "description": ("true to run every specialist in the stage without "
+                                            "stopping at gates. Default false.")},
             },
             ["stage"],
         ), run=run_crew_stage),

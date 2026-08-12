@@ -44,8 +44,11 @@ export function Assets() {
   const offline = studio.stillsBackend !== "papercut";
   const [model, setModel] = useState<GeminiImageModel>(DEFAULT_GEMINI_IMAGE_MODEL);
   const [size, setSize] = useState<GeminiImageSize>(DEFAULT_GEMINI_IMAGE_SIZE);
+  const [crewBusy, setCrewBusy] = useState(false);
 
   const generating = useBusy("asset", () => true);
+  const crewJob = useBusy("crew", () => true);
+  const agentJob = useBusy("agent", () => true);
   const job = studio.activeJob?.kind === "asset" ? studio.activeJob : null;
 
   // Every scene that opens on a still of its own. A plain continuation has none and needs none.
@@ -62,8 +65,24 @@ export function Assets() {
   const defining = board.reference ? null : (shots.find((beat) => !castRef(beat))?.n ?? null);
   const rest = missing.filter((n) => n !== defining);
 
+  const done = new Set(board.crew?.done ?? []);
+  const awaiting = board.crew?.awaiting ?? null;
+  const atStillsGate = !missing.length && (awaiting === "inspect" || done.has("stills"))
+    && !done.has("inspect");
+  const atInspectGate = !missing.length && done.has("inspect");
+  const wantsStillsCrew = Boolean(missing.length) && (awaiting === "stills" || !done.has("stills"));
+
   const generate = (beats?: number[]) =>
     void studio.guard(() => api.assets(board.slug, beats, { model, imageSize: size }));
+
+  const runPhase = (phase: string) => {
+    setCrewBusy(true);
+    void studio
+      .guard(() => api.runCrew(board.slug, { stage: "assets", phase }))
+      .finally(() => setCrewBusy(false));
+  };
+
+  const busy = crewBusy || crewJob || agentJob;
 
   return (
     <StagePage
@@ -96,6 +115,32 @@ export function Assets() {
             other still in the reel is then matched against that one. It is drawn and judged on
             its own first, before the rest, so you can reject it while rejecting it is cheap.
           </WaitingOn>
+        ) : wantsStillsCrew && missing.length ? (
+          <WaitingOn
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  tone="primary"
+                  onClick={() => runPhase("stills")}
+                  disabled={offline || busy}
+                >
+                  {busy ? "working…" : "Run stills crew"}
+                </Button>
+                <Button
+                  onClick={() => generate(rest.length === missing.length ? undefined : rest)}
+                  disabled={offline || generating}
+                >
+                  {generating ? "drawing…" : `✦ generate ${missing.length}`}
+                </Button>
+              </div>
+            }
+          >
+            {missing.length} scene{missing.length === 1 ? "" : "s"} without the still{" "}
+            {missing.length === 1 ? "it opens on" : "they open on"}
+            {offline ? " — and the image server is not answering, so these have to be uploads." : "."}
+            {job?.beat ? ` Drawing scene ${job.beat} now.` : ""} The crew draws and reviews; the
+            generate button skips straight to the batch.
+          </WaitingOn>
         ) : missing.length ? (
           <WaitingOn
             action={
@@ -113,10 +158,38 @@ export function Assets() {
             {offline ? " — and the image server is not answering, so these have to be uploads." : "."}
             {job?.beat ? ` Drawing scene ${job.beat} now.` : ""}
           </WaitingOn>
-        ) : (
+        ) : atStillsGate ? (
+          <WaitingOn
+            action={
+              <Button tone="primary" onClick={() => runPhase("inspect")} disabled={busy}>
+                {busy ? "working…" : "Run inspectors"}
+              </Button>
+            }
+          >
+            Every shot has a still. Review them in StillChat if you want, then run the three
+            check lenses — they report and suggest; they never re-render.
+          </WaitingOn>
+        ) : atInspectGate ? (
           <WaitingOn
             tone="quiet"
             action={<Button onClick={() => studio.goStage("studio")}>→ Studio</Button>}
+          >
+            Inspectors have filed their verdicts below. Apply the fixes you want, then open the
+            studio for the chain and the render.
+          </WaitingOn>
+        ) : (
+          <WaitingOn
+            tone="quiet"
+            action={
+              <div className="flex flex-wrap gap-2">
+                {!done.has("inspect") ? (
+                  <Button onClick={() => runPhase("inspect")} disabled={busy}>
+                    {busy ? "working…" : "Run inspectors"}
+                  </Button>
+                ) : null}
+                <Button onClick={() => studio.goStage("studio")}>→ Studio</Button>
+              </div>
+            }
           >
             Every shot has the still it opens on. Next is the chain, the price and the render.
           </WaitingOn>

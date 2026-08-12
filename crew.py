@@ -10,13 +10,15 @@ storyboarder, then the asset maker with three agents checking what it made throu
 different lenses. `paperreel/crew.py` is the order and the reasons.
 
     uv run crew.py --concept "a clay pig finds a pond" --medium claymation
-    uv run crew.py --name <slug>                      # carry on from wherever it is
-    uv run crew.py --name <slug> --stage storyboard   # exactly that stage, then stop
+    uv run crew.py --name <slug>                      # next gated phase, then stop
+    uv run crew.py --name <slug> --phase designs      # exactly that gate
+    uv run crew.py --name <slug> --stage storyboard   # whole stage, ungated
+    uv run crew.py --name <slug> --ungated            # burn through until money
     uv run crew.py --name <slug> --agent mise-en-scene --note "beat 3 feels empty"
 
     uv run crew.py --list                             # every agent; calls nothing
-    uv run crew.py --name <slug> --where              # the stages left and who works them
-    uv run crew.py --name <slug> --dry-run            # every prompt of the next stage, unsent
+    uv run crew.py --name <slug> --where              # phases left and who works them
+    uv run crew.py --name <slug> --dry-run            # every prompt of the next phase, unsent
 
 This CLI cannot start a paid render, and the dependency list above is where that is visible:
 no `imageio-ffmpeg`, so nothing here can even reach the video pipeline. `storyboard.py` keeps
@@ -41,9 +43,13 @@ def main() -> int:
     parser.add_argument("--note", default="",
                         help="what to tell the agents this run, in your own words")
     parser.add_argument("--stage", choices=list(crew.STAGES),
-                        help="run exactly this stage and stop")
+                        help="run exactly this stage and stop (ungated unless --phase is set)")
     parser.add_argument("--through", choices=list(crew.STAGES),
                         help="run from wherever the board is, up to and including this stage")
+    parser.add_argument("--phase", choices=list(crew.PHASES),
+                        help="run one gated phase and stop for approval")
+    parser.add_argument("--ungated", action="store_true",
+                        help="burn through stages without pausing at gates")
     parser.add_argument("--agent", help="one agent by name, orchestrator bypassed")
     parser.add_argument("--beats", type=int, default=4,
                         help="how many shots, when starting from a concept")
@@ -66,6 +72,10 @@ def main() -> int:
         parser.error("--agent bypasses the orchestrator, so --stage means nothing with it")
     if args.stage and args.through:
         parser.error("--stage runs one stage; --through runs up to one. Pick one.")
+    if args.phase and args.ungated:
+        parser.error("--phase is a gated stop; --ungated skips gates. Pick one.")
+    if args.phase and args.through:
+        parser.error("--phase runs one gate; --through walks stages. Pick one.")
     if args.concept and args.name:
         parser.error("--concept mints a new reel and --name opens an existing one")
 
@@ -80,15 +90,20 @@ def main() -> int:
     if args.where:
         if board is None:
             parser.error("--where needs --name")
-        left = crew.plan_of(board)
-        if not left:
+        summary = crew.plan_summary(board)
+        if not summary["plan"] and not summary["awaiting"]:
             print("nothing (only the render is left)")
             return 0
-        for entry in left:
-            cast = ", ".join(
-                member["agent"] + (f" [{member['lens']}]" if member["lens"] else "")
-                for member in entry["cast"])
-            print(f"{entry['stage']:<11} {cast}")
+        if summary["awaiting"]:
+            print(f"awaiting     {summary['awaiting']}")
+        if summary["done"]:
+            print(f"done         {', '.join(summary['done'])}")
+        for entry in summary["plan"]:
+            for phase in entry.get("phases") or []:
+                cast = ", ".join(
+                    member["agent"] + (f" [{member['lens']}]" if member["lens"] else "")
+                    for member in phase["agents"])
+                print(f"{entry['stage']:<11} {phase['id']:<8} [{phase['status']:<8}] {cast}")
         return 0
 
     if args.dry_run:
@@ -111,14 +126,21 @@ def main() -> int:
         board = crew.start(args.concept, beats=args.beats, seconds=args.seconds,
                            medium=args.medium, hooks=hooks)
         print(f"\nreel: {board.slug}")
-        if args.stage == "script":
+        if args.stage == "script" or args.phase == "script":
             return 0
 
-    turns = crew.run(board, note=args.note, stop_after=args.stage or args.through, hooks=hooks)
+    ungated = bool(args.ungated or ((args.stage or args.through) and not args.phase))
+    turns = crew.run(board, note=args.note,
+                     stop_after=args.stage or args.through if ungated else None,
+                     phase=args.phase, ungated=ungated, hooks=hooks)
     for turn in turns:
         print(f"\n{turn.agent}: {turn.reply}")
-    left = crew.next_stage(board_mod.Board.load(board.slug))
+    board = board_mod.Board.load(board.slug)
+    left = crew.next_stage(board)
+    awaiting = crew.awaiting_phase(board)
     print(f"\nwaiting on: {left or 'nothing -- the render is the only thing left'}")
+    if awaiting:
+        print(f"awaiting phase: {awaiting}")
     return 0
 
 
@@ -178,8 +200,12 @@ def _dry_run(args, board: board_mod.Board | None) -> int:
     This is the review artifact the money guard rests on: a prompt is read before a turn is
     ever paid for, and a skill edit can be checked without spending anything.
     """
-    where = args.stage or args.through or crew.next_stage(board) or "script"
-    names = [args.agent] if args.agent else crew.cast_for(where, board)
+    if args.phase:
+        names = [args.agent] if args.agent else crew.cast_for_phase(args.phase, board)
+        where = crew.PHASE_STAGE[args.phase]
+    else:
+        where = args.stage or args.through or crew.next_stage(board) or "script"
+        names = [args.agent] if args.agent else crew.cast_for(where, board)
     for index, name in enumerate(names):
         agent = runtime.build(name)
         if index:

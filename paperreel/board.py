@@ -1719,6 +1719,14 @@ class Board:
             "medium": self.medium(),
             "mediums": [{"key": entry.key, "name": entry.name}
                         for entry in config.MEDIUMS.values()],
+            # Phase cursor for the gated crew. Workflow state only -- like chat, not like a
+            # fingerprint -- so editing it re-prices nothing. Absent on boards that never ran
+            # a gated phase; the studio treats that as "start at the first phase of next_stage".
+            "crew": (
+                {"done": list(self.data["crew"].get("done") or []),
+                 "awaiting": self.data["crew"].get("awaiting")}
+                if isinstance(self.data.get("crew"), dict) else None
+            ),
             "beats": beats,
             # The whole reel's panels on one numbered sheet, or None until one has been built.
             # Reel-level because that is what a storyboard is -- the sequence read at once.

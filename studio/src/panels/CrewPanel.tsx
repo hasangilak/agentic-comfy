@@ -1,31 +1,24 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { AgentInfo, AgentRoster, CrewPlan, Job } from "../types";
+import type { AgentInfo, AgentRoster, CrewPlan, Job, PhasePlan, StagePlan } from "../types";
 import { useStudio } from "../useStudio";
 import { ActivityTimeline } from "./ActivityTimeline";
 
 /**
  * Who is working on this reel, what they are doing, and what they handed back.
  *
- * A stage is a cast rather than one agent (`paperreel/crew.py`), which is the whole reason this
- * panel exists: with one agent per stage the rail's stage row said everything there was to say.
- * With three or four specialists in sequence, "the storyboard stage is running" is no longer an
- * answer to "what is happening" -- and neither is the job log, which says what a tool did
- * without saying who called it.
+ * A stage is a cast rather than one agent (`paperreel/crew.py`), and storyboard/assets are
+ * further sliced into gated phases so the director can approve sheets and seams before the
+ * next specialists run. Default buttons run the next phase; "skip gates" is the escape hatch
+ * that burns through a whole stage the way this panel used to.
  *
  * Three things are shown and they are deliberately three rather than one panel of everything:
  *
- *   the cast     who works each stage that is left, in the order they work it, with the
- *                checkers marked by their lens. Free -- one GET, no model call.
- *   the live one which member of which cast is thinking, off `Job.phase`. The server writes
- *                that field per member and per round; nothing here is inferred.
- *   what landed  every agent's reply and its edits, which are already in the board's own
- *                transcript under the agent's name. This panel does not hold a second copy --
- *                see `AgentTurns`, which reads `studio.chat`.
+ *   the cast     who works each remaining stage, grouped by phase, with checkers marked by lens
+ *   the live one which member of which cast is thinking, off `Job.phase`
+ *   what landed  every agent's reply in the board transcript -- see `AgentTurns`
  *
- * Nothing here can start a render. The crew has no cast for the studio stage and no route that
- * could reach one; the two buttons below submit `crew` and `agent` jobs, which are the only two
- * kinds this panel knows about.
+ * Nothing here can start a render.
  */
 export function CrewPanel() {
   const studio = useStudio();
@@ -37,25 +30,34 @@ export function CrewPanel() {
   const [asking, setAsking] = useState<string | null>(null);
   const [askText, setAskText] = useState("");
 
-  // The roster is the skills on disk and changes only when a SKILL.md does, so it is fetched
-  // once. The plan is derived from the board and is refetched whenever the board announces a
-  // change -- which is the same rule every other derived readout in this studio follows.
   useEffect(() => {
     void api.agents().then(setRoster).catch(() => setRoster(null));
   }, []);
+  // Staging, panels and the crew cursor all move the plan; beats/assets_needed alone missed
+  // the mid-storyboard gates.
   useEffect(() => {
     if (!board) return setPlan(null);
     void api
       .crewPlan(board.slug)
       .then(setPlan)
       .catch(() => setPlan(null));
-  }, [board?.slug, board?.medium, board?.beats.length, board?.assets_needed.length]);
+  }, [
+    board?.slug,
+    board?.medium,
+    board?.beats.length,
+    board?.assets_needed.length,
+    board?.staging.length,
+    board?.beats.map((beat) => beat.panel ?? "").join("|"),
+    board?.crew?.awaiting,
+    board?.crew?.done?.join(","),
+  ]);
 
   if (!board || !roster) return null;
 
   const job = studio.activeJob?.slug === board.slug ? studio.activeJob : null;
   const running = job && (job.kind === "crew" || job.kind === "agent") ? job : null;
   const byName = new Map(roster.agents.map((agent) => [agent.name, agent]));
+  const awaiting = plan?.awaiting ?? board.crew?.awaiting ?? null;
 
   async function runAgent(name: string) {
     const brief = askText.trim();
@@ -70,30 +72,59 @@ export function CrewPanel() {
     }
   }
 
-  async function runCrew(stage?: string) {
+  async function runNext(stage?: string, phase?: string) {
     setBusy(true);
     try {
-      await studio.guard(() => api.runCrew(board!.slug, stage ? { stage } : {}));
+      await studio.guard(() =>
+        api.runCrew(board!.slug, {
+          ...(stage ? { stage } : {}),
+          ...(phase ? { phase } : awaiting ? { phase: awaiting } : {}),
+        }),
+      );
     } finally {
       setBusy(false);
     }
   }
+
+  async function runUngated(stage?: string) {
+    setBusy(true);
+    try {
+      await studio.guard(() =>
+        api.runCrew(board!.slug, { ...(stage ? { stage } : {}), ungated: true }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const empty = plan !== null && plan.plan.length === 0 && !awaiting;
 
   return (
     <div className="mt-4 space-y-0.5 px-3">
       <div className="flex items-baseline gap-2 px-2.5 pb-1">
         <span className="text-[11px] font-medium text-zinc-400">Crew</span>
         <span className="text-[10px] text-zinc-300">{board.medium}</span>
-        {plan?.plan.length && !running ? (
-          <button
-            onClick={() => void runCrew()}
-            disabled={busy}
-            className="ml-auto rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-500
-              transition-colors hover:bg-hover hover:text-zinc-800 disabled:opacity-40"
-            title="run every stage that is left, and stop where money starts"
-          >
-            run all
-          </button>
+        {!running && !empty ? (
+          <>
+            <button
+              onClick={() => void runNext()}
+              disabled={busy}
+              className="ml-auto rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-700
+                transition-colors hover:bg-hover disabled:opacity-40"
+              title="run the next gated phase and stop for approval"
+            >
+              {awaiting ? `run ${awaiting}` : "run next"}
+            </button>
+            <button
+              onClick={() => void runUngated()}
+              disabled={busy}
+              className="rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-400
+                transition-colors hover:bg-hover hover:text-zinc-800 disabled:opacity-40"
+              title="burn through every remaining stage without pausing at gates"
+            >
+              skip gates
+            </button>
+          </>
         ) : null}
       </div>
 
@@ -101,67 +132,184 @@ export function CrewPanel() {
 
       {plan === null ? (
         <p className="px-2.5 py-1 text-[10px] text-zinc-400">…</p>
-      ) : plan.plan.length === 0 ? (
+      ) : empty ? (
         <p className="px-2.5 py-1 text-[10px] leading-relaxed text-zinc-400">
           Nothing left for the crew. What remains is the render, which no agent can start.
         </p>
       ) : (
         plan.plan.map((entry) => (
-          <div key={entry.stage} className="mb-1">
-            <div className="flex items-center gap-2 px-2.5 py-1">
-              <span className="text-[10px] uppercase tracking-wide text-zinc-400">
-                {entry.stage}
-              </span>
-              {!running ? (
-                <button
-                  onClick={() => void runCrew(entry.stage)}
-                  disabled={busy}
-                  className="ml-auto rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-400
-                    transition-colors hover:bg-hover hover:text-zinc-800 disabled:opacity-40"
-                  title={`run this stage's cast and stop`}
-                >
-                  run
-                </button>
-              ) : null}
-            </div>
-            {entry.cast.map((member, index) => (
-              <CastRow
-                key={`${entry.stage}-${member.agent}-${index}`}
-                agent={byName.get(member.agent)}
-                name={member.agent}
-                lens={member.lens}
-                order={index + 1}
-                live={Boolean(running?.phase?.startsWith(`${entry.stage} · ${member.agent}`))}
-                open={open === `${entry.stage}-${index}`}
-                onToggle={() =>
-                  setOpen((was) =>
-                    was === `${entry.stage}-${index}` ? null : `${entry.stage}-${index}`,
-                  )
-                }
-                asking={asking === member.agent}
-                onAsk={() => {
-                  setAsking((was) => (was === member.agent ? null : member.agent));
-                  setAskText("");
-                }}
-                askText={asking === member.agent ? askText : ""}
-                onAskText={setAskText}
-                onSubmitAsk={() => void runAgent(member.agent)}
-                askBusy={busy}
-                canAsk={!running}
-              />
-            ))}
-          </div>
+          <StageBlock
+            key={entry.stage}
+            entry={entry}
+            byName={byName}
+            running={running}
+            busy={busy}
+            open={open}
+            onToggle={setOpen}
+            asking={asking}
+            askText={askText}
+            onAsk={setAsking}
+            onAskText={setAskText}
+            onSubmitAsk={runAgent}
+            onRunPhase={(phase) => void runNext(entry.stage, phase)}
+            onRunUngated={() => void runUngated(entry.stage)}
+          />
         ))
       )}
     </div>
   );
 }
 
-/**
- * One member of a cast. The number is its place in the order, which is load-bearing rather than
- * decorative -- the style artist mints the designs mise-en-scène then binds, and the panels come
- * last because a panel names the designs a beat binds.
- */
+function StageBlock({
+  entry,
+  byName,
+  running,
+  busy,
+  open,
+  onToggle,
+  asking,
+  askText,
+  onAsk,
+  onAskText,
+  onSubmitAsk,
+  onRunPhase,
+  onRunUngated,
+}: {
+  entry: StagePlan;
+  byName: Map<string, AgentInfo>;
+  running: Job | null;
+  busy: boolean;
+  open: string | null;
+  onToggle: (key: string | null) => void;
+  asking: string | null;
+  askText: string;
+  onAsk: (name: string | null) => void;
+  onAskText: (text: string) => void;
+  onSubmitAsk: (name: string) => void;
+  onRunPhase: (phase: string) => void;
+  onRunUngated: () => void;
+}) {
+  const phases = entry.phases?.length
+    ? entry.phases
+    : [{ id: entry.stage, agents: entry.cast, status: "pending" as const }];
+  return (
+    <div className="mb-1">
+      <div className="flex items-center gap-2 px-2.5 py-1">
+        <span className="text-[10px] uppercase tracking-wide text-zinc-400">{entry.stage}</span>
+        {!running ? (
+          <>
+            <button
+              onClick={onRunUngated}
+              disabled={busy}
+              className="ml-auto rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-400
+                transition-colors hover:bg-hover hover:text-zinc-800 disabled:opacity-40"
+              title="run this whole stage without pausing at gates"
+            >
+              skip gates
+            </button>
+          </>
+        ) : null}
+      </div>
+      {phases.map((phase, phaseIndex) => (
+        <div key={phase.id}>
+          {phaseIndex > 0 ? (
+            <div className="mx-2.5 my-1 flex items-center gap-2">
+              <div className="h-px flex-1 bg-edge" />
+              <span className="text-[9px] uppercase tracking-wide text-zinc-300">gate</span>
+              <div className="h-px flex-1 bg-edge" />
+            </div>
+          ) : null}
+          <PhaseHeader
+            phase={phase}
+            canRun={!running && phase.status !== "done"}
+            busy={busy}
+            onRun={() => onRunPhase(phase.id)}
+          />
+          {phase.agents.map((member, index) => (
+            <CastRow
+              key={`${entry.stage}-${phase.id}-${member.agent}-${index}`}
+              agent={byName.get(member.agent)}
+              name={member.agent}
+              lens={member.lens}
+              order={index + 1}
+              live={Boolean(
+                running?.phase?.includes(member.agent) &&
+                  (running.phase?.includes(phase.id) || running.phase?.includes(entry.stage)),
+              )}
+              open={open === `${entry.stage}-${phase.id}-${index}`}
+              onToggle={() =>
+                onToggle(
+                  open === `${entry.stage}-${phase.id}-${index}`
+                    ? null
+                    : `${entry.stage}-${phase.id}-${index}`,
+                )
+              }
+              asking={asking === member.agent}
+              onAsk={() => {
+                onAsk(asking === member.agent ? null : member.agent);
+                onAskText("");
+              }}
+              askText={asking === member.agent ? askText : ""}
+              onAskText={onAskText}
+              onSubmitAsk={() => onSubmitAsk(member.agent)}
+              askBusy={busy}
+              canAsk={!running}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PhaseHeader({
+  phase,
+  canRun,
+  busy,
+  onRun,
+}: {
+  phase: PhasePlan;
+  canRun: boolean;
+  busy: boolean;
+  onRun: () => void;
+}) {
+  const tone =
+    phase.status === "done"
+      ? "text-zinc-300"
+      : phase.status === "awaiting"
+        ? "text-warm"
+        : "text-zinc-500";
+  return (
+    <div className="flex items-center gap-2 px-2.5 py-0.5">
+      <span className={`text-[10px] font-medium ${tone}`}>
+        {phase.id}
+        {phase.status === "awaiting" ? " · approve next" : phase.status === "done" ? " · done" : ""}
+      </span>
+      {canRun && phase.status === "awaiting" ? (
+        <button
+          onClick={onRun}
+          disabled={busy}
+          className="ml-auto rounded-lg bg-solid px-1.5 py-0.5 text-[10px] text-white
+            disabled:opacity-40"
+          title={`run the ${phase.id} phase and stop`}
+        >
+          run
+        </button>
+      ) : canRun ? (
+        <button
+          onClick={onRun}
+          disabled={busy}
+          className="ml-auto rounded-lg px-1.5 py-0.5 text-[10px] text-zinc-400
+            transition-colors hover:bg-hover hover:text-zinc-800 disabled:opacity-40"
+          title={`re-run the ${phase.id} phase`}
+        >
+          re-run
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function CastRow({
   agent,
   name,
@@ -273,14 +421,6 @@ function CastRow({
   );
 }
 
-/**
- * The one line that says what is happening right now.
- *
- * `Job.phase` is written by the server per cast member and per round -- "storyboard ·
- * mise-en-scene" while a stage picks its next member, then "mise-en-scene · round 2" inside the
- * loop. Rendering it verbatim is deliberate: a label table here would be a second vocabulary for
- * something the server already says in words, and it would go stale the moment a skill is added.
- */
 function LiveCrew({ job }: { job: Job }) {
   const studio = useStudio();
   const activity = studio.liveActivity[job.id] ?? job.activity ?? [];
@@ -308,12 +448,7 @@ function LiveCrew({ job }: { job: Job }) {
 /**
  * What the agents handed back, as a transcript.
  *
- * This is the answer to "what did it return to the main model to proceed with", and the reason
- * it needs no new state is the server's design: an agent writes its reply and its edits into the
- * board's own `chat` array under its skill name, beside the director's turns and the chat
- * panel's. `runtime.remember` does it for the same reason `agent.revise` does -- an agent that
- * rewrote five beats and left no trace is a board that changed for no reason the next turn can
- * see. So this reads `studio.chat` and filters; there is no second store to keep in step.
+ * Reads `studio.chat` and filters; there is no second store to keep in step.
  */
 export function AgentTurns({ names }: { names?: string[] }) {
   const studio = useStudio();
@@ -330,11 +465,6 @@ export function AgentTurns({ names }: { names?: string[] }) {
   );
 }
 
-/**
- * Every role in `ChatTurn` that is an agent rather than the director, the chat panel or the
- * board speaking for itself. A set rather than a check against the roster, because a transcript
- * outlives the skill that wrote it: a turn from an agent since renamed still has to render.
- */
 const AGENT_ROLES = new Set([
   "director",
   "script-writer",

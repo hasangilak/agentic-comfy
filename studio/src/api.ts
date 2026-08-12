@@ -345,15 +345,20 @@ export const api = {
   crewPlan: (slug: string) => call<CrewPlan>(`/api/reels/${slug}/crew`),
 
   /**
-   * Run the crew from wherever this board is. One job that spans several agents and, unless
-   * `stage` says otherwise, several stages. It stops where money starts: there is no cast for
-   * the render.
+   * Run the next gated crew phase by default. Pass `ungated: true` to burn through a stage
+   * (or the whole remaining plan) without stopping for approval. Stops where money starts.
    */
-  runCrew: (slug: string, body: { note?: string; stage?: string } = {}) =>
-    post<{ job: Job; stage: string | null; plan: CrewPlan["plan"] }>(
-      `/api/reels/${slug}/crew`,
-      body,
-    ),
+  runCrew: (
+    slug: string,
+    body: { note?: string; stage?: string; phase?: string; ungated?: boolean } = {},
+  ) =>
+    post<{
+      job: Job;
+      stage: string | null;
+      awaiting: string | null;
+      done: string[];
+      plan: CrewPlan["plan"];
+    }>(`/api/reels/${slug}/crew`, body),
 
   /** One named agent, one message. 404 with a sentence if the skill does not exist. */
   runAgent: (slug: string, name: string, message: string) =>

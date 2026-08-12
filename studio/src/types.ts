@@ -63,6 +63,11 @@ export interface Beat {
   panel: string;
   /** The panel itself: a rough grey sketch of the shot, drawn on the cheapest model. */
   panel_url: string | null;
+  /**
+   * What stands where in the frame. Reaches the video prompt (unlike `panel`), so editing it
+   * marks the beat stale.
+   */
+  blocking: string;
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
   frame: string | null;
   /** And, on a bridge, the frame it was told to arrive at. Null on every other join. */
@@ -247,6 +252,11 @@ export interface Board {
   medium: string;
   /** Every medium that ships, for the picker. `key` is what PATCH takes. */
   mediums: { key: string; name: string }[];
+  /**
+   * Phase cursor for the gated crew. Workflow state only — not a fingerprint. Null when the
+   * board never ran a gated phase; the UI then starts at the first phase of the current stage.
+   */
+  crew: { done: string[]; awaiting: string | null } | null;
   /** The still every cut's image is generated from, so the cast survives a scene change. */
   reference: string | null;
   /** False when it is only beat 1's own still standing in. */
@@ -415,24 +425,45 @@ export type StudioEvent =
  * The crew, as the browser sees it.
  *
  * A stage is a CAST rather than one agent (`paperreel/crew.py`), so the unit here is a stage
- * plus the agents that work it in order. `lens` is set only on a member that is there to CHECK
- * rather than to make -- the same skill appears in three casts doing two different jobs, so
- * "is this one checking" is a property of the (stage, member) pair and never of the name.
+ * plus the agents that work it in order. Stages with consistency work are further sliced into
+ * gated phases — designs, seams, panels, stills, inspect — so the director can approve between
+ * specialists. `lens` is set only on a member that is there to CHECK rather than to make.
  */
+export type CrewPhaseId =
+  | "script"
+  | "designs"
+  | "seams"
+  | "panels"
+  | "stills"
+  | "inspect";
+
+export type PhaseStatus = "done" | "awaiting" | "pending";
+
 export interface CastMember {
   agent: string;
   lens: Lens | null;
 }
 
+export interface PhasePlan {
+  id: CrewPhaseId | string;
+  agents: CastMember[];
+  status: PhaseStatus;
+}
+
 export interface StagePlan {
   stage: string;
   cast: CastMember[];
+  phases: PhasePlan[];
 }
 
 /** What the crew would do to this board next, resolved against THIS board's medium. */
 export interface CrewPlan {
   stage: string | null;
+  /** Next gated phase to run or approve. May be `inspect` after stills even when stage is null. */
+  awaiting: string | null;
+  done: string[];
   plan: StagePlan[];
+  phases: string[];
   medium: string;
   lenses: Lens[];
 }
@@ -455,6 +486,7 @@ export interface AgentRoster {
   stages: string[];
   /** The default medium's casts. A reel's own are in `CrewPlan`, which resolves per board. */
   cast: Record<string, string[]>;
+  phases?: Record<string, { id: string; agents: string[] }[]>;
   lenses: Lens[];
   mediums: { key: string; name: string }[];
 }
