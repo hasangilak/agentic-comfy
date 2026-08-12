@@ -28,9 +28,10 @@ export function Start() {
         <p className="text-3xl">🎞</p>
         <h1 className="mt-3 text-2xl font-semibold text-zinc-900">Start a reel</h1>
         <p className="mt-1.5 max-w-lg text-[13px] leading-relaxed text-zinc-500">
-          Forty seconds of paper-cutout stop motion, made in four stages: the script, the
-          storyboard, the still each shot opens on, then the render. Only the last one costs
-          money, and the price is always on the button before you press it.
+          Forty seconds is a common length, not a lock — pick any mix of 5s and 10s beats
+          (20s for a cheap test, longer when the story needs it). Four stages: the script,
+          the storyboard, the still each shot opens on, then the render. Only the last one
+          costs money, and the price is always on the button before you press it.
         </p>
 
         <div className="mt-8 rounded-2xl border border-edge bg-panel p-5">

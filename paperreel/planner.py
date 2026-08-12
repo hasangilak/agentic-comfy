@@ -208,7 +208,8 @@ def brief(concept: str, beats: int, seconds: float,
 
 
 # Replaces section 0. Two things it has to settle, because the rest of the document assumes
-# them: that the interview already happened, and that the film is not necessarily 40 seconds.
+# them: that the interview already happened, and that the film's total is the product of the
+# form's beat count and length (not a fixed 40 seconds).
 #
 # The beat length is stated as fixed and not the model's to choose. That is a real constraint
 # rather than a simplification: the studio asked the user for a per-beat length and showed
@@ -221,10 +222,9 @@ final. Write the script now and return the JSON on this turn.
 
 1. **Beat structure.** {beats} beat{plural}, every one of them exactly {seconds}.0 seconds
    long, so the film runs {total} seconds in total. The length is fixed and is not yours to
-   choose: do not vary it, and do not add or drop a beat to make a rhythm work. Everywhere
-   below that says the film is 40 seconds, read {total} seconds instead -- that total is the
-   only thing about the brief that has changed, and the beat-length rules in section 1 that
-   are about *choosing* between 5s and 10s do not apply.
+   choose: do not vary it, and do not add or drop a beat to make a rhythm work. That total
+   is the only duration that matters; the beat-length rules in section 1 that are about
+   *choosing* between 5s and 10s do not apply.
 2. **Shots.** Yours to choose, inside the rules of section 2 -- and this is the decision that
    matters most, so spend the thought on it rather than on the lengths. Decide where the cuts
    go and where the take carries on unbroken.

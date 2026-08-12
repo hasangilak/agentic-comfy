@@ -7,10 +7,11 @@ import { useStudio } from "../useStudio";
 /**
  * The interview, as a page.
  *
- * Four questions decide a 40-second film — how the time is split, how many camera setups, who
- * is in it, what the last frame leaves you with — and they are section 0 of the authoring
- * brief. The model asks them through `ask_director` as a structured form (checkboxes / fields);
- * prose bullet chips remain as a fallback for older turns that never used the tool.
+ * Four questions decide a short film — how long it runs and how that time is split, how
+ * many camera setups, who is in it, what the last frame leaves you with — and they are
+ * section 0 of the authoring brief. The model asks them through `ask_director` as a
+ * structured form (checkboxes / fields); prose bullet chips remain as a fallback for older
+ * turns that never used the tool.
  *
  * When the last ask has structured (or inferred) questions, answer fields sit under that turn
  * in the transcript — one control per question, one send — rather than a disconnected card
@@ -21,7 +22,17 @@ import { useStudio } from "../useStudio";
 
 /** Closed sets that match `develop.DEFAULT_OPTIONS` for older boards without server questions. */
 const DEFAULT_OPTIONS: Record<string, string[]> = {
-  beats: ["8 × 5s", "4 × 10s", "2 × 10s + 4 × 5s", "1 × 10s + 6 × 5s", "3 × 10s + 2 × 5s"],
+  beats: [
+    "4 × 5s",
+    "2 × 10s",
+    "6 × 5s",
+    "8 × 5s",
+    "4 × 10s",
+    "2 × 10s + 4 × 5s",
+    "1 × 10s + 6 × 5s",
+    "3 × 10s + 2 × 5s",
+    "6 × 10s",
+  ],
   shots: ["3 setups", "4 setups", "5 setups", "one long chained take", "no long chained take"],
   cast: ["design them", "I will paste a style bible"],
 };
@@ -32,7 +43,7 @@ function topicOf(question: InterviewQuestion): InterviewTopic {
   const id = question.id.trim().toLowerCase();
   if (id === "beats" || id === "shots" || id === "cast" || id === "tone") return id;
   const prompt = question.prompt.toLowerCase();
-  if (prompt.includes("beat") || prompt.includes("split") || prompt.includes("40s")) return "beats";
+  if (prompt.includes("beat") || prompt.includes("split") || prompt.includes("duration") || prompt.includes("how long")) return "beats";
   if (prompt.includes("cast") || prompt.includes("style_bible") || prompt.includes("puppet")) return "cast";
   if (prompt.includes("shot") || prompt.includes("camera") || prompt.includes("setup")) return "shots";
   return "tone";
@@ -42,7 +53,7 @@ function defaultOptionsFor(id: string, prompt: string): string[] {
   const key = id.trim().toLowerCase();
   if (DEFAULT_OPTIONS[key]) return [...DEFAULT_OPTIONS[key]];
   const lower = prompt.toLowerCase();
-  if (lower.includes("beat") || lower.includes("split") || lower.includes("40 second") || lower.includes("40s")) {
+  if (lower.includes("beat") || lower.includes("split") || lower.includes("duration") || lower.includes("how long")) {
     return [...DEFAULT_OPTIONS.beats];
   }
   // Cast prompts often mention a reference from a previous shot, so classify them first.

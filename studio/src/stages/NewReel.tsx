@@ -70,9 +70,10 @@ export function TalkItThrough() {
         {starting ? "starting…" : "talk it through"}
       </Button>
       <p className="text-[10px] leading-snug text-zinc-400">
-        It asks four questions first — how the 40 seconds is split, how many camera setups, who
-        is in it, what the last frame leaves you with — and writes the script once you have
-        answered. Say <em>defaults</em> at any point and it picks. Nothing renders.
+        It asks four questions first — how long the film runs and how that time is split,
+        how many camera setups, who is in it, what the last frame leaves you with — and
+        writes the script once you have answered. Say <em>defaults</em> at any point and it
+        picks. Nothing renders.
       </p>
     </div>
   );

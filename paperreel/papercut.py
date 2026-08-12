@@ -214,6 +214,16 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
     notes = [note for note in notes if note]
     if notes:
         prompt = f"{prompt} The reference images show: {'; '.join(notes)}.".strip()
+    # Cast reference is almost always beat 1's still -- often a wide. Without this sentence the
+    # image server's continuity clause used to lock camera angle to that wide, and every later
+    # "medium" / "close-up" still came back as the same establishing two-shot. Framing lives in
+    # the beat text above; the pictures only lock who is in the film and what they are made of.
+    if pictures:
+        prompt = (
+            f"{prompt} The reference images lock character design, materials and palette "
+            f"only -- compose this frame at the shot scale and camera angle described above; "
+            f"do not copy a reference's framing."
+        ).strip()
     # And the bound design sheets this still was NOT handed, as words. On the still side that is
     # normally the sets: four slots, one of them already the cast, do not hold three characters
     # and a clearing -- so `still_pictures` spends them on the cast and the clearing arrives as a

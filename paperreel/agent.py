@@ -182,7 +182,11 @@ TOOLS = [
 # different specifications -- the same failure `planner.py` avoids by handing over the whole
 # brief rather than a précis of it.
 MEDIUM = f"""Hard rules of the medium -- breaking these wastes the user's money:
-- The camera never moves, pans, zooms or cuts inside a beat.
+- The camera never moves, pans, zooms or cuts inside a beat. One beat is one locked-off
+  framing. Camera setups are unique across the reel (a chain/bridge continues the same
+  setup); they are not three angles visited inside every beat.
+- On-screen size stays constant inside a beat unless the action explicitly moves someone
+  toward or away from the camera. Characters must not grow, shrink or rescale mid-clip.
 - Only one thing animates at a time. No new characters walk into frame.
 - No dialogue, no on-screen text, no watermarks.
 - The same character appears in every beat and must be described identically. The

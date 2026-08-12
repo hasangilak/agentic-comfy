@@ -1,7 +1,7 @@
 """Talking a script into existence, instead of asking for one and waiting.
 
 `planner.plan` writes a whole film from a one-line concept and two numbers. It is a good path
-and it stays exactly as it is -- but everything the director actually decides about a 40-second
+and it stays exactly as it is -- but everything the director actually decides about a short
 film is settled by those two numbers before the model is ever called: how the time is split,
 how many camera setups there are, who is in it, what the last frame leaves you with.
 
@@ -86,11 +86,15 @@ QUESTION_KINDS = ("choice", "multi", "text")
 # the director is not handed a blank text field for a question that was never open-ended.
 DEFAULT_OPTIONS = {
     "beats": (
+        "4 × 5s",
+        "2 × 10s",
+        "6 × 5s",
         "8 × 5s",
         "4 × 10s",
         "2 × 10s + 4 × 5s",
         "1 × 10s + 6 × 5s",
         "3 × 10s + 2 × 5s",
+        "6 × 10s",
     ),
     "shots": (
         "3 setups",
@@ -217,7 +221,7 @@ def _default_options_for(qid: str, prompt: str) -> list[str]:
     if key in DEFAULT_OPTIONS:
         return list(DEFAULT_OPTIONS[key])
     lower = prompt.lower()
-    if "beat" in lower or "split" in lower or "40 second" in lower or "40s" in lower:
+    if "beat" in lower or "split" in lower or "duration" in lower or "how long" in lower:
         return list(DEFAULT_OPTIONS["beats"])
     # Cast prompts often mention a reference from a previous shot, so the more specific
     # subject test must run before the camera/setup test.
@@ -351,13 +355,14 @@ def _clarifications(answers: dict[str, str]) -> list[dict]:
 
     beats = answers.get("beats", "")
     if not beats:
-        beat_prompt = "How should the required 40 seconds be split across 5s and 10s beats?"
-    elif not _deferred(beats) and _beat_total(beats) != 40:
-        total = _beat_total(beats)
-        measured = f"{total}s" if total is not None else "an unclear total"
         beat_prompt = (
-            f"That beat split adds up to {measured}, but the film must total exactly 40s. "
-            "Choose a valid split or write another combination."
+            "How long should the film run, and how do you want that split across 5s and "
+            "10s beats?"
+        )
+    elif not _deferred(beats) and _beat_total(beats) is None:
+        beat_prompt = (
+            "I couldn't read that as a 5s/10s split (e.g. `4 × 5s` or `2 × 10s + 4 × 5s`). "
+            "Choose a chip or write another combination."
         )
     else:
         beat_prompt = ""

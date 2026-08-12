@@ -429,9 +429,13 @@ PAPER_CUTOUT = Medium(
         # Deliberately generic. This used to name the flowers, sun and clouds of the board it
         # was written for, which on a board without them is an instruction to invent them.
         "Keep the set, the background layers, the lighting, and the camera completely static. "
-        "Nothing transforms, duplicates, slides, rotates, or changes design. No camera "
-        "movement, no cuts, no new objects, no text, no watermarks. Smooth temporal "
-        "consistency and natural foot contact."
+        "One locked-off framing for the whole clip -- no push-in, pull-back, pan, tilt, zoom, "
+        "reframe, or cut to a second angle inside the beat. Hold every subject's on-screen "
+        "size constant: a puppet that opens at one height in the frame stays that height "
+        "unless the action explicitly walks them toward or away from the camera -- never "
+        "grow, shrink, or rescale mid-clip. Nothing transforms, duplicates, slides, rotates, "
+        "or changes design. No camera movement, no cuts, no new objects, no text, no "
+        "watermarks. Smooth temporal consistency and natural foot contact."
     ),
     audio=(" Audio: soft paper rustling and quiet birdsong in a sunny forest, no music, "
            "no speech."),
@@ -496,9 +500,13 @@ CLAYMATION = Medium(
         "settle back; nothing is rigid. Keep every character's face, markings, proportions, "
         "colours, clay surface, sculpted details, silhouette weight, and scale identical in "
         "every frame. Keep the set, the background, the lighting, and the camera completely "
-        "static. Nothing duplicates, changes design, or turns into a different character. No "
-        "camera movement, no cuts, no new objects, no text, no watermarks. Smooth temporal "
-        "consistency and natural foot contact."
+        "static. One locked-off framing for the whole clip -- no push-in, pull-back, pan, "
+        "tilt, zoom, reframe, or cut to a second angle inside the beat. Hold every subject's "
+        "on-screen size constant: a puppet that opens at one height in the frame stays that "
+        "height unless the action explicitly walks them toward or away from the camera -- "
+        "never grow, shrink, or rescale mid-clip. Nothing duplicates, changes design, or "
+        "turns into a different character. No camera movement, no cuts, no new objects, no "
+        "text, no watermarks. Smooth temporal consistency and natural foot contact."
     ),
     audio=(" Audio: soft clay squeaks and quiet room tone, no music, no speech."),
     still=("Vertical 9:16 portrait composition, handcrafted plasticine clay stop-motion art, "
@@ -755,15 +763,16 @@ MEDIUM = (
 )
 OPEN_CUT = (
     "The provided first frame is the opening frame of a new shot: begin from it exactly, "
-    "and hold its framing, subject scale and lighting for the whole clip. "
+    "and hold its framing, every subject's on-screen size, and lighting for the whole clip. "
 )
 OPEN_CONTINUATION = (
     "The provided first frame is a freeze grabbed from the middle of a take that is "
     "already in motion -- it is not a new setup and not a rest pose. Carry that motion on "
     "from exactly this pose, at the same speed and in the same direction, as one unbroken "
     "take. Do not restart the shot, do not re-pose or re-centre the subject, do not let it "
-    "settle to rest and start again, and do not re-establish the scene: same set, same "
-    "camera, same lighting, same moment continuing. "
+    "settle to rest and start again, do not grow or shrink anyone, and do not re-establish "
+    "the scene: same set, same camera, same lighting, same subject sizes, same moment "
+    "continuing. "
 )
 # The reference join has no keyframe at all: ref2va conditions on pictures of the cast and the
 # set, and the opening composition is the model's to build. That has to be said explicitly or
@@ -774,11 +783,13 @@ OPEN_REFERENCE = (
     "what the characters, the set and the materials look like, and nothing else. Reproduce "
     "every subject that appears in them exactly -- same shapes, markings, colours, "
     "proportions, {surface} and palette. The references are not shots: do not "
-    "show them, do not cut between them, do not pan across them, and do not put more than one "
-    "version of a character on screen. A character shown in a reference is the SAME single "
-    "character that performs the action below, not an additional one, and the pose it is in "
-    "there is only how it looks -- not where this shot starts and not something that must "
-    "also appear. "
+    "show them, do not cut between them, do not pan across them, do not morph the camera "
+    "toward any of them, do not grow or shrink a character to match another picture's size, "
+    "and do not put more than one version of a character on screen. A "
+    "character shown in a reference is the SAME single character that performs the action "
+    "below, not an additional one. The pose, framing, shot scale and on-screen size in a "
+    "reference are only how that picture was drawn -- not where this shot starts, not a "
+    "second angle to visit, and not something that must also appear. "
 )
 # Where the shot begins, when nothing says otherwise. Separate from the paragraph above
 # because a carried reference video answers the same question differently -- it says open on
@@ -798,9 +809,14 @@ COMPOSE_OPENING = "Compose the opening frame yourself from the scene line below.
 OPEN_REFERENCE_STILL = (
     "{tag} is the exception to that: it is not a design reference but this shot's own opening "
     "composition, drawn for this beat. Begin the clip on it -- its framing, its subject "
-    "placement and scale, its set dressing and its light are where this take starts -- and "
-    "hold that framing, that scale and that lighting for the whole clip. Everything the "
-    "action below describes happens from there, forward. "
+    "placement and on-screen sizes, its set dressing and its light are where this take "
+    "starts -- and hold that ONE framing, those ONE subject sizes and that ONE lighting for "
+    "the whole clip. Other references may show the same cast larger, smaller, or tighter: "
+    "ignore those sizes and framings completely; do not push in, pull back, reframe, cut, "
+    "grow, shrink, or drift the camera toward them. Everything the action below describes "
+    "happens from the opening composition, forward, under a locked-off camera, with "
+    "on-screen sizes changing only if the action explicitly moves a subject toward or away "
+    "from the camera. "
 )
 # What a carried reference video is, and it has to be said in the same breath as "compose the
 # opening frame yourself" -- otherwise the two instructions fight and the model either ignores
@@ -809,10 +825,10 @@ OPEN_REFERENCE_STILL = (
 CARRY_VIDEO = (
     "{tag} is the last few seconds of the shot immediately before this one, and this shot is "
     "that same take carrying on. Open on the moment {tag} ends -- same set, same camera, same "
-    "lighting, the subject in the pose, position and scale it is in on that final moment -- "
-    "and continue its movement onward at the same speed and in the same direction. Do not "
-    "replay {tag}, do not cut to it, do not re-establish the scene, and do not let the "
-    "subject settle to rest and start again. "
+    "lighting, the subject in the pose, position and on-screen size it is in on that final "
+    "moment -- and continue its movement onward at the same speed and in the same direction. "
+    "Do not replay {tag}, do not cut to it, do not re-establish the scene, do not grow or "
+    "shrink anyone, and do not let the subject settle to rest and start again. "
 )
 # What each picture is FOR, when the user has said. Without this the model has to guess from
 # the picture alone, and it guesses "this is the scene" -- which is how a reference showing the
@@ -828,9 +844,9 @@ ARRIVE_ON_LAST = (
     "and reach it only on its very last frame. Treat it as the pose, position and framing "
     "this same continuous move settles into at the end -- not a different shot, not somewhere "
     "to jump to, and not somewhere to arrive early and then wait. Everything between the two "
-    "provided frames is one unbroken take at an even, unhurried pace, and the set, camera and "
-    "lighting are identical in both, so nothing but the moving subject may differ between "
-    "them. "
+    "provided frames is one unbroken take at an even, unhurried pace, and the set, camera, "
+    "lighting and every subject's on-screen size are identical in both, so nothing but the "
+    "moving subject's pose may differ between them -- no grow, no shrink, no reframe. "
 )
 # The style bible, verbatim. Over 5-10 seconds of sampling a generic "keep the character
 # identical" has nothing to hold on to, so the model drifts towards its own idea of a
@@ -864,9 +880,13 @@ CRAFT = (
     # Deliberately generic. This used to name the flowers, sun and clouds of the board it
     # was written for, which on a board without them is an instruction to invent them.
     "Keep the set, the background layers, the lighting, and the camera completely static. "
-    "Nothing transforms, duplicates, slides, rotates, or changes design. No camera "
-    "movement, no cuts, no new objects, no text, no watermarks. Smooth temporal "
-    "consistency and natural foot contact."
+    "One locked-off framing for the whole clip -- no push-in, pull-back, pan, tilt, zoom, "
+    "reframe, or cut to a second angle inside the beat. Hold every subject's on-screen "
+    "size constant: a puppet that opens at one height in the frame stays that height "
+    "unless the action explicitly walks them toward or away from the camera -- never "
+    "grow, shrink, or rescale mid-clip. Nothing transforms, duplicates, slides, rotates, "
+    "or changes design. No camera movement, no cuts, no new objects, no text, no "
+    "watermarks. Smooth temporal consistency and natural foot contact."
 )
 AUDIO_SUFFIX = (
     " Audio: soft paper rustling and quiet birdsong in a sunny forest, no music, no speech."

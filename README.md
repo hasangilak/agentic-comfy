@@ -225,8 +225,9 @@ line moved.
 ### Three ways to start a film
 
 **talk it through** is the default and the one that asks you anything. It puts the reel on disk
-from your first message — with no beats yet — and then interviews you: how the 40 seconds is
-split, how many camera setups, who is in it, what the last frame leaves you with. Those four
+from your first message — with no beats yet — and then interviews you: how long the film
+runs and how that time is split across 5s/10s beats, how many camera setups, who is in it,
+what the last frame leaves you with. Those four
 questions are not the studio's; they are section 0 of the authoring brief below, which opens
 "STOP — interview the director first". Say *defaults* at any point and it picks. When it has
 answers it writes the script, marks it against the brief's own self-check, and the reel you were

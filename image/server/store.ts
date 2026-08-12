@@ -25,10 +25,16 @@ fs.mkdirSync(UPLOADS_ROOT, { recursive: true })
 
 // Locks the look to the reference while explicitly licensing the pose to change —
 // without that second half, chain mode reproduces the previous frame almost exactly.
+//
+// Camera angle is deliberately NOT locked. paperreel's cast reference is beat 1's still, often
+// a wide establishing shot; locking camera to it made every later still come back at that same
+// wide scale even when the beat asked for a medium or a close-up. The reference is for
+// characters, materials and palette. Framing follows the beat text.
 const CONTINUITY_CLAUSE =
   'Keep the exact same paper cutout collage style, the same characters and costumes, ' +
-  'the same background, lighting and camera angle as the reference image, ' +
-  'but move the subject into a clearly different pose and position as described. Now:'
+  'the same materials, palette, background and lighting as the reference image, ' +
+  'but compose the framing, shot scale and camera angle as the beat describes, and move ' +
+  'the subject into a clearly different pose and position as described. Now:'
 
 // The same sentence for a frame conditioned on several images. Kept as its own string rather
 // than pluralised at runtime so a single-reference render composes the byte-identical prompt it
@@ -36,8 +42,9 @@ const CONTINUITY_CLAUSE =
 // change every re-roll of every existing scene.
 const CONTINUITY_CLAUSE_MULTI =
   'Keep the exact same paper cutout collage style, the same characters and costumes, ' +
-  'the same background, lighting and camera angle as the reference images, ' +
-  'but move the subject into a clearly different pose and position as described. Now:'
+  'the same materials, palette, background and lighting as the reference images, ' +
+  'but compose the framing, shot scale and camera angle as the beat describes, and move ' +
+  'the subject into a clearly different pose and position as described. Now:'
 
 const scenes = new Map<string, Scene>()
 export const bus = new EventEmitter()
