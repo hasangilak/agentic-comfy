@@ -5,9 +5,10 @@
 """A crew that walks a reel from a concept to stills on disk, and stops there.
 
 Three stages, each worked by a cast rather than by one agent -- a writer and a style artist,
-then the style artist with character-sheet, set-designer, mise-en-scene, coherence, continuity
-and the storyboarder, then the asset maker with three agents checking what it made through three
-different lenses. `paperreel/crew.py` is the order and the reasons.
+then the style artist, mise-en-scene extracting the roster, character-sheet and set-designer
+drawing it, mise blocking, coherence, continuity and the storyboarder, then the asset maker
+with three agents checking what it made through three different lenses. `paperreel/crew.py`
+is the order and the reasons.
 
     uv run crew.py --concept "a clay pig finds a pond" --medium claymation
     uv run crew.py --name <slug>                      # next gated phase, then stop
@@ -149,7 +150,7 @@ def _default_brief(agent: str, board, phase: str | None = None) -> str:
 
     Found by asking the crew rather than by a table here: an agent appears in more than one
     cast now and is told something different in each, so "which stage is this agent's" has no
-    single answer and the pair (stage, role) -- plus the phase, when mise runs twice -- is
+    single answer and the pair (stage, role) -- plus the phase, when mise runs three times -- is
     what carries the brief.
     """
     if phase:
@@ -211,19 +212,52 @@ def _dry_run(args, board: board_mod.Board | None) -> int:
     """
     if args.phase:
         names = [args.agent] if args.agent else crew.cast_for_phase(args.phase, board)
-        where = crew.PHASE_STAGE[args.phase]
         phase = args.phase
-    else:
-        where = args.stage or args.through or crew.next_stage(board) or "script"
+    elif args.stage or args.through:
+        where = args.stage or args.through
         names = [args.agent] if args.agent else crew.cast_for(where, board)
         phase = None
+    else:
+        # Match a gated run: the next phase, not the whole stage. Otherwise mise's three
+        # storyboard jobs would all print the blocking brief.
+        phase = crew.awaiting_phase(board)
+        if phase:
+            names = [args.agent] if args.agent else crew.cast_for_phase(phase, board)
+        else:
+            names = [args.agent] if args.agent else crew.cast_for(
+                crew.next_stage(board) or "script", board)
     for index, name in enumerate(names):
         agent = runtime.build(name)
         if index:
             print("\n" + "=" * 78 + "\n")
+        pictures = (crew.critique.context_pictures(board, phase)
+                    if name == "mise-en-scene" else [])
+        legend = crew.critique.picture_legend(pictures)
+        text = crew.prelude(board) + ((legend + "\n\n") if legend else "")
         print(runtime.preview(agent, args.note.strip() or _default_brief(name, board, phase),
-                              crew.prelude(board)))
+                              text, pictures=pictures or None))
+        if name == "mise-en-scene" and phase == "inspect" and board is not None:
+            _dry_inspect(board)
     return 0
+
+
+def _dry_inspect(board) -> None:
+    """The blocking vision prompt inspect_still would send, for one still that exists."""
+    for beat in board.ordered_beats():
+        n = beat["n"]
+        if not board.asset_path(n).is_file():
+            continue
+        try:
+            parts, paths = crew.critique.look_parts(board, n, "blocking")
+        except crew.critique.InspectError:
+            continue
+        print("\n===== BLOCKING VISION (inspect_still, beat "
+              f"{n}) =====")
+        print("\n\n".join(parts))
+        print("\n----- images -----")
+        for index, path in enumerate(paths, start=1):
+            print(f"  {index}. {path.name}")
+        return
 
 
 if __name__ == "__main__":

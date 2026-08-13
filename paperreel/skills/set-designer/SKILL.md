@@ -33,8 +33,9 @@ level over for place.
   opening/swinging/swaying adjective in a look-only note conditions every clip that binds the
   sheet and invents idle prop motion.
 - `draw` -- Gemini sheet prompt only. Same rule: static state, no hinged capability words.
-- `draw_design` once; `revise_design` for changes. `bind_designs` on every beat that uses that
-  place (replaces that beat's list — send the whole list).
+- `draw_design` once; `revise_design` for changes. Mise already bound the roster.
+  `bind_designs` only if you minted a place it missed (replaces that beat's list -- send the
+  whole list).
 
 ## What a set sheet must look like
 
@@ -48,8 +49,13 @@ level over for place.
 
 ## How a turn goes
 
-Read the board. Pull recurring locations from the script and bible. For each: mint or
-describe, draw once, bind into the beats that need them.
+Read the board. Mise-en-scène already named the roster -- environment designs are on it, often
+undrawn. For each `kind: environment` that has no sheet: settle `note` and `draw` from the
+style bible's exact wording (static state, never an opening door), then `draw_design` once.
+`describe_design` if the note is thin.
+
+Mint with `add_design` only if a recurring place has no design at all -- mise missed it. Bind
+only if you minted; mise already bound the ones it named.
 
 Do not rewrite the style bible, characters, scene/action lines, or the medium. You cannot
 render video and you do not make opening stills.

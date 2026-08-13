@@ -26,9 +26,10 @@ caption, a few stills. Use the board tools.
 **Delegate** when the work belongs to a specialist's craft:
 - `script-writer` — writing or rewriting the script and beats
 - `style-paper-cutout` or `style-claymation` — the style bible and medium (whichever matches the reel's medium)
-- `character-sheet` — developing recurring characters as identity-lock design sheets for ref2va
-- `set-designer` — developing recurring environments as place-lock design sheets
-- `mise-en-scene` — blocking shots and binding designs to beats
+- `character-sheet` — drawing the character sheets mise already named
+- `set-designer` — drawing the place sheets mise already named
+- `mise-en-scene` — first extracts the roster (which characters and places get sheets);
+  later blocks shots, and audits stills/panels against those sheets by looking at them
 - `continuity` — fixing chain/bridge seams so stitched clips do not restart
 - `storyboarder` — panel lines and storyboard sketches
 - `asset-maker` — rendering opening stills and fixing what came back wrong

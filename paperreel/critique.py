@@ -32,6 +32,7 @@ loop would spend a round trip deciding to produce it.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable
 
 from . import board as board_mod
@@ -137,17 +138,88 @@ def lenses() -> list[str]:
     return list(LENSES)
 
 
-def look(board: board_mod.Board, n: int, lens: str, *,
-         llm: llm_mod.LLM | None = None,
-         log: Callable[[str], None] = print) -> dict:
-    """One lens, one still, one verdict. Renders nothing and writes nothing to the board.
+def _sheet_label(board: board_mod.Board, entry: dict) -> str:
+    kind = board.stage_kind(entry)
+    name = board.stage_name(entry)
+    if kind == config.STAGE_ENVIRONMENT:
+        return f"{name}, a set sheet -- the place empty of cast, a place lock not a story pose."
+    return f"{name}, a character sheet -- identity lock, not a story pose."
 
-    The still goes in on its own with no cast reference beside it, which is the deliberate
-    difference from `stills.review`. That pass compares two pictures and asks whether they are
-    the same production; these three ask whether ONE picture is right, and a reference in the
-    frame would drag every answer back towards "does it match", which is the question already
-    being asked elsewhere.
+
+def shot_pictures(board: board_mod.Board, n: int) -> list[tuple[Path, str]]:
+    """Pictures the blocking lens looks at for beat `n`, numbered in this order.
+
+    Bound design sheets first (character AND environment -- the still renderer drops sets to
+    words; the auditor must not), then the panel if it is on disk, then the still last.
+
+    Never the reel's locked cast reference (beat 1's composed still). That picture turns
+    every verdict into "does it match", which is `stills.review`'s job. Identity-lock sheets
+    are a different picture: they answer whether this frame holds the designed puppet
+    standing where blocking said.
     """
+    found: list[tuple[Path, str]] = []
+    for entry in board.bound_staging(n):
+        path = board.stage_path(str(entry.get("id")))
+        if path.is_file():
+            found.append((path, _sheet_label(board, entry)))
+    # A beat that never bound anything is the flock failure: inspect would otherwise look
+    # at the still alone and pass a one-bird frame against a sentence. Fall back to every
+    # drawn sheet so the roster is still in the frame.
+    if not found:
+        for entry in board.staging:
+            path = board.stage_path(str(entry.get("id")))
+            if path.is_file():
+                found.append((path, _sheet_label(board, entry)))
+    panel = board.panel_path(n)
+    if panel.is_file():
+        found.append((
+            panel,
+            f"beat {n}'s storyboard panel -- a sketch of the shot, not the film's medium.",
+        ))
+    still = board.asset_path(n)
+    if still.is_file():
+        found.append((still, "the still you are judging."))
+    return found
+
+
+def context_pictures(board: board_mod.Board | None,
+                     phase: str | None) -> list[tuple[Path, str]]:
+    """The mise agent's opening-turn pack: sheets, and on lock the panels too.
+
+    Capped at `MAX_STILL_REFS` so a 12-round tool loop does not re-send every still of the
+    reel every round. Per-beat stills stay on `inspect_still`. Designs phase attaches
+    nothing -- nothing has been drawn yet.
+    """
+    if board is None or phase == "designs":
+        return []
+    found = [
+        (board.stage_path(str(entry.get("id"))), _sheet_label(board, entry))
+        for entry in board.staging
+        if board.stage_path(str(entry.get("id"))).is_file()
+    ]
+    if phase == "lock":
+        found += [
+            (board.panel_path(beat["n"]),
+             f"beat {beat['n']}'s storyboard panel -- a sketch of the shot, "
+             "not the film's medium.")
+            for beat in board.ordered_beats()
+            if board.panel_path(beat["n"]).is_file()
+        ]
+    return found[:config.MAX_STILL_REFS]
+
+
+def picture_legend(pictures: list[tuple[Path, str]]) -> str:
+    """Numbered like `stills._chat_messages`, never `<Picture N>`."""
+    if not pictures:
+        return ""
+    listed = [f"{index}. {label}" for index, (_path, label) in enumerate(pictures, start=1)]
+    header = (f"You are given {len(pictures)} images, in this order:\n"
+              if len(pictures) > 1 else "You are given one image:\n")
+    return header + "\n".join(listed)
+
+
+def look_parts(board: board_mod.Board, n: int, lens: str) -> tuple[list[str], list[Path]]:
+    """The blocking/style/story vision prompt, without encoding. For `look` and dry-run."""
     if lens not in LENSES:
         raise InspectError(f"no lens called {lens!r}. Lenses: {', '.join(LENSES)}.", status=404)
     beat = board.beat(n)
@@ -165,6 +237,7 @@ def look(board: board_mod.Board, n: int, lens: str, *,
         # clay, which is not the idea the still was made from.
         parts.append(f"WHAT THIS FILM IS MADE OF: {look_at.judge}.")
         parts.append(f"REQUIRED OF EVERY STILL: {look_at.still}")
+    pictures: list[tuple[Path, str]]
     if lens == "blocking":
         blocking = str(beat.get("blocking") or "").strip()
         parts.append(f"WHERE THINGS STAND IN THIS SHOT: {blocking}" if blocking else
@@ -178,6 +251,12 @@ def look(board: board_mod.Board, n: int, lens: str, *,
                   for entry in board.staging]
         if roster:
             parts.append("THE REEL'S CAST AND SETS, designed once: " + "; ".join(roster))
+        pictures = shot_pictures(board, n)
+        legend = picture_legend(pictures)
+        parts.append(legend if legend else "The still is below.")
+    else:
+        pictures = [(still, "the still you are judging.")]
+        parts.append("The still is below.")
     if lens in ("blocking", "story"):
         earlier = [
             f"beat {other['n']}: {(other.get('action') or '')[:160]}"
@@ -191,8 +270,27 @@ def look(board: board_mod.Board, n: int, lens: str, *,
     parts.append(f"WHAT MOVES ONCE THE CLIP STARTS: {beat.get('action', '')}")
     if beat.get("asset_prompt"):
         parts.append(f"THIS STILL WAS ASKED FOR AS: {beat['asset_prompt']}")
-    parts.append("The still is below.")
+    return parts, [path for path, _label in pictures]
 
+
+def look(board: board_mod.Board, n: int, lens: str, *,
+         llm: llm_mod.LLM | None = None,
+         log: Callable[[str], None] = print) -> dict:
+    """One lens, one still, one verdict. Renders nothing and writes nothing to the board.
+
+    Style and story stills go in on their own with no cast reference beside them, which is
+    the deliberate difference from `stills.review`. That pass compares two pictures and asks
+    whether they are the same production; those two lenses ask whether ONE picture is right,
+    and a composed reference in the frame would drag every answer back towards "does it
+    match".
+
+    Blocking is the exception: it encodes the bound design sheets and the panel next to the
+    still. Those are identity/place locks, not the reel's locked cast still -- so the
+    question stays "is this the designed puppet standing where blocking said", not "does it
+    match beat 1".
+    """
+    parts, paths = look_parts(board, n, lens)
+    look_at = board.look()
     system = SYSTEM.format(role=LENSES[lens]["role"], name=look_at.name,
                            asks=LENSES[lens]["asks"])
     # Through the provider the agent is running on, not through `gemini` directly. This is the
@@ -201,7 +299,8 @@ def look(board: board_mod.Board, n: int, lens: str, *,
     speaker = llm or llm_mod.provider()
     verdict = speaker.structured(
         [{"role": "system", "content": system},
-         {"role": "user", "content": "\n\n".join(parts), "images": [speaker.encode(still)]}],
+         {"role": "user", "content": "\n\n".join(parts),
+          "images": [speaker.encode(path) for path in paths]}],
         VERDICT_SCHEMA, model=config.VISION_MODEL)
 
     said = str(verdict.get("verdict") or "").strip().lower()

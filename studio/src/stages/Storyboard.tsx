@@ -12,9 +12,9 @@ import { StagePage, WaitingOn } from "./parts";
 /**
  * Stage two: what the film is made of, and how each shot is framed.
  *
- * The crew walks this stage in gated phases — designs (sheets) → seams (blocking + continuity)
- * → panels → lock (roster against those panels) — so the director can approve consistency
- * locks before anyone draws a still.
+ * The crew walks this stage in gated phases — designs (mise names the roster, then sheets
+ * are drawn) → seams (blocking + continuity) → panels → lock (roster against those panels)
+ * — so the director can approve consistency locks before anyone draws a still.
  * Manual design / panel controls stay as secondary paths: stages stay separable.
  */
 export function Storyboard() {
@@ -100,8 +100,9 @@ export function Storyboard() {
               </Button>
             }
           >
-            Lock the look, cast sheets and set sheets first — those are what keep characters and
-            places consistent across cuts. You can still add designs by hand below.
+            Extract the cast and places from the script, then draw those sheets — that is
+            what keeps characters and places consistent across cuts. You can still add
+            designs by hand below.
           </WaitingOn>
         ) : awaiting === "seams" ? (
           <WaitingOn
@@ -239,6 +240,7 @@ export function Storyboard() {
 const DESIGN_AGENTS = [
   "style-paper-cutout",
   "style-claymation",
+  "mise-en-scene",
   "character-sheet",
   "set-designer",
 ];
@@ -264,7 +266,7 @@ function DesignGate({
           Design gate
         </span>
         <span className="text-[11px] text-zinc-500">
-          Approve cast and place locks before blocking and continuity.
+          Approve the named roster and the sheets drawn from it before blocking.
         </span>
         <button
           onClick={onRerun}

@@ -36,6 +36,7 @@ import itertools
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from . import board as board_mod
@@ -237,7 +238,8 @@ def build(name: str, *, llm: llm_mod.LLM | None = None,
 
 def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
         prelude: str = "", hooks: Hooks = Hooks(), state: dict | None = None,
-        collector: ActivityCollector | None = None) -> Turn:
+        collector: ActivityCollector | None = None,
+        images: list[Path] | None = None) -> Turn:
     """One agent, one message, tools and all.
 
     `prelude` is where everything per-run goes -- the board digest, the beat list, the
@@ -245,11 +247,20 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
     puts the board in the question for a measured reason (the model answered from whichever
     board-shaped text sat nearest the question), and keeping the system prompt free of per-run
     state is also what lets `skills.py` cache a rendered skill on its mtime.
+
+    `images` land on that same user turn. Mise-en-scène has to *see* the design sheets (and
+    on lock, the panels) rather than read a sentence about them; a 12-round loop that
+    re-sends every still of the reel every round is the cost to avoid, so the caller caps
+    the pack and leaves per-beat stills on `inspect_still`.
     """
     skill = agent.skill
     context = Context(board=board, hooks=hooks, llm=agent.llm,
                       state=state if state is not None else {})
     trace = collector if collector is not None else hooks.track()
+    encoded = [agent.llm.encode(path) for path in images or [] if path.is_file()]
+    question: dict = {"role": "user", "content": prelude + message}
+    if encoded:
+        question["images"] = encoded
 
     if skill.schema is not None:
         # One structured call, no loop. A skill whose whole output is one object has nothing to
@@ -257,15 +268,14 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
         # repo (`stills.converse`, `pictures.converse`, `staging.converse`): with only one
         # shape of answer available, a loop spends a round trip deciding to produce it.
         data = agent.llm.structured(
-            [{"role": "system", "content": skill.system},
-             {"role": "user", "content": prelude + message}],
+            [{"role": "system", "content": skill.system}, question],
             skill.schema, think=skill.think, temperature=skill.temperature, model=skill.model)
         return Turn(reply="", ops=[], rounds=1, stopped="answered", data=data,
                     board=context.board, agent=skill.name, activity=trace.events)
 
     messages: list[dict] = [
         {"role": "system", "content": skill.system},
-        {"role": "user", "content": prelude + message},
+        question,
     ]
     applied: list[dict] = []
     reply = ""
@@ -361,7 +371,8 @@ def remember(board: board_mod.Board, agent: str, message: str, turn: Turn) -> No
     board.save()
 
 
-def preview(agent: Agent, message: str = "", prelude: str = "") -> str:
+def preview(agent: Agent, message: str = "", prelude: str = "",
+            pictures: list[tuple[Path, str]] | None = None) -> str:
     """Exactly what would go to the model, for `crew.py --dry-run`. Calls nothing.
 
     This is the review artifact the money guard rests on: a prompt is read by a human before a
@@ -378,8 +389,13 @@ def preview(agent: Agent, message: str = "", prelude: str = "") -> str:
         "===== USER =====",
         prelude + message,
         "",
-        "===== TOOLS =====",
     ]
+    if pictures:
+        lines.append("===== IMAGES =====")
+        for index, (path, label) in enumerate(pictures, start=1):
+            lines.append(f"  {index}. {label}  ({path.name})")
+        lines.append("")
+    lines.append("===== TOOLS =====")
     for tool in agent.tools.values():
         parameters = (tool.spec.get("parameters") or {}).get("properties") or {}
         required = set((tool.spec.get("parameters") or {}).get("required") or [])

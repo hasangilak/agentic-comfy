@@ -9,7 +9,8 @@ prevent -- and a director agent would spend a model turn per decision on a quest
 statements answer for nothing.
 
     script      no beats yet          script-writer, then the style artist
-    storyboard  panels or lock missing  style, character-sheet, set-designer, mise, coherence,
+    storyboard  panels or lock missing  style, mise extracts the roster, character-sheet and
+                                      set-designer draw it, mise blocks, coherence,
                                       continuity, panels, then mise again to lock the roster
     assets      beats waiting on a still   asset-maker, then three agents check its work
     None        nothing left that does not cost GPU money
@@ -62,21 +63,27 @@ STYLE = "@style"
 # Who works each stage, in the order they work it. Order matters and is not alphabetical:
 #
 #   script      the writer first, because there is nothing to style until there are beats.
-#   storyboard  the style artist first (bible + medium), then character-sheet (cast locks),
-#               then set-designer (place locks), then mise-en-scene binds, then coherence
-#               reconciles action/blocking/still fights, then continuity audits seams --
-#               then the panels, because `panels._digest` names the designs a beat binds, so
-#               a panel written before the binding is a panel written about a cast it could
-#               not see -- then mise-en-scene again, to lock the roster against those panels
-#               before anyone draws a still. A flock that became one bird was written into
-#               the board at seams and then inspected against that beat text; the second
-#               pass is what makes that drop visible before it costs an image.
+#   storyboard  the style artist first (bible + medium), then mise-en-scene extracts the
+#               roster (names characters and places, mints, binds -- does not draw), then
+#               character-sheet and set-designer draw those already-named designs, then
+#               mise-en-scene blocks against the sheets, then coherence reconciles
+#               action/blocking/still fights, then continuity audits seams -- then the
+#               panels, because `panels._digest` names the designs a beat binds, so a panel
+#               written before the binding is a panel written about a cast it could not
+#               see -- then mise-en-scene again, to lock the roster against those panels
+#               (and look at them) before anyone draws a still. A flock that became one
+#               bird was written into the board at seams and then inspected against that
+#               beat text; the second pass is what makes that drop visible before it costs
+#               an image. Sheets cannot be drawn before they are named: that is why mise
+#               sits in the designs phase *before* the two drawers.
 #   assets      the maker first and the three checkers after, which is the only order that
-#               makes sense for a check.
+#               makes sense for a check. Mise on inspect looks at the still next to the
+#               sheets, not at a sentence about them.
 STAGE_CAST: dict[str, tuple[str, ...]] = {
     "script": ("script-writer", STYLE),
-    "storyboard": (STYLE, "character-sheet", "set-designer", "mise-en-scene",
-                   "coherence", "continuity", "storyboarder", "mise-en-scene"),
+    "storyboard": (STYLE, "mise-en-scene", "character-sheet", "set-designer",
+                   "mise-en-scene", "coherence", "continuity", "storyboarder",
+                   "mise-en-scene"),
     "assets": ("asset-maker", STYLE, "mise-en-scene", "script-writer"),
 }
 
@@ -89,7 +96,7 @@ STAGE_PHASES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ("script", ("script-writer", STYLE)),
     ),
     "storyboard": (
-        ("designs", (STYLE, "character-sheet", "set-designer")),
+        ("designs", (STYLE, "mise-en-scene", "character-sheet", "set-designer")),
         ("seams", ("mise-en-scene", "coherence", "continuity")),
         ("panels", ("storyboarder",)),
         ("lock", ("mise-en-scene",)),
@@ -131,19 +138,22 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
     ("script", STYLE): ("Set the medium if it is not set, then write this reel's style bible "
                         "from the script. Do not draw anything yet."),
     ("storyboard", STYLE): ("Set the medium if needed and polish this reel's style bible. "
-                            "Do not mint or draw designs -- characters belong to "
-                            "character-sheet, environments to set-designer."),
-    ("storyboard", "character-sheet"): ("Develop every recurring character as an identity-lock "
-                                        "design sheet from the script and style bible, draw "
-                                        "each sheet once, and bind them into the beats that "
-                                        "feature them."),
-    ("storyboard", "set-designer"): ("Develop every recurring environment as a place-lock "
-                                     "design sheet from the script and style bible, draw each "
-                                     "sheet once, and bind them into the beats that use them."),
+                            "Do not mint or draw designs -- mise-en-scene names the roster, "
+                            "character-sheet and set-designer draw the sheets."),
+    ("storyboard", "character-sheet"): ("Draw every undrawn character design already on the "
+                                        "board. Mise named the roster; settle note and draw "
+                                        "from the style bible's exact wording, then "
+                                        "draw_design once. Mint only if a recurring character "
+                                        "has no sheet."),
+    ("storyboard", "set-designer"): ("Draw every undrawn environment design already on the "
+                                     "board. Mise named the roster; settle note and draw from "
+                                     "the style bible's exact wording, then draw_design once. "
+                                     "Mint only if a recurring place has no sheet."),
     ("storyboard", "mise-en-scene"): ("Block every shot: what each frame holds and where "
-                                      "everything stands in it. Call audit_cast first. Bind "
-                                      "the designs each shot contains -- the full list, never "
-                                      "an empty one."),
+                                      "everything stands in it. The design sheets are "
+                                      "attached -- block against what they actually look "
+                                      "like. Call audit_cast first. Bind the designs each "
+                                      "shot contains -- the full list, never an empty one."),
     ("storyboard", "coherence"): ("Audit action against blocking, asset prompts and look-only "
                                   "design notes for fights that make the video model walk in "
                                   "place or invent idle prop motion. Fix what fails, then "
@@ -159,16 +169,25 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
                                 "anything twice."),
 }
 
-# Briefs that differ by phase when the same role appears twice in one stage. The lock pass
-# is mise-en-scene again, after the panels exist, and a brief that said "block every shot"
-# would have it rewrite blocking it already wrote instead of auditing the roster against
-# the sketches.
+# Briefs that differ by phase when the same role appears more than once in one stage.
+# Mise has three storyboard jobs: extract the roster (designs), block the frames (seams),
+# lock against the panels (lock). A brief that said "block every shot" on the first or
+# third pass would have it skip naming the cast, or rewrite blocking it already wrote.
 PHASE_BRIEF_FOR: dict[tuple[str, str], str] = {
+    ("designs", "mise-en-scene"): (
+        "The script and style bible are written. Extract the roster: every recurring "
+        "character and every recurring place. Mint each with add_design (name, kind, "
+        "note from the bible's exact wording) -- do not draw. Bind each beat to the "
+        "full list of designs that shot contains. A one-off extra is blocking text, "
+        "not a sheet. A group is one sheet plus a count in blocking, never a sheet "
+        "note that says single."
+    ),
     ("lock", "mise-en-scene"): (
-        "The panels are written. Audit the roster against every panel, blocking line and "
-        "bind: a flock that became one bird, a sheet that says single while the script's "
-        "subject is a group, a beat that names a design but binds none. Fix the drops. "
-        "Do not draw stills -- those come after this lock."
+        "The panels are written and attached, with the design sheets. Audit the roster "
+        "against every panel, blocking line and bind: a flock that became one bird, a "
+        "sheet that says single while the script's subject is a group, a beat that "
+        "names a design but binds none. Look at the pictures. Fix the drops. Do not "
+        "draw stills -- those come after this lock."
     ),
 }
 
@@ -376,7 +395,8 @@ def one(name: str, board: board_mod.Board | None, message: str, *,
         llm: llm_mod.LLM | None = None,
         state: dict | None = None,
         via_director: bool = False,
-        collector: runtime.ActivityCollector | None = None) -> runtime.Turn:
+        collector: runtime.ActivityCollector | None = None,
+        phase: str | None = None) -> runtime.Turn:
     """One named agent, one message, no orchestration.
 
     The transcript is written here rather than inside `runtime.run` because a turn with no
@@ -385,16 +405,22 @@ def one(name: str, board: board_mod.Board | None, message: str, *,
 
     When `via_director` is set, the specialist's reply lands in the director's activity tree
     rather than as a top-level chat turn -- the director synthesizes for the user afterwards.
+
+    `phase` is how mise-en-scène knows which of its jobs this turn is, and which pictures
+    to attach: none on extract, sheets on seams/inspect, sheets plus panels on lock.
     """
     agent = runtime.build(name, llm=llm)
-    text = prelude(board)
+    pictures = (critique.context_pictures(board, phase) if name == "mise-en-scene" else [])
+    legend = critique.picture_legend(pictures)
+    text = prelude(board) + ((legend + "\n\n") if legend else "")
     hooks.say(f"[{name}] {message.strip()[:120]}")
     trace = collector if collector is not None else hooks.track()
     event_id = trace.start("agent_start", agent=name, summary=message.strip()[:120])
     hooks.doing(f"director · delegating {name}" if via_director else name)
     try:
         turn = runtime.run(agent, message, board=board, prelude=text, hooks=hooks,
-                           state=state, collector=trace)
+                           state=state, collector=trace,
+                           images=[path for path, _label in pictures])
     except (skills.SkillError, llm_mod.LLMError) as failed:
         trace.finish(event_id, status="failed", summary=str(failed))
         raise
@@ -435,34 +461,41 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
             raise ValueError(f"no phase called {phase!r}. Phases: {', '.join(PHASES)}")
         if PHASE_STAGE[phase] != name:
             raise ValueError(f"phase {phase!r} belongs to {PHASE_STAGE[phase]}, not {name}")
-        roles = roles_for_phase(phase)
+        slices: tuple[tuple[str, tuple[str, ...]], ...] = ((phase, roles_for_phase(phase)),)
     else:
-        roles = STAGE_CAST[name]
+        # Walk the phase table rather than the flattened STAGE_CAST so each mise-en-scene
+        # appearance gets its own brief and its own picture pack. Ungated used to hand all
+        # three the "block every shot" brief, which is how extract and lock were skipped.
+        slices = STAGE_PHASES[name]
     shared = state if state is not None else {}
     turns: list[runtime.Turn] = []
-    for role in roles:
+    for phase_id, roles in slices:
+        for role in roles:
+            if hooks.stopping():
+                hooks.say("[crew] cancelled")
+                break
+            who = _resolve(role, board)
+            lens = CHECKERS.get(role) if _is_check(name, role) else None
+            if lens and not _checkable(board):
+                hooks.say(f"[crew] {who}: nothing to check yet")
+                continue
+            message = _brief(name, role, lens, note, board, phase=phase_id)
+            label = f"{name} · {phase_id} · {who}"
+            hooks.say(f"[crew] {name}/{who} ({phase_id})")
+            hooks.doing(label + (f" · {lens}" if lens else ""))
+            try:
+                turns.append(one(who, board, message, hooks=hooks, llm=llm, state=shared,
+                                 via_director=via_director, collector=collector,
+                                 phase=phase_id))
+            except (skills.SkillError, llm_mod.LLMError) as failed:
+                # Logged and stepped over rather than raised. See the docstring: the rest of the
+                # cast is still worth running, and the job log is where a director looks.
+                hooks.say(f"[crew] {who} failed: {failed}")
+                trace = collector if collector is not None else hooks.track()
+                trace.note("agent_failed", agent=who, status="failed", summary=str(failed))
+            board = board_mod.Board.load(board.slug)
         if hooks.stopping():
-            hooks.say("[crew] cancelled")
             break
-        who = _resolve(role, board)
-        lens = CHECKERS.get(role) if _is_check(name, role) else None
-        if lens and not _checkable(board):
-            hooks.say(f"[crew] {who}: nothing to check yet")
-            continue
-        message = _brief(name, role, lens, note, board, phase=phase)
-        label = f"{name} · {phase} · {who}" if phase else f"{name} · {who}"
-        hooks.say(f"[crew] {name}/{who}" + (f" ({phase})" if phase else ""))
-        hooks.doing(label + (f" · {lens}" if lens else ""))
-        try:
-            turns.append(one(who, board, message, hooks=hooks, llm=llm, state=shared,
-                             via_director=via_director, collector=collector))
-        except (skills.SkillError, llm_mod.LLMError) as failed:
-            # Logged and stepped over rather than raised. See the docstring: the rest of the
-            # cast is still worth running, and the job log is where a director looks.
-            hooks.say(f"[crew] {who} failed: {failed}")
-            trace = collector if collector is not None else hooks.track()
-            trace.note("agent_failed", agent=who, status="failed", summary=str(failed))
-        board = board_mod.Board.load(board.slug)
     if not hooks.stopping():
         if phase == "inspect" and critique.failing(board):
             # The back-edge: standing failures are the asset-maker's work, so the gate moves
