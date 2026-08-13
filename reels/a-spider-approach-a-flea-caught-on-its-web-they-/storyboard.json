@@ -11,7 +11,7 @@
           "verdict": "rewritten"
         }
       ],
-      "asset_prompt": "Handcrafted layered paper-cutout stop-motion diorama, vertical 9:16 portrait composition. A soot-black cardstock spider puppet with eight glossy black glass bead eyes, six segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers hangs from the top right third of the frame on a single vertical cream white thread strand. Below it, an entangled rust-red paper flea puppet with a single bead eye and translucent vellum wings rests in a web of cream white thread strands dotted with tiny clear glass bead dew drops. Framed by dark olive and sage-green paper branches. Soft contact shadows, visible paper grain, lit by a single warm key lamp from the upper-left.",
+      "asset_prompt": "Handcrafted layered paper-cutout stop-motion diorama, vertical 9:16 portrait composition. A soot-black cardstock spider puppet with eight glossy black glass bead eyes, eight segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers hangs from the top right third of the frame on a single vertical cream white thread strand. Below it, an entangled rust-red paper flea puppet one quarter the spider's height, with a single bead eye and translucent vellum wings, rests in a web of cream white thread strands dotted with tiny clear glass bead dew drops. Framed by dark olive and sage-green paper branches. Soft contact shadows, visible paper grain, lit by a single warm key lamp from the upper-left.",
       "blocking": "The spider puppet hangs from the upper-right third of the frame on a vertical line. The flea puppet sits entangled near the center of the web in the middle third. Dark paper branches frame the outer edges on physical riser planes.",
       "n": 1,
       "panel": "Wide shot, eye level, static camera. The complex web network stretches across two main foliage branches spanning the frame, with one entangled flea trapped in the lower third and one spider entering near the top-right corner. A vertical dotted arrow drawn on top points straight down from the spider along its hanging thread toward the center of the vertical 9:16 layout.",
@@ -29,7 +29,7 @@
       },
       "scene": "Wide shot of the dew-dappled web suspended between dark paper branches",
       "seconds": 5.0,
-      "source": "reference",
+      "source": "asset",
       "staging": [
         "e8227b",
         "b40690",
@@ -47,7 +47,7 @@
           "verdict": "rewritten"
         }
       ],
-      "asset_prompt": "Handcrafted layered paper-cutout stop-motion diorama on a physical tabletop. Wide shot of the dew-dappled web suspended between dark paper branches. The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, six segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers, positioned high up near the top of the vertical thread in the upper-right third of the frame, leaving open space on the thread below it to lower down. The flea puppet has a teardrop rust-red cardstock body, a single glossy black glass bead eye, folded translucent vellum wings, and delicate jointed rust-red paper legs with brass split-pin rivets, sitting entangled near the center of the web in the middle third. The environment consists of dark olive and sage-green paper branches supporting a web of cream white thread paper strands dotted with tiny clear glass bead dew drops. Lit by a single warm key lamp from the upper-left, raking low across surfaces so paper grain, cut edges, and physical elevation catch the light.",
+      "asset_prompt": "Handcrafted layered paper-cutout stop-motion diorama on a physical tabletop. Wide shot of the dew-dappled web suspended between dark paper branches. The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, eight segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers, positioned high up near the top of the vertical thread in the upper-right third of the frame, leaving open space on the thread below it to lower down. The flea puppet, one quarter the spider's height, has a teardrop rust-red cardstock body, a single glossy black glass bead eye, folded translucent vellum wings, and delicate jointed rust-red paper legs with brass split-pin rivets, sitting entangled near the center of the web in the middle third. The environment consists of dark olive and sage-green paper branches supporting a web of cream white thread paper strands dotted with tiny clear glass bead dew drops. Lit by a single warm key lamp from the upper-left, raking low across surfaces so paper grain, cut edges, and physical elevation catch the light.",
       "blocking": "The spider puppet hangs midway down the vertical thread in the upper-right third of the web, facing downward toward the flea puppet fixed in the center third of the web.",
       "n": 2,
       "panel": "Wide shot, eye level, static camera continuing the same setup. The same single spider sits lower along its central thread, hovering in the middle third of the frame directly above the one entangled flea in the lower third, with the two framing branches still. A downward curved arrow over the spider's front edge indicates its subtle head tilt toward the trapped insect below.",
@@ -81,7 +81,7 @@
           "verdict": "pass"
         }
       ],
-      "asset_prompt": "Medium view of the flea puppet entangled in the lower-center third of the web, with the spider puppet hanging above it in the upper-center third facing downward.",
+      "asset_prompt": "Medium view of the flea puppet, one quarter the spider's height, entangled in the lower-center third of the web, with the spider puppet hanging above it in the upper-center third facing downward.",
       "blocking": "The flea puppet sits entangled in the lower-center third facing frame right. The spider puppet hangs directly above it in the upper-center third, facing downward.",
       "n": 3,
       "panel": "Medium shot, low angle looking slightly up. One spider looms in the upper third of the frame while the single flea sits pinned to web strands in the lower third, flanked by two primary branch sections. A small upward arrow points right at one of the flea's tiny front legs, marking its isolated lift against the otherwise locked composition.",
@@ -1641,18 +1641,18 @@
   "spend_seconds": 695.3,
   "staging": [
     {
-      "draw": "Character turnaround sheet showing front view and three-quarter view side-by-side on a plain neutral cream background. Handcrafted layered paper-cutout stop-motion puppet. The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, six segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers. Clean crisp cut edges with pale paper core visible, subtle paper texture. Neutral resting pose, isolated puppet turnaround sheet, no scenery, no other characters, no shadows.",
+      "draw": "Character turnaround sheet showing front view and three-quarter view side-by-side on a plain neutral cream background. Handcrafted layered paper-cutout stop-motion puppet. The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, eight segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers. Clean crisp cut edges with pale paper core visible, subtle paper texture. Neutral resting pose, isolated puppet turnaround sheet, no scenery, no other characters, no shadows.",
       "id": "e8227b",
       "kind": "character",
       "name": "the spider",
-      "note": "The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, six segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers."
+      "note": "The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, eight segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers. The flea stands one quarter the spider's height."
     },
     {
       "draw": "Character turnaround sheet showing front view and three-quarter view side-by-side on a plain neutral cream background. Handcrafted layered paper-cutout stop-motion puppet. The flea puppet has a teardrop rust-red cardstock body, a single glossy black glass bead eye, folded translucent vellum wings, and delicate jointed rust-red paper legs with brass split-pin rivets. Clean crisp cut edges with pale paper core visible, subtle paper texture. Neutral resting pose, isolated puppet turnaround sheet, no scenery, no other characters, no shadows.",
       "id": "b40690",
       "kind": "character",
       "name": "the flea",
-      "note": "The flea puppet has a teardrop rust-red cardstock body, a single glossy black glass bead eye, folded translucent vellum wings, and delicate jointed rust-red paper legs with brass split-pin rivets."
+      "note": "The flea puppet has a teardrop rust-red cardstock body, a single glossy black glass bead eye, folded translucent vellum wings, and delicate jointed rust-red paper legs with brass split-pin rivets. The flea stands one quarter the spider's height."
     },
     {
       "draw": "Handcrafted layered paper-cutout stop-motion diorama environment set on a physical tabletop, empty of characters. Dark olive and sage-green paper branches hand-cut from cold-press cardstock with crisp irregular edges showing pale paper core, arranged across layered physical planes with brass risers casting soft contact shadows. A web woven from cream white thread paper strands stretches between the branches, dotted with tiny clear glass bead dew drops. Color palette strictly limited to soot-black, dark olive, sage-green, cream white, and warm amber. Lit by a single warm key lamp from the upper-left, raking low across surfaces so paper grain, cut edges, and physical elevation catch the light.",
@@ -1663,6 +1663,6 @@
     }
   ],
   "steps": 8,
-  "style_bible": "Handcrafted layered paper-cutout stop-motion diorama on a physical tabletop. Elements are hand-cut with a craft knife from soot-black heavy cardstock, rust-red fibrous cardstock, dark olive cold-press cardstock, sage-green cardstock, cream white linen thread paper, translucent white vellum, and warm amber paper. Cut edges are crisp and slightly irregular, showing the pale paper core where stock is sliced through. Sheets display slight natural paper warp and subtle registration offsets. Stood on distinct physical planes separated by brass risers, casting soft contact shadows onto lower planes; depth comes entirely from stacked physical layers. The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, six segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers. The flea puppet has a teardrop rust-red cardstock body, a single glossy black glass bead eye, folded translucent vellum wings, and delicate jointed rust-red paper legs with brass split-pin rivets. The environment consists of dark olive and sage-green paper branches supporting a web of cream white thread paper strands dotted with tiny clear glass bead dew drops. Color palette is strictly limited to soot-black, rust-red, sage-green, dark olive, cream white, and warm amber. Animated on twos. Lit by a single warm key lamp from the upper-left, raking low across surfaces so paper grain, cut edges, and physical elevation catch the light.",
+  "style_bible": "Handcrafted layered paper-cutout stop-motion diorama on a physical tabletop. Elements are hand-cut with a craft knife from soot-black heavy cardstock, rust-red fibrous cardstock, dark olive cold-press cardstock, sage-green cardstock, cream white linen thread paper, translucent white vellum, and warm amber paper. Cut edges are crisp and slightly irregular, showing the pale paper core where stock is sliced through. Sheets display slight natural paper warp and subtle registration offsets. Stood on distinct physical planes separated by brass risers, casting soft contact shadows onto lower planes; depth comes entirely from stacked physical layers. The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, eight segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers. The flea puppet has a teardrop rust-red cardstock body, a single glossy black glass bead eye, folded translucent vellum wings, and delicate jointed rust-red paper legs with brass split-pin rivets. The flea stands one quarter the spider's height. The environment consists of dark olive and sage-green paper branches supporting a web of cream white thread paper strands dotted with tiny clear glass bead dew drops. Color palette is strictly limited to soot-black, rust-red, sage-green, dark olive, cream white, and warm amber. Animated on twos. Lit by a single warm key lamp from the upper-left, raking low across surfaces so paper grain, cut edges, and physical elevation catch the light.",
   "title": "The Web and the Thread"
 }
