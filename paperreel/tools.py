@@ -1038,8 +1038,10 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
         note = str(arguments.get("note") or "").strip()
         ungated = bool(arguments.get("ungated"))
         phase = str(arguments.get("phase") or "").strip() or None
-        if phase is not None and phase not in crew_mod.PHASE_STAGE:
-            raise ToolRefused(f"phase has to be one of {', '.join(crew_mod.PHASES)}")
+        if phase is not None:
+            phase = crew_mod.canonical_phase(phase)
+            if phase is None:
+                raise ToolRefused(f"phase has to be one of {', '.join(crew_mod.PHASES)}")
         if ungated:
             turns = crew_mod.stage(stage, board, note=note, hooks=context.hooks,
                                    state=context.state, via_director=True)
@@ -1096,17 +1098,17 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
         ), run=delegate_agent),
         Tool(spec=llm.tool(
             "run_crew_stage",
-            "Run the next gated phase of a stage (designs, seams, panels, lock, stills, or "
-            "inspect) and stop so the director can approve. Pass ungated=true only when the "
-            "director explicitly wants the whole stage without pausing. Prefer this over "
-            "burning through every specialist at once.",
+            "Run the next gated phase of a stage (extract, panels, sheets, seams, lock, "
+            "stills, or inspect) and stop so the director can approve. Pass ungated=true "
+            "only when the director explicitly wants the whole stage without pausing. "
+            "Prefer this over burning through every specialist at once.",
             {
                 "stage": {"type": "string", "enum": ["script", "storyboard", "assets"],
                           "description": "script, storyboard, or assets"},
                 "phase": {"type": "string",
-                          "description": ("optional phase id: script, designs, seams, panels, "
-                                          "lock, stills, inspect. Default is the awaiting "
-                                          "phase.")},
+                          "description": ("optional phase id: script, extract, panels, sheets, "
+                                          "seams, lock, stills, inspect. Default is the "
+                                          "awaiting phase.")},
                 "note": {"type": "string",
                          "description": "anything specific the director wants them to know"},
                 "ungated": {"type": "boolean",

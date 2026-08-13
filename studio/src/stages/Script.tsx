@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { JOIN_LOOK } from "../joins";
-import { useDraft, useStudio } from "../useStudio";
+import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 import { TalkItOut, TheBrief } from "./TalkItOut";
 import { StagePage, WaitingOn } from "./parts";
@@ -32,6 +32,24 @@ export function Script() {
 
   const seconds = board.beats.reduce((sum, beat) => sum + beat.actual_seconds, 0);
   const notes = board.notes ?? [];
+  const [crewBusy, setCrewBusy] = useState(false);
+  const crewJob = useBusy("crew", () => true);
+  const agentJob = useBusy("agent", () => true);
+  const crewRunning = crewJob || agentJob;
+  const done = new Set(board.crew?.done ?? []);
+  const awaiting = board.crew?.awaiting ?? null;
+  const extracted = done.has("extract") || board.staging.length > 0;
+  const wantsExtract =
+    written && (!extracted || awaiting === "extract") && !done.has("panels") && !done.has("lock");
+
+  const extractCast = () => {
+    setCrewBusy(true);
+    void studio
+      .guard(() => api.runCrew(board.slug, { stage: "storyboard", phase: "extract" }))
+      .then(() => studio.goStage("storyboard"))
+      .finally(() => setCrewBusy(false));
+  };
+  const busy = crewBusy || crewRunning;
 
   return (
     <StagePage
@@ -49,8 +67,27 @@ export function Script() {
             <em>it&apos;s on you</em>, or skip straight to writing with the button under the
             composer.
           </WaitingOn>
+        ) : wantsExtract ? (
+          <WaitingOn
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button tone="primary" onClick={extractCast} disabled={busy}>
+                  {busy ? "working…" : "Extract the cast"}
+                </Button>
+                <Button onClick={() => studio.goStage("storyboard")}>→ Storyboard</Button>
+              </div>
+            }
+          >
+            The script is written. Mise-en-scène names every recurring character and place
+            next — sheets come after the storyboard.
+            {notes.length
+              ? ` ${notes.length === 1 ? notes[0] : `${notes.length} things are thin about this script.`}`
+              : ""}
+          </WaitingOn>
         ) : notes.length ? (
-          <WaitingOn>
+          <WaitingOn
+            action={<Button onClick={() => studio.goStage("storyboard")}>→ Storyboard</Button>}
+          >
             {notes.length === 1 ? notes[0] : `${notes.length} things are thin about this script.`}
           </WaitingOn>
         ) : (
@@ -58,7 +95,7 @@ export function Script() {
             tone="quiet"
             action={<Button onClick={() => studio.goStage("storyboard")}>→ Storyboard</Button>}
           >
-            The script is written. Next is who is in it and how each shot is framed.
+            The cast is named. Next is how each shot is framed.
           </WaitingOn>
         )
       }

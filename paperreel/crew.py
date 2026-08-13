@@ -9,9 +9,10 @@ prevent -- and a director agent would spend a model turn per decision on a quest
 statements answer for nothing.
 
     script      no beats yet          script-writer, then the style artist
-    storyboard  panels or lock missing  style, mise extracts the roster, character-sheet and
-                                      set-designer draw it, mise blocks, coherence,
-                                      continuity, panels, then mise again to lock the roster
+    storyboard  panels or lock missing  style, mise extracts the roster, panels, then
+                                      character-sheet and set-designer draw it, mise blocks,
+                                      coherence, continuity, then mise again to lock the
+                                      roster against those panels and sheets
     assets      beats waiting on a still   asset-maker, then three agents check its work
     None        nothing left that does not cost GPU money
 
@@ -23,11 +24,12 @@ runs in turn on the same board, reading what the one before it left -- the board
 message passing, which is why no agent needs to be handed another's output.
 
 **A phase is a slice of a cast that stops at a gate.** Storyboard and assets are long enough
-that running the whole cast in one job never gives the director a moment to approve sheets or
-seams before the next specialist builds on them. Default crew work therefore runs one phase
-and writes `data["crew"]` so the studio can show the gate; `ungated` is the escape hatch that
-burns through a stage the way this module used to. The cursor is intentional workflow state --
-like `chat`, not like a fingerprint -- and it is in no render hash.
+that running the whole cast in one job never gives the director a moment to approve the named
+roster, the panels, the sheets or the seams before the next specialist builds on them. Default
+crew work therefore runs one phase and writes `data["crew"]` so the studio can show the gate;
+`ungated` is the escape hatch that burns through a stage the way this module used to. The
+cursor is intentional workflow state -- like `chat`, not like a fingerprint -- and it is in
+no render hash.
 
 The assets cast is the one with a shape of its own: the asset-maker renders, and then three
 agents look at what came back through three different lenses -- craft, staging, story. They
@@ -65,24 +67,26 @@ STYLE = "@style"
 #   script      the writer first, because there is nothing to style until there are beats.
 #   storyboard  the style artist first (bible + medium), then mise-en-scene extracts the
 #               roster (names characters and places, mints, binds -- does not draw), then
-#               character-sheet and set-designer draw those already-named designs, then
-#               mise-en-scene blocks against the sheets, then coherence reconciles
-#               action/blocking/still fights, then continuity audits seams -- then the
-#               panels, because `panels._digest` names the designs a beat binds, so a panel
-#               written before the binding is a panel written about a cast it could not
-#               see -- then mise-en-scene again, to lock the roster against those panels
+#               the storyboarder, because `panels._digest` names the designs a beat binds,
+#               so a panel written before the binding is a panel written about a cast it
+#               could not see -- then character-sheet and set-designer draw those already-
+#               named designs (a sheet before a panel is a puppet with no shot to be in),
+#               then mise-en-scene blocks against the sheets, then coherence reconciles
+#               action/blocking/still fights, then continuity audits seams -- then
+#               mise-en-scene again, to lock the roster against those panels and sheets
 #               (and look at them) before anyone draws a still. A flock that became one
 #               bird was written into the board at seams and then inspected against that
-#               beat text; the second pass is what makes that drop visible before it costs
+#               beat text; the lock pass is what makes that drop visible before it costs
 #               an image. Sheets cannot be drawn before they are named: that is why mise
-#               sits in the designs phase *before* the two drawers.
+#               sits in the extract phase *before* the two drawers, and drawers sit after
+#               the panels so the storyboard is of names, not of finished stills.
 #   assets      the maker first and the three checkers after, which is the only order that
 #               makes sense for a check. Mise on inspect looks at the still next to the
-#               sheets, not at a sentence about them.
+#               sheets and the panel, not at a sentence about them.
 STAGE_CAST: dict[str, tuple[str, ...]] = {
     "script": ("script-writer", STYLE),
-    "storyboard": (STYLE, "mise-en-scene", "character-sheet", "set-designer",
-                   "mise-en-scene", "coherence", "continuity", "storyboarder",
+    "storyboard": (STYLE, "mise-en-scene", "storyboarder", "character-sheet",
+                   "set-designer", "mise-en-scene", "coherence", "continuity",
                    "mise-en-scene"),
     "assets": ("asset-maker", STYLE, "mise-en-scene", "script-writer"),
 }
@@ -96,9 +100,10 @@ STAGE_PHASES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ("script", ("script-writer", STYLE)),
     ),
     "storyboard": (
-        ("designs", (STYLE, "mise-en-scene", "character-sheet", "set-designer")),
-        ("seams", ("mise-en-scene", "coherence", "continuity")),
+        ("extract", (STYLE, "mise-en-scene")),
         ("panels", ("storyboarder",)),
+        ("sheets", ("character-sheet", "set-designer")),
+        ("seams", ("mise-en-scene", "coherence", "continuity")),
         ("lock", ("mise-en-scene",)),
     ),
     "assets": (
@@ -161,26 +166,40 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
     ("storyboard", "continuity"): ("Audit every chain and bridge seam: identical scene lines "
                                    "within a shot, continuity phrases, bridge landings, no "
                                    "three pure chains, no shot past 20 seconds. Fix what fails."),
-    ("storyboard", "storyboarder"): ("Storyboard every shot. The designs, blocking and seams "
-                                     "are already on the board -- write the shot grammar and "
-                                     "draw the panels."),
+    ("storyboard", "storyboarder"): ("Storyboard every shot. Mise named the roster and bound "
+                                     "it -- write the shot grammar and draw the panels. "
+                                     "Sheets are drawn after this; do not wait for them."),
     ("assets", "asset-maker"): ("Render the opening still for every beat waiting on one, look "
                                 "at what came back, and fix what is wrong before you render "
                                 "anything twice."),
 }
 
 # Briefs that differ by phase when the same role appears more than once in one stage.
-# Mise has three storyboard jobs: extract the roster (designs), block the frames (seams),
-# lock against the panels (lock). A brief that said "block every shot" on the first or
-# third pass would have it skip naming the cast, or rewrite blocking it already wrote.
+# Mise has three storyboard jobs: extract the roster (extract), block the frames (seams),
+# lock against the panels and sheets (lock). A brief that said "block every shot" on the
+# first or third pass would have it skip naming the cast, or rewrite blocking it already
+# wrote. Character-sheet and set-designer share one sheets brief so a phase-level
+# instruction does not drift from BRIEF_FOR.
 PHASE_BRIEF_FOR: dict[tuple[str, str], str] = {
-    ("designs", "mise-en-scene"): (
+    ("extract", "mise-en-scene"): (
         "The script and style bible are written. Extract the roster: every recurring "
         "character and every recurring place. Mint each with add_design (name, kind, "
         "note from the bible's exact wording) -- do not draw. Bind each beat to the "
         "full list of designs that shot contains. A one-off extra is blocking text, "
         "not a sheet. A group is one sheet plus a count in blocking, never a sheet "
         "note that says single."
+    ),
+    ("sheets", "character-sheet"): (
+        "The panels are written. Draw every undrawn character design already on the "
+        "board. Mise named the roster; settle note and draw from the style bible's "
+        "exact wording, then draw_design once. Mint only if a recurring character "
+        "has no sheet."
+    ),
+    ("sheets", "set-designer"): (
+        "The panels are written. Draw every undrawn environment design already on "
+        "the board. Mise named the roster; settle note and draw from the style "
+        "bible's exact wording, then draw_design once. Mint only if a recurring "
+        "place has no sheet."
     ),
     ("lock", "mise-en-scene"): (
         "The panels are written and attached, with the design sheets. Audit the roster "
@@ -296,10 +315,59 @@ def crew_record(board: board_mod.Board | None) -> dict:
     raw = board.data.get("crew")
     if not isinstance(raw, dict):
         return {"done": [], "awaiting": None}
-    done = [str(item) for item in (raw.get("done") or []) if str(item) in PHASE_STAGE]
-    awaiting = raw.get("awaiting")
-    awaiting = str(awaiting) if awaiting in PHASE_STAGE else None
+    done = _migrate_phases(raw.get("done") or [])
+    awaiting = _migrate_awaiting(raw.get("awaiting"), done)
     return {"done": done, "awaiting": awaiting}
+
+
+# The designs phase named the roster AND drew the sheets. Split into extract + sheets;
+# a cursor that still says designs would re-offer extract on a board that already has both.
+_LEGACY_PHASES: dict[str, tuple[str, ...]] = {"designs": ("extract", "sheets")}
+
+
+def canonical_phase(name: str | None) -> str | None:
+    """Map a phase id, including retired ones, onto STAGE_PHASES.
+
+    `designs` becomes `extract` -- the first of the two jobs it used to do. Running the
+    old bundled phase as sheets-too would skip the storyboard the new order puts in
+    between. Unknown names stay unknown so the 422 still names the live list.
+    """
+    if not name:
+        return None
+    if name in PHASE_STAGE:
+        return name
+    mapped = _LEGACY_PHASES.get(name)
+    return mapped[0] if mapped else None
+
+
+def _migrate_phases(raw_done: list) -> list[str]:
+    """Expand retired phase ids and keep `done` in STAGE_PHASES order."""
+    seen: set[str] = set()
+    for item in raw_done:
+        for phase in _LEGACY_PHASES.get(str(item), (str(item),)):
+            if phase in PHASE_STAGE:
+                seen.add(phase)
+    return [phase for phase in PHASES if phase in seen]
+
+
+def _migrate_awaiting(raw, done: list[str]) -> str | None:
+    """Map a saved cursor onto the current phase table.
+
+    A board awaiting `seams` after the old `designs` phase has sheets but not panels;
+    the new order puts panels first, so returning `seams` would skip them and
+    `mark_phase_done` would then stamp panels done without writing any.
+    """
+    awaiting = "extract" if raw == "designs" else raw
+    awaiting = str(awaiting) if awaiting in PHASE_STAGE else None
+    if awaiting is None:
+        return None
+    done_set = set(done)
+    for phase in phases_for(PHASE_STAGE[awaiting]):
+        if phase == awaiting:
+            return None if awaiting in done_set else awaiting
+        if phase not in done_set:
+            return phase
+    return awaiting
 
 
 def awaiting_phase(board: board_mod.Board | None) -> str | None:

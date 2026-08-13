@@ -111,7 +111,7 @@ The studio is a sequence now, not one page with four features layered on it:
 ```
 /                            no reel open — the three ways in, at page size
 /reels/:slug/script          the interview, the style bible, the scenes as prose
-/reels/:slug/storyboard      the cast and sets, then a panel per shot
+/reels/:slug/storyboard      named roster, then a panel per shot, then the sheets
 /reels/:slug/assets          the still each shot opens on, and what it is drawn from
 /reels/:slug/studio          the canvas: the chain, the price, the render
 /reels/:slug                 → resolved from the board, never from a stored "last visited"
@@ -564,14 +564,16 @@ first.
 | stage | cast, in order |
 | --- | --- |
 | `script` | `script-writer`, then the style artist |
-| `storyboard` | the style artist, then `mise-en-scene`, then `storyboarder` |
+| `storyboard` | the style artist, then `mise-en-scene` (extract the roster), then `storyboarder`, then `character-sheet` and `set-designer`, then mise blocking, coherence, continuity, then mise again to lock |
 | `assets` | `asset-maker`, then three checkers: style, blocking, story |
 
 Order is load-bearing in every row. The writer goes first because there is nothing to style
-until there are beats. On storyboard the style artist goes first because `mise-en-scene` binds
-designs and cannot bind one that has not been minted — and the panels go **last** because
-`panels._digest` names the designs a beat binds, so a panel written before the binding is a
-panel written about a cast it could not see.
+until there are beats. On storyboard the style artist goes first, then `mise-en-scene` names
+and binds the roster — `panels._digest` names the designs a beat binds, so a panel written
+before the binding is a panel written about a cast it could not see. The panels go **before
+the sheets**: a sheet before a panel is a puppet with no shot to be in. Character-sheet and
+set-designer draw after the storyboard, then mise blocks against those sheets, then locks
+the roster by looking at the panels next to them.
 
 **Members do not pass messages; the board is the passing.** Each runs in turn and reads what the
 one before left, which is why no agent is handed another's output and why the board is reloaded

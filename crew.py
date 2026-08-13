@@ -5,14 +5,14 @@
 """A crew that walks a reel from a concept to stills on disk, and stops there.
 
 Three stages, each worked by a cast rather than by one agent -- a writer and a style artist,
-then the style artist, mise-en-scene extracting the roster, character-sheet and set-designer
-drawing it, mise blocking, coherence, continuity and the storyboarder, then the asset maker
-with three agents checking what it made through three different lenses. `paperreel/crew.py`
-is the order and the reasons.
+then the style artist, mise-en-scene extracting the roster, the storyboarder, character-sheet
+and set-designer drawing it, mise blocking, coherence, continuity, then mise locking the
+roster against those panels and sheets, then the asset maker with three agents checking what
+it made through three different lenses. `paperreel/crew.py` is the order and the reasons.
 
     uv run crew.py --concept "a clay pig finds a pond" --medium claymation
     uv run crew.py --name <slug>                      # next gated phase, then stop
-    uv run crew.py --name <slug> --phase designs      # exactly that gate
+    uv run crew.py --name <slug> --phase extract      # exactly that gate
     uv run crew.py --name <slug> --stage storyboard   # whole stage, ungated
     uv run crew.py --name <slug> --ungated            # burn through until money
     uv run crew.py --name <slug> --agent mise-en-scene --note "beat 3 feels empty"

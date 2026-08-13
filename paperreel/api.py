@@ -1554,8 +1554,10 @@ def run_crew(slug: str, body: dict = Body(default={})) -> dict:
     ungated = bool(body.get("ungated"))
     if stage is not None and stage not in crew.STAGES:
         raise HTTPException(422, f"stage has to be one of {', '.join(crew.STAGES)}")
-    if phase is not None and phase not in crew.PHASE_STAGE:
-        raise HTTPException(422, f"phase has to be one of {', '.join(crew.PHASES)}")
+    if phase is not None:
+        phase = crew.canonical_phase(str(phase))
+        if phase is None:
+            raise HTTPException(422, f"phase has to be one of {', '.join(crew.PHASES)}")
     if phase is not None and stage is not None and crew.PHASE_STAGE[phase] != stage:
         raise HTTPException(422, f"phase {phase!r} belongs to {crew.PHASE_STAGE[phase]}, not {stage}")
     summary = crew.plan_summary(board)

@@ -10,12 +10,13 @@ import { Button, inputClass } from "../ui";
 import { StagePage, WaitingOn } from "./parts";
 
 /**
- * Stage two: what the film is made of, and how each shot is framed.
+ * Stage two: named roster, then how each shot is framed, then the sheets those shots are of.
  *
- * The crew walks this stage in gated phases — designs (mise names the roster, then sheets
- * are drawn) → seams (blocking + continuity) → panels → lock (roster against those panels)
- * — so the director can approve consistency locks before anyone draws a still.
- * Manual design / panel controls stay as secondary paths: stages stay separable.
+ * The crew walks this stage in gated phases — extract (mise names the roster) → panels
+ * (storyboard) → sheets (character + environment) → seams (blocking + continuity) → lock
+ * (mise looks at the panels next to the sheets) — so the director can approve each lock
+ * before anyone draws a still. Manual design / panel controls stay as secondary paths:
+ * stages stay separable.
  */
 export function Storyboard() {
   const studio = useStudio();
@@ -34,16 +35,23 @@ export function Storyboard() {
   const drawn = board.beats.filter((beat) => beat.panel_url).length;
   const total = board.beats.length;
   const done = new Set(board.crew?.done ?? []);
-  // Prefer the persisted cursor. Boards that never gated and still lack panels start at designs;
-  // once panels exist (manual or crew), do not invent a designs CTA over a finished storyboard.
+  // Prefer the persisted cursor. Boards that never gated and still lack panels start at extract;
+  // once panels exist (manual or crew), do not invent an extract CTA over a finished storyboard.
   const awaiting =
     board.crew?.awaiting ??
-    (total && !written && !done.has("designs") ? "designs" : null);
-  const atDesignGate = done.has("designs") && awaiting === "seams";
-  const atSeamGate = done.has("seams") && awaiting === "panels";
+    (total && !written && !done.has("extract") ? "extract" : null);
+  const step = storyboardStep(done, awaiting, written, total);
+  const atExtractGate = done.has("extract") && awaiting === "panels";
+  const atSheetsGate = done.has("sheets") && awaiting === "seams";
+  const atSeamGate = done.has("seams") && awaiting === "lock";
   const atLockGate =
     awaiting === "lock" ||
-    (written === total && total > 0 && done.has("panels") && !done.has("lock") && done.size > 0);
+    (written === total &&
+      total > 0 &&
+      done.has("panels") &&
+      done.has("sheets") &&
+      !done.has("lock") &&
+      done.size > 0);
 
   const picked = board.staging.find((entry) => entry.id === studio.stagingPick) ?? null;
 
@@ -70,111 +78,36 @@ export function Storyboard() {
       waiting={
         !total ? (
           <WaitingOn>Nothing to storyboard yet — write the script first.</WaitingOn>
-        ) : atDesignGate ? (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={() => runPhase("seams")} disabled={busy}>
-                {busy ? "working…" : "Approve sheets & continue"}
-              </Button>
-            }
-          >
-            Design sheets are ready. Check the cast and sets below, fix bindings if needed, then
-            continue to blocking and continuity.
-          </WaitingOn>
-        ) : atSeamGate ? (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={() => runPhase("panels")} disabled={busy}>
-                {busy ? "working…" : "Approve seams & continue"}
-              </Button>
-            }
-          >
-            Blocking and seam fixes are on the board. Review joins and continuity below, then
-            continue to panels.
-          </WaitingOn>
-        ) : awaiting === "designs" || (!done.has("designs") && !written) ? (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={() => runPhase("designs")} disabled={busy}>
-                {busy ? "working…" : "Run designs crew"}
-              </Button>
-            }
-          >
-            Extract the cast and places from the script, then draw those sheets — that is
-            what keeps characters and places consistent across cuts. You can still add
-            designs by hand below.
-          </WaitingOn>
-        ) : awaiting === "seams" ? (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={() => runPhase("seams")} disabled={busy}>
-                {busy ? "working…" : "Run seams crew"}
-              </Button>
-            }
-          >
-            Sheets are in. Next is blocking and a continuity pass on every chain and bridge.
-          </WaitingOn>
-        ) : awaiting === "panels" || (!written && done.has("seams")) ? (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={() => runPhase("panels")} disabled={busy}>
-                {busy ? "working…" : "Run panels crew"}
-              </Button>
-            }
-          >
-            Seams are settled. Write and draw the storyboard panels next.
-          </WaitingOn>
-        ) : written && drawn < written ? (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={drawPanels} disabled={drawingPanels}>
-                {drawingPanels ? "drawing…" : "▦ draw the panels"}
-              </Button>
-            }
-          >
-            {written - drawn} shot{written - drawn === 1 ? "" : "s"} written but not sketched. A
-            panel reaches no renderer, so this changes no scene's state.
-          </WaitingOn>
-        ) : atLockGate ? (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={() => runPhase("lock")} disabled={busy}>
-                {busy ? "working…" : "Approve storyboard & lock cast"}
-              </Button>
-            }
-          >
-            Every shot is written. Lock the cast and sets against those panels before anyone
-            draws a still — a flock that became one bird is caught here, not after the image.
-          </WaitingOn>
-        ) : written && done.has("lock") ? (
-          <WaitingOn
-            tone="quiet"
-            action={<Button onClick={() => studio.goStage("assets")}>→ Assets</Button>}
-          >
-            Cast and sets are locked. Next is the still each shot opens on.
-          </WaitingOn>
-        ) : written ? (
-          <WaitingOn
-            tone="quiet"
-            action={<Button onClick={() => studio.goStage("assets")}>→ Assets</Button>}
-          >
-            Every shot is written and drawn. Next is the still each one opens on.
-          </WaitingOn>
         ) : (
-          <WaitingOn
-            action={
-              <Button tone="primary" onClick={writeShots} disabled={writingPanels}>
-                {writingPanels ? "writing…" : "✎ write the shots"}
-              </Button>
-            }
-          >
-            No shot grammar yet. The model writes the shot size, angle and camera move for every
-            scene at once — it has to see them together to vary them.
-          </WaitingOn>
+          <div className="space-y-2.5">
+            <PhaseStepper step={step} done={done} />
+            <StoryboardWaiting
+              step={step}
+              awaiting={awaiting}
+              written={written}
+              drawn={drawn}
+              busy={busy}
+              writingPanels={writingPanels}
+              drawingPanels={drawingPanels}
+              atExtractGate={atExtractGate}
+              atSheetsGate={atSheetsGate}
+              atSeamGate={atSeamGate}
+              atLockGate={atLockGate}
+              done={done}
+              runPhase={runPhase}
+              writeShots={writeShots}
+              drawPanels={drawPanels}
+            />
+          </div>
         )
       }
     >
-      {atDesignGate ? <DesignGate board={board} onRerun={() => runPhase("designs")} busy={busy} /> : null}
+      {atExtractGate ? (
+        <ExtractGate board={board} onRerun={() => runPhase("extract")} busy={busy} />
+      ) : null}
+      {atSheetsGate ? (
+        <SheetsGate board={board} onRerun={() => runPhase("sheets")} busy={busy} />
+      ) : null}
       {atSeamGate ? <SeamGate board={board} onRerun={() => runPhase("seams")} busy={busy} /> : null}
 
       <CastStrip board={board} picked={picked} />
@@ -237,18 +170,258 @@ export function Storyboard() {
   );
 }
 
-const DESIGN_AGENTS = [
-  "style-paper-cutout",
-  "style-claymation",
-  "mise-en-scene",
-  "character-sheet",
-  "set-designer",
-];
+const STORYBOARD_STEPS = [
+  { id: "extract", label: "Cast" },
+  { id: "panels", label: "Panels" },
+  { id: "sheets", label: "Sheets" },
+  { id: "seams", label: "Seams" },
+  { id: "lock", label: "Lock" },
+] as const;
 
-const SEAM_AGENTS = ["mise-en-scene", "continuity"];
+type StoryboardStepId = (typeof STORYBOARD_STEPS)[number]["id"] | "done";
 
-/** Review sheets and bindings after the designs phase — before seams run. */
-function DesignGate({
+function storyboardStep(
+  done: Set<string>,
+  awaiting: string | null,
+  written: number,
+  total: number,
+): StoryboardStepId {
+  if (awaiting && STORYBOARD_STEPS.some((step) => step.id === awaiting)) {
+    return awaiting as (typeof STORYBOARD_STEPS)[number]["id"];
+  }
+  for (const step of STORYBOARD_STEPS) {
+    if (!done.has(step.id)) return step.id;
+  }
+  if (total && written === total && done.has("lock")) return "done";
+  return "extract";
+}
+
+function PhaseStepper({ step, done }: { step: StoryboardStepId; done: Set<string> }) {
+  return (
+    <ol className="flex flex-wrap items-center gap-1 text-[10px]">
+      {STORYBOARD_STEPS.map((entry, index) => {
+        const here = step === entry.id;
+        const finished = done.has(entry.id) && !here;
+        return (
+          <li key={entry.id} className="flex items-center gap-1">
+            {index ? <span className="text-zinc-300">→</span> : null}
+            <span
+              className={`rounded-full px-2 py-0.5 ${
+                here
+                  ? "bg-solid text-white"
+                  : finished
+                    ? "bg-soft text-zinc-500"
+                    : "text-zinc-400"
+              }`}
+            >
+              {entry.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function StoryboardWaiting({
+  step,
+  awaiting,
+  written,
+  drawn,
+  busy,
+  writingPanels,
+  drawingPanels,
+  atExtractGate,
+  atSheetsGate,
+  atSeamGate,
+  atLockGate,
+  done,
+  runPhase,
+  writeShots,
+  drawPanels,
+}: {
+  step: StoryboardStepId;
+  awaiting: string | null;
+  written: number;
+  drawn: number;
+  busy: boolean;
+  writingPanels: boolean;
+  drawingPanels: boolean;
+  atExtractGate: boolean;
+  atSheetsGate: boolean;
+  atSeamGate: boolean;
+  atLockGate: boolean;
+  done: Set<string>;
+  runPhase: (phase: string) => void;
+  writeShots: () => void;
+  drawPanels: () => void;
+}) {
+  const studio = useStudio();
+
+  if (atExtractGate) {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("panels")} disabled={busy}>
+            {busy ? "working…" : "Approve cast & continue"}
+          </Button>
+        }
+      >
+        The roster is named. Check the chips below, then storyboard against those names —
+        sheets are drawn after the panels.
+      </WaitingOn>
+    );
+  }
+  if (atSheetsGate) {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("seams")} disabled={busy}>
+            {busy ? "working…" : "Approve sheets & continue"}
+          </Button>
+        }
+      >
+        Character and environment sheets are ready. Check them below, then continue to
+        blocking and continuity.
+      </WaitingOn>
+    );
+  }
+  if (atSeamGate) {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("lock")} disabled={busy}>
+            {busy ? "working…" : "Approve seams & lock"}
+          </Button>
+        }
+      >
+        Blocking and seam fixes are on the board. Mise then looks at the panels next to the
+        sheets.
+      </WaitingOn>
+    );
+  }
+  if (step === "extract" || awaiting === "extract" || (!done.has("extract") && !written)) {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("extract")} disabled={busy}>
+            {busy ? "working…" : "Extract the cast"}
+          </Button>
+        }
+      >
+        Name every recurring character and place. Sheets come after the storyboard. You can
+        still add designs by hand below.
+      </WaitingOn>
+    );
+  }
+  if (step === "panels" || awaiting === "panels") {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("panels")} disabled={busy}>
+            {busy ? "working…" : "Run panels crew"}
+          </Button>
+        }
+      >
+        Write and draw the panels against that named roster.
+      </WaitingOn>
+    );
+  }
+  if (written && drawn < written && step !== "sheets" && step !== "seams" && step !== "lock") {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={drawPanels} disabled={drawingPanels}>
+            {drawingPanels ? "drawing…" : "▦ draw the panels"}
+          </Button>
+        }
+      >
+        {written - drawn} shot{written - drawn === 1 ? "" : "s"} written but not sketched. A
+        panel reaches no renderer, so this changes no scene&apos;s state.
+      </WaitingOn>
+    );
+  }
+  if (step === "sheets" || awaiting === "sheets") {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("sheets")} disabled={busy}>
+            {busy ? "working…" : "Draw character & environment sheets"}
+          </Button>
+        }
+      >
+        Draw character and environment sheets from the names mise minted.
+      </WaitingOn>
+    );
+  }
+  if (step === "seams" || awaiting === "seams") {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("seams")} disabled={busy}>
+            {busy ? "working…" : "Run seams crew"}
+          </Button>
+        }
+      >
+        Block each frame against the sheets, then a continuity pass on every chain and
+        bridge.
+      </WaitingOn>
+    );
+  }
+  if (atLockGate || step === "lock") {
+    return (
+      <WaitingOn
+        action={
+          <Button tone="primary" onClick={() => runPhase("lock")} disabled={busy}>
+            {busy ? "working…" : "Lock cast against panels"}
+          </Button>
+        }
+      >
+        Mise looks at the panels next to the sheets — a flock that became one bird is
+        caught here, not after the still.
+      </WaitingOn>
+    );
+  }
+  if (written && done.has("lock")) {
+    return (
+      <WaitingOn
+        tone="quiet"
+        action={<Button onClick={() => studio.goStage("assets")}>→ Assets</Button>}
+      >
+        Cast and sets are locked. Next is the still each shot opens on.
+      </WaitingOn>
+    );
+  }
+  if (written) {
+    return (
+      <WaitingOn
+        tone="quiet"
+        action={<Button onClick={() => studio.goStage("assets")}>→ Assets</Button>}
+      >
+        Every shot is written and drawn. Next is the still each one opens on.
+      </WaitingOn>
+    );
+  }
+  return (
+    <WaitingOn
+      action={
+        <Button tone="primary" onClick={writeShots} disabled={writingPanels}>
+          {writingPanels ? "writing…" : "✎ write the shots"}
+        </Button>
+      }
+    >
+      No shot grammar yet. The model writes the shot size, angle and camera move for every
+      scene at once — it has to see them together to vary them.
+    </WaitingOn>
+  );
+}
+
+const EXTRACT_AGENTS = ["style-paper-cutout", "style-claymation", "mise-en-scene"];
+const SHEET_AGENTS = ["character-sheet", "set-designer"];
+const SEAM_AGENTS = ["mise-en-scene", "coherence", "continuity"];
+
+/** Review the named roster after extract — before panels. Sheets are not drawn yet. */
+function ExtractGate({
   board,
   onRerun,
   busy,
@@ -263,10 +436,10 @@ function DesignGate({
     <div className="mb-5 space-y-3 rounded-2xl border border-warm/40 bg-warm/5 p-4">
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="text-[11px] font-medium uppercase tracking-wide text-warm">
-          Design gate
+          Cast gate
         </span>
         <span className="text-[11px] text-zinc-500">
-          Approve the named roster and the sheets drawn from it before blocking.
+          Approve the named roster before the storyboard. Sheets come after the panels.
         </span>
         <button
           onClick={onRerun}
@@ -274,7 +447,68 @@ function DesignGate({
           className="ml-auto rounded-lg px-2 py-1 text-[10px] text-zinc-500
             transition-colors hover:bg-hover hover:text-zinc-800 disabled:opacity-40"
         >
-          re-run designs
+          re-run extract
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {board.staging.map((entry) => {
+          const bound = board.beats.filter((beat) => (beat.staging ?? []).includes(entry.id)).length;
+          return (
+            <button
+              key={entry.id}
+              onClick={() => studio.setStagingPick(entry.id)}
+              className="flex items-center gap-2 rounded-full border border-edge bg-panel py-1
+                pl-1 pr-3 text-left transition-colors hover:border-zinc-400"
+            >
+              <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-ink text-[12px] text-zinc-400">
+                {KIND_LOOK[entry.kind].icon}
+              </span>
+              <span>
+                <span className="block text-[11px] font-medium text-zinc-800">{entry.name}</span>
+                <span className="block text-[10px] text-zinc-400">
+                  {KIND_LOOK[entry.kind].label} · bound {bound}/{total}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+        {!board.staging.length ? (
+          <p className="text-[11px] text-zinc-500">No designs yet — add one by hand or re-run.</p>
+        ) : null}
+      </div>
+      <AgentTurns names={EXTRACT_AGENTS} />
+    </div>
+  );
+}
+
+/** Review sheets and bindings after the sheets phase — before seams run. */
+function SheetsGate({
+  board,
+  onRerun,
+  busy,
+}: {
+  board: Board;
+  onRerun: () => void;
+  busy: boolean;
+}) {
+  const studio = useStudio();
+  const total = board.beats.length || 1;
+  return (
+    <div className="mb-5 space-y-3 rounded-2xl border border-warm/40 bg-warm/5 p-4">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-warm">
+          Sheets gate
+        </span>
+        <span className="text-[11px] text-zinc-500">
+          Approve the sheets drawn from the named roster before blocking.
+        </span>
+        <button
+          onClick={onRerun}
+          disabled={busy}
+          className="ml-auto rounded-lg px-2 py-1 text-[10px] text-zinc-500
+            transition-colors hover:bg-hover hover:text-zinc-800 disabled:opacity-40"
+        >
+          re-run sheets
         </button>
       </div>
       <div className="flex flex-wrap gap-3">
@@ -309,12 +543,12 @@ function DesignGate({
           <p className="text-[11px] text-zinc-500">No designs yet — add one by hand or re-run.</p>
         ) : null}
       </div>
-      <AgentTurns names={DESIGN_AGENTS} />
+      <AgentTurns names={SHEET_AGENTS} />
     </div>
   );
 }
 
-/** Review joins, scene identity and blocking after the seams phase — before panels. */
+/** Review joins, scene identity and blocking after the seams phase — before lock. */
 function SeamGate({
   board,
   onRerun,

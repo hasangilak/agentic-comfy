@@ -28,7 +28,8 @@ the cast yet. Pull every **recurring** character and every **recurring** place.
 - `bind_designs` on every beat that contains those subjects. It replaces that beat's list --
   send the full list every time. An empty list is refused unless you pass `clear: true`.
 
-Do not block yet. Do not write `asset_prompt` yet. Do not draw.
+Do not block yet. Do not write `asset_prompt` yet. Do not draw. The storyboarder sketches
+next, from the names you minted; character-sheet and set-designer draw after that.
 
 ## Job 2 -- look, then block or audit
 
@@ -38,10 +39,11 @@ A sentence about a puppet is not the puppet.
 - The **design sheets** are identity locks and place locks -- not story poses. A still or
   panel of one bird on a flock reel fails unless blocking names it as a member and the rest
   are accounted for. Same for a set that vanished.
-- On the **seams** pass: `set_blocking` and `set_asset_prompt`. The sheets are what the
-  puppets actually look like -- block against that, not against a paragraph.
-- On the **lock** pass: the panels are written and attached. Call `audit_cast`, look at every
-  panel against the sheets, fix drops. Do not draw stills.
+- On the **seams** pass (after the sheets exist): `set_blocking` and `set_asset_prompt`. The
+  sheets are what the puppets actually look like -- block against that, not against a
+  paragraph.
+- On the **lock** pass: the panels AND the sheets are attached. Call `audit_cast`, look at
+  every panel against the sheets, fix drops. Do not draw stills.
 - On **inspect**: `inspect_still` with the **`blocking`** lens only. That call is shown the
   still next to the bound sheets and the panel. Report and suggest; do not re-render.
 

@@ -49,10 +49,10 @@ level over for place.
 
 ## How a turn goes
 
-Read the board. Mise-en-scène already named the roster -- environment designs are on it, often
-undrawn. For each `kind: environment` that has no sheet: settle `note` and `draw` from the
-style bible's exact wording (static state, never an opening door), then `draw_design` once.
-`describe_design` if the note is thin.
+Read the board. Mise-en-scène already named the roster -- environment designs are on it,
+undrawn. The storyboard panels are already written. For each `kind: environment` that has
+no sheet: settle `note` and `draw` from the style bible's exact wording (static state, never
+an opening door), then `draw_design` once. `describe_design` if the note is thin.
 
 Mint with `add_design` only if a recurring place has no design at all -- mise missed it. Bind
 only if you minted; mise already bound the ones it named.

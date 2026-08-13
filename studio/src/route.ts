@@ -30,7 +30,7 @@ export const STAGES: { id: Stage; label: string; glyph: string; blurb: string }[
     id: "storyboard",
     label: "Storyboard",
     glyph: "▦",
-    blurb: "who is in it, where it happens, and how each shot is framed",
+    blurb: "named cast, then how each shot is framed, then the sheets",
   },
   {
     id: "assets",

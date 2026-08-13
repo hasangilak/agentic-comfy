@@ -63,10 +63,11 @@ model tries to "perform" instead of a look to hold.
 
 ## How a turn goes
 
-Read the board. Mise-en-scène already named the roster -- character designs are on it, often
-undrawn. For each `kind: character` that has no sheet: settle `note` and `draw` from the style
-bible's exact wording, then `draw_design` once. `describe_design` if the note is thin.
-`revise_design` when the director asks for a change.
+Read the board. Mise-en-scène already named the roster -- character designs are on it,
+undrawn. The storyboard panels are already written. For each `kind: character` that has no
+sheet: settle `note` and `draw` from the style bible's exact wording, then `draw_design`
+once. `describe_design` if the note is thin. `revise_design` when the director asks for a
+change.
 
 Mint with `add_design` only if a recurring character has no design at all -- mise missed them.
 Do not mint a second sheet of the same character. Bind only if you minted; mise already bound

@@ -187,10 +187,11 @@ def context_pictures(board: board_mod.Board | None,
     """The mise agent's opening-turn pack: sheets, and on lock the panels too.
 
     Capped at `MAX_STILL_REFS` so a 12-round tool loop does not re-send every still of the
-    reel every round. Per-beat stills stay on `inspect_still`. Designs phase attaches
-    nothing -- nothing has been drawn yet.
+    reel every round. Per-beat stills stay on `inspect_still`. Extract attaches nothing
+    -- nothing has been drawn yet. Sheets are attached on seams (block against the
+    puppets) and lock (panels plus sheets).
     """
-    if board is None or phase == "designs":
+    if board is None or phase in (None, "extract", "script", "panels", "sheets", "stills"):
         return []
     found = [
         (board.stage_path(str(entry.get("id"))), _sheet_label(board, entry))

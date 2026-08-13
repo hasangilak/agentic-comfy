@@ -175,8 +175,8 @@ export function Assets() {
               </Button>
             }
           >
-            Every shot has a still. Review them in StillChat if you want, then run the three
-            check lenses — they report and suggest; they never re-render.
+            Every shot has a still. Mise looks at each still beside the sheets and the panel —
+            the three check lenses report and suggest; they never re-render.
           </WaitingOn>
         ) : atInspectGate ? (
           <WaitingOn

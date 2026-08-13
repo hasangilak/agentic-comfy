@@ -8,9 +8,10 @@ import { ActivityTimeline } from "./ActivityTimeline";
  * Who is working on this reel, what they are doing, and what they handed back.
  *
  * A stage is a cast rather than one agent (`paperreel/crew.py`), and storyboard/assets are
- * further sliced into gated phases so the director can approve sheets and seams before the
- * next specialists run. Default buttons run the next phase; "skip gates" is the escape hatch
- * that burns through a whole stage the way this panel used to.
+ * further sliced into gated phases so the director can approve the named roster, the
+ * panels, the sheets and the seams before the next specialists run. Default buttons run
+ * the next phase; "skip gates" is the escape hatch that burns through a whole stage the
+ * way this panel used to.
  *
  * Three things are shown and they are deliberately three rather than one panel of everything:
  *
