@@ -15,6 +15,18 @@
       "blocking": "The spider puppet hangs from the upper-right third of the frame on a vertical line. The flea puppet sits entangled near the center of the web in the middle third. Dark paper branches frame the outer edges on physical riser planes.",
       "n": 1,
       "panel": "Wide shot, eye level, static camera. The complex web network stretches across two main foliage branches spanning the frame, with one entangled flea trapped in the lower third and one spider entering near the top-right corner. A vertical dotted arrow drawn on top points straight down from the spider along its hanging thread toward the center of the vertical 9:16 layout.",
+      "render": {
+        "at": "2026-08-13T09:40:33+00:00",
+        "cost": 0.1443,
+        "draft": false,
+        "fingerprint": "337adb5374355829",
+        "frames": 124,
+        "own": "804dd97c48a07bc7",
+        "render_seconds": 132.5,
+        "seconds": 5.17,
+        "seed": 1102,
+        "steps": 8
+      },
       "scene": "Wide shot of the dew-dappled web suspended between dark paper branches",
       "seconds": 5.0,
       "source": "reference",
@@ -39,6 +51,18 @@
       "blocking": "The spider puppet hangs midway down the vertical thread in the upper-right third of the web, facing downward toward the flea puppet fixed in the center third of the web.",
       "n": 2,
       "panel": "Wide shot, eye level, static camera continuing the same setup. The same single spider sits lower along its central thread, hovering in the middle third of the frame directly above the one entangled flea in the lower third, with the two framing branches still. A downward curved arrow over the spider's front edge indicates its subtle head tilt toward the trapped insect below.",
+      "render": {
+        "at": "2026-08-13T09:42:16+00:00",
+        "cost": 0.11,
+        "draft": false,
+        "fingerprint": "67ee43bc72865aa6",
+        "frames": 124,
+        "own": "1fd3b9697a0b78b0",
+        "render_seconds": 101.0,
+        "seconds": 5.17,
+        "seed": 1103,
+        "steps": 8
+      },
       "scene": "Wide shot of the dew-dappled web suspended between dark paper branches",
       "seconds": 5.0,
       "source": "bridge",
@@ -61,6 +85,18 @@
       "blocking": "The flea puppet sits entangled in the lower-center third facing frame right. The spider puppet hangs directly above it in the upper-center third, facing downward.",
       "n": 3,
       "panel": "Medium shot, low angle looking slightly up. One spider looms in the upper third of the frame while the single flea sits pinned to web strands in the lower third, flanked by two primary branch sections. A small upward arrow points right at one of the flea's tiny front legs, marking its isolated lift against the otherwise locked composition.",
+      "render": {
+        "at": "2026-08-13T09:44:28+00:00",
+        "cost": 0.1438,
+        "draft": false,
+        "fingerprint": "7d8600abfbe7dd5f",
+        "frames": 124,
+        "own": "40ec9972bb816802",
+        "render_seconds": 132.1,
+        "seconds": 5.17,
+        "seed": 1104,
+        "steps": 8
+      },
       "scene": "Medium shot of the spider and flea on the paper web strands",
       "seconds": 5.0,
       "source": "reference",
@@ -85,6 +121,18 @@
       "blocking": "The sharp jointed leg tip of the spider puppet rests against a cream white web thread in the center of the frame, directly adjacent to the flea puppet's body on the right third.",
       "n": 4,
       "panel": "Extreme close-up, dutch tilt, static camera. The sharp tip of one spider leg dominates the upper half of the frame, touching down onto a single taut thread that holds one trapped flea's body visible in the soft-focus lower third. A sharp downward arrow directly over the leg tip indicates the downward pressing motion onto the targeted thread.",
+      "render": {
+        "at": "2026-08-13T09:46:42+00:00",
+        "cost": 0.144,
+        "draft": false,
+        "fingerprint": "06d1ce10a48ae9e1",
+        "frames": 124,
+        "own": "eabeb7d3a9b0deee",
+        "render_seconds": 132.3,
+        "seconds": 5.17,
+        "seed": 1105,
+        "steps": 8
+      },
       "scene": "Macro close-up of the spider's leg severing the web thread",
       "seconds": 5.0,
       "source": "reference",
@@ -1577,8 +1625,20 @@
       "lock"
     ]
   },
+  "last_render": {
+    "at": "2026-08-13T09:46:43+00:00",
+    "beats": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "container_seconds": 695.3,
+    "cost": 0.7572
+  },
   "seconds": 10.0,
   "seed": 1101,
+  "spend_seconds": 695.3,
   "staging": [
     {
       "draw": "Character turnaround sheet showing front view and three-quarter view side-by-side on a plain neutral cream background. Handcrafted layered paper-cutout stop-motion puppet. The spider puppet has a soot-black cardstock body, eight glossy black glass bead eyes, six segmented legs joined with visible brass split-pin rivets, and warm amber paper pedipalp slivers. Clean crisp cut edges with pale paper core visible, subtle paper texture. Neutral resting pose, isolated puppet turnaround sheet, no scenery, no other characters, no shadows.",
