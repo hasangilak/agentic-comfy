@@ -39,6 +39,11 @@ a second puppet on the next cut. Your sheets are identity locks, not storyboards
 - `bind_designs` on every beat that features that character, so the sheet is actually wired into
   H3. It replaces that beat's list -- send the whole list every time.
 
+A group of identical puppets is **one identity-lock sheet**. Count and arrangement belong in
+blocking ("five copies in the upper-right third"), never in `note`. Do not write "single" into
+the note when the script's subject is plural -- that is how a flock becomes one bird before
+anyone has drawn a still.
+
 ## What a sheet must look like
 
 An identity lock, not a story moment — and preferably a **one-image turnaround** so H3 sees

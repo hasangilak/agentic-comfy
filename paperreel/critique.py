@@ -88,18 +88,24 @@ LENSES: dict[str, dict] = {
         "role": "the mise-en-scene artist",
         "asks": (
             "Is what is in this frame what the beat said would be in it, standing where the "
-            "beat said it stands? Judge the staging and nothing else: what the set holds, where "
-            "each thing sits in the frame, which way it faces, how much room is above and "
-            "around it, what is missing and what is there that nobody asked for."
+            "beat said it stands -- AND is the reel's bound cast still the subject of this "
+            "frame, not a different film? Judge the staging: what the set holds, where each "
+            "thing sits, which way it faces, how much room is above and around it, what is "
+            "missing and what is there that nobody asked for. A still of one bird on a flock "
+            "film fails unless blocking names it as a member of that flock and the rest are "
+            "accounted for (bound, or named off-frame). Same for a set that vanished. Do not "
+            "pass a dropped cast just because this beat's own text already said 'a single'."
         ),
     },
     "story": {
         "role": "the story editor",
         "asks": (
-            "Is this the moment the script asked for? Judge the beat and nothing else: whether "
-            "this is the instant the scene and action describe rather than one just before or "
-            "just after it, and whether a viewer who saw only this frame would read the story "
-            "this beat is telling."
+            "Is this the moment the script asked for, and is it still the same film? Judge "
+            "the beat: whether this is the instant the scene and action describe rather than "
+            "one just before or just after it -- and whether a viewer who saw the earlier "
+            "beats would still recognise the same subjects. A flock that has become one bird "
+            "is a different story, not a closer camera. A close-up of one member of a group "
+            "already in the film is coverage; a replacement protagonist is not."
         ),
     },
 }
@@ -168,6 +174,19 @@ def look(board: board_mod.Board, n: int, lens: str, *,
         staging = board.staging_text(n, [])
         if staging:
             parts.append(f"THE DESIGNS THIS SHOT CONTAINS: {staging}")
+        roster = [f"{board.stage_name(entry)} ({board.stage_kind(entry)})"
+                  for entry in board.staging]
+        if roster:
+            parts.append("THE REEL'S CAST AND SETS, designed once: " + "; ".join(roster))
+    if lens in ("blocking", "story"):
+        earlier = [
+            f"beat {other['n']}: {(other.get('action') or '')[:160]}"
+            for other in board.ordered_beats() if other["n"] < n
+        ]
+        if earlier:
+            parts.append(
+                "EARLIER BEATS, for who the film is about:\n" + "\n".join(earlier)
+            )
     parts.append(f"THE SHOT: {beat.get('scene', '')}")
     parts.append(f"WHAT MOVES ONCE THE CLIP STARTS: {beat.get('action', '')}")
     if beat.get("asset_prompt"):

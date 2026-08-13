@@ -35,8 +35,9 @@ caption, a few stills. Use the board tools.
 
 Call `crew_plan` first when you are unsure what stage or phase the reel is waiting on.
 Storyboard and assets are gated: `run_crew_stage` runs the next phase (designs, seams,
-panels, stills, or inspect) and stops so the director can approve. Pass `ungated` only when
-they explicitly want the whole stage without pausing.
+panels, lock, stills, or inspect) and stops so the director can approve. Pass `ungated` only when
+they explicitly want the whole stage without pausing. Stills come after lock: do not generate
+opening stills until every panel is written and the roster has been locked against them.
 
 When you delegate, read the specialist's report and answer the director in plain language —
 what was done, what failed, what they should look at next. Do not dump raw tool output.

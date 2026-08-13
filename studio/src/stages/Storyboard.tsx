@@ -13,7 +13,8 @@ import { StagePage, WaitingOn } from "./parts";
  * Stage two: what the film is made of, and how each shot is framed.
  *
  * The crew walks this stage in gated phases — designs (sheets) → seams (blocking + continuity)
- * → panels — so the director can approve consistency locks before the next specialists run.
+ * → panels → lock (roster against those panels) — so the director can approve consistency
+ * locks before anyone draws a still.
  * Manual design / panel controls stay as secondary paths: stages stay separable.
  */
 export function Storyboard() {
@@ -40,6 +41,9 @@ export function Storyboard() {
     (total && !written && !done.has("designs") ? "designs" : null);
   const atDesignGate = done.has("designs") && awaiting === "seams";
   const atSeamGate = done.has("seams") && awaiting === "panels";
+  const atLockGate =
+    awaiting === "lock" ||
+    (written === total && total > 0 && done.has("panels") && !done.has("lock") && done.size > 0);
 
   const picked = board.staging.find((entry) => entry.id === studio.stagingPick) ?? null;
 
@@ -129,6 +133,24 @@ export function Storyboard() {
           >
             {written - drawn} shot{written - drawn === 1 ? "" : "s"} written but not sketched. A
             panel reaches no renderer, so this changes no scene's state.
+          </WaitingOn>
+        ) : atLockGate ? (
+          <WaitingOn
+            action={
+              <Button tone="primary" onClick={() => runPhase("lock")} disabled={busy}>
+                {busy ? "working…" : "Approve storyboard & lock cast"}
+              </Button>
+            }
+          >
+            Every shot is written. Lock the cast and sets against those panels before anyone
+            draws a still — a flock that became one bird is caught here, not after the image.
+          </WaitingOn>
+        ) : written && done.has("lock") ? (
+          <WaitingOn
+            tone="quiet"
+            action={<Button onClick={() => studio.goStage("assets")}>→ Assets</Button>}
+          >
+            Cast and sets are locked. Next is the still each shot opens on.
           </WaitingOn>
         ) : written ? (
           <WaitingOn

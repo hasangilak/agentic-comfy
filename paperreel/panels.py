@@ -90,7 +90,10 @@ SHOT_GRAMMAR = (
     "CAMERA MOVE, only when the beat needs one: static, slow push in, pull back, pan left or "
     "right, tilt up or down. A locked-off static camera is the default of this film and needs no "
     "excuse.\n"
-    "WHERE THE SUBJECT IS: which third of the frame, facing which way, how much headroom.\n"
+    "WHERE THE SUBJECT IS: which third of the frame, facing which way, how much headroom. "
+    "If the shot holds more than one of a bound design, say how many ('five cranes in the "
+    "upper-right third', not 'a bird'). A close-up of one member of a group already in the "
+    "film must still name the rest of the group, or that this is one of them.\n"
     "ARROWS: a storyboard panel carries arrows drawn on top of it for movement. Say what they "
     "point at -- the subject's path through the frame, or the camera's."
 )
@@ -115,6 +118,9 @@ SYSTEM = (
     "`reference`, `asset` or `bridge` begins a new shot and is where a new setup belongs.\n\n"
     "Vary the shot sizes across the shots that ARE new. A reel of five identical wide shots is the "
     "failure this pass exists to catch, and you are the one who can see all of them at once.\n\n"
+    "Name how many of each bound design are in the sketch. 'A single bird' on a flock roster is "
+    "the same fail as a new protagonist -- a close-up of one member of the group already in the "
+    "film must still say the rest of the group is there, or that this is one of them.\n\n"
     "Write plainly, present tense, no markdown, no headings, no numbered lists inside a panel. One "
     "or two sentences each. Never mention the film's materials, its texture, its colour or its "
     "lighting -- whatever this reel is made of, a panel is graphite on paper."
@@ -161,7 +167,9 @@ def _digest(board: board_mod.Board, beats: list[int]) -> str:
             f'beat {n} -- {board.seconds_for(beat):g}s, join: {source}'
             + (" (the same shot as the beat before it, continuing)"
                if board_mod.chains(source) else " (a new shot)")
-            + (f'\n  in shot: {", ".join(names)}' if names else "")
+            + (f'\n  in shot: {", ".join(names)}'
+               + " — say how many of each are in the sketch"
+               if names else "")
             + f'\n  scene: {beat.get("scene") or "(nothing written)"}'
             + f'\n  action: {beat.get("action") or "(nothing written)"}'
         )

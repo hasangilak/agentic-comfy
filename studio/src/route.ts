@@ -92,9 +92,34 @@ export function buildRoute(route: Route): string {
  */
 export function resolveStage(board: Board | null): Stage {
   if (!board || !board.beats.length) return "script";
-  if (!board.beats.some((beat) => beat.panel?.trim())) return "storyboard";
+  if (!allPanelsWritten(board)) return "storyboard";
+  if (needsLock(board)) return "storyboard";
   if (!board.manual_stills && board.assets_needed.length) return "assets";
   return "studio";
+}
+
+/** Every beat has a panel line. One of four is not a storyboard. */
+export function allPanelsWritten(board: Board): boolean {
+  return board.beats.length > 0 && board.beats.every((beat) => Boolean(beat.panel?.trim()));
+}
+
+/**
+ * A gated storyboard that has panels but has not run the lock pass yet.
+ * Boards that never gated (empty cursor) are unchanged: hand-written panels are enough.
+ * Mirrors `crew.needs_lock`.
+ */
+export function needsLock(board: Board): boolean {
+  if (!allPanelsWritten(board)) return false;
+  const done = board.crew?.done ?? [];
+  const awaiting = board.crew?.awaiting ?? null;
+  if (done.includes("lock")) return false;
+  if (!done.length && awaiting === null) return false;
+  return true;
+}
+
+/** Stills may be generated: every panel is written, and a gated board has locked the roster. */
+export function stillsAllowed(board: Board): boolean {
+  return allPanelsWritten(board) && !needsLock(board);
 }
 
 /**

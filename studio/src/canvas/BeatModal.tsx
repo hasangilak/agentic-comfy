@@ -12,6 +12,7 @@ import {
   type GeminiImageSize,
 } from "../types";
 import { useBusy, useDraft, useStudio } from "../useStudio";
+import { stillsAllowed } from "../route";
 import { Badge, Button, inputClass } from "../ui";
 import { AddPicture, type AddPictureHandle } from "./AddPicture";
 import { PromptField } from "./Mentions";
@@ -210,6 +211,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
   };
   const isBridge = beat.source === "bridge";
   const carrying = beat.source === "reference" && beat.carry;
+  const canGenerate = stillsAllowed(board);
   const [geminiModel, setGeminiModel] = useState<GeminiImageModel>(
     beat.gemini_model ?? DEFAULT_GEMINI_IMAGE_MODEL,
   );
@@ -522,7 +524,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                       {board.manual_stills ? null : (
                         <Button
                           tone="ghost"
-                          disabled={generating}
+                          disabled={generating || !canGenerate}
                           onClick={() =>
                             void studio.guard(() =>
                               api.assets(board.slug, [beat.n], {
@@ -532,7 +534,9 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                             )
                           }
                           title={
-                            board.reference
+                            !canGenerate
+                              ? "write every storyboard panel, and lock the cast, before a still is drawn"
+                              : board.reference
                               ? "generate this still — the cast is matched to the reel's " +
                                 "reference, so only the setting changes"
                               : "generate this still — it is the first, so it becomes the " +

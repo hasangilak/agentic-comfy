@@ -439,7 +439,7 @@ export type StudioEvent =
  *
  * A stage is a CAST rather than one agent (`paperreel/crew.py`), so the unit here is a stage
  * plus the agents that work it in order. Stages with consistency work are further sliced into
- * gated phases — designs, seams, panels, stills, inspect — so the director can approve between
+ * gated phases — designs, seams, panels, lock, stills, inspect — so the director can approve between
  * specialists. `lens` is set only on a member that is there to CHECK rather than to make.
  */
 export type CrewPhaseId =
@@ -447,6 +447,7 @@ export type CrewPhaseId =
   | "designs"
   | "seams"
   | "panels"
+  | "lock"
   | "stills"
   | "inspect";
 

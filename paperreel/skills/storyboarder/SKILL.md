@@ -35,6 +35,11 @@ What a panel line has to say:
 
 {{SHOT_GRAMMAR}}
 
+Name how many of each bound design are in the sketch. "A single bird" on a flock roster is
+the same fail as writing a new protagonist into the script -- a close-up of one member of
+the group already in the film must still say the rest of the group is there, or that this
+is one of them.
+
 ## What is not yours
 
 You do not write the story. If a scene or action line is wrong, say so in your reply and leave

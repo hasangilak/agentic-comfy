@@ -1,7 +1,8 @@
 """What the three agents can do, as tools over the modules that already do it.
 
-Every tool here is a thin call into `agent.py`, `board.py`, `coherence.py`, `develop.py`,
-`panels.py`, `pictures.py`, `planner.py`, `staging.py` or `stills.py`. That is the whole design
+Every tool here is a thin call into `agent.py`, `board.py`, `cast.py`, `coherence.py`,
+`develop.py`, `panels.py`, `pictures.py`, `planner.py`, `staging.py` or `stills.py`. That is
+the whole design
 and it is worth stating plainly: the measured prompt scaffolding, the fingerprint rules, the
 still review, the join guards and the picture budget all keep exactly one copy, in the module
 that was written around them. An agent is a different way to *reach* those, never a second
@@ -35,6 +36,7 @@ import copy
 
 from . import agent as agent_mod
 from . import board as board_mod
+from . import cast as cast_mod
 from . import coherence, config, critique, develop, llm as llm_mod, panels, pictures
 from . import planner, skills, staging, stills
 from .runtime import Context, Outcome, Tool, ToolRefused
@@ -49,7 +51,8 @@ def toolbox(llm: llm_mod.LLM | None = None) -> dict[str, Tool]:
     speaker = llm or llm_mod.provider()
     found: dict[str, Tool] = {}
     for make in (_shared, _script_tools, _storyboard_tools, _asset_tools,
-                 _style_tools, _blocking_tools, _coherence_tools, _check_tools):
+                 _style_tools, _blocking_tools, _coherence_tools, _cast_tools,
+                 _check_tools):
         for tool in make(speaker):
             found[tool.spec["name"]] = tool
     return found
@@ -427,7 +430,16 @@ def _storyboard_tools(llm: llm_mod.LLM) -> list[Tool]:
         raw = arguments.get("ids")
         if not isinstance(raw, list):
             raise ToolRefused("ids has to be a list of design ids, even for one")
-        bound = board.bind_stage(n, [str(value) for value in raw])
+        ids = [str(value) for value in raw]
+        # Empty list wipes every bind on the beat. Mise-en-scene on the flock reel did
+        # exactly that -- "beat N: nothing" -- and the sheets never reached the still.
+        # Require an explicit clear so a model that meant "leave them" cannot unbind.
+        if not ids and not arguments.get("clear"):
+            raise ToolRefused(
+                "ids: [] wipes every bind on this beat. Pass clear=true if you mean that; "
+                "otherwise send the full list of design ids this shot still needs."
+            )
+        bound = board.bind_stage(n, ids)
         board.save()
         context.hooks.changed()
         named = ", ".join(board.stage_name(board.stage_entry(entry_id))
@@ -511,11 +523,14 @@ def _storyboard_tools(llm: llm_mod.LLM) -> list[Tool]:
         Tool(spec=llm.tool(
             "bind_designs",
             "Say which designs appear in one shot. This REPLACES what that beat was bound to, "
-            "so send the complete list every time, and an empty list to unbind everything.",
+            "so send the complete list every time. An empty list wipes every bind and is "
+            "refused unless clear is true.",
             {
                 "n": {"type": "integer", "description": "which beat, 1-based"},
                 "ids": {"type": "array", "items": {"type": "string"},
                         "description": "every design in this shot, by id"},
+                "clear": {"type": "boolean",
+                          "description": "true to unbind everything. Required when ids is empty."},
             },
             ["n", "ids"],
         ), run=bind_designs),
@@ -826,6 +841,51 @@ def _coherence_tools(llm: llm_mod.LLM) -> list[Tool]:
     ]
 
 
+# ## Cast continuity
+#
+# Who is in the film, across beats. Writes nothing; mise-en-scene (primary) and coherence
+# (already re-audits after fixes) repair with the ordinary board tools. The flock reel's
+# flock-to-one-bird split was written into the board long before a still was drawn.
+
+
+def _cast_tools(llm: llm_mod.LLM) -> list[Tool]:
+    def audit_cast(context: Context, arguments: dict) -> Outcome:
+        board = context.need_board()
+        deep = arguments.get("deep")
+        if deep is None:
+            deep = True
+        findings = cast_mod.audit(
+            board, deep=bool(deep), llm=context.llm or llm,
+        )
+        return cast_mod.format_report(findings), [
+            {"op": "audit_cast",
+             "summary": f"{len(findings)} cast finding(s)"},
+        ]
+
+    return [
+        Tool(spec=llm.tool(
+            "audit_cast",
+            "Read-only audit of who is in the film across beats: a flock that becomes one "
+            "bird, a character sheet that says 'single' while the script's subject is a "
+            "group, a beat that names a design but binds none, a one-take request broken "
+            "by a cut that also changes the subject. Returns findings only — fix them with "
+            "set_blocking / bind_designs / set_asset_prompt / set_beat, then re-audit. "
+            "Costs nothing when deep is false (deterministic only).",
+            {
+                "deep": {
+                    "type": "boolean",
+                    "description": (
+                        "When true (default), run one cheap structured pass if the "
+                        "deterministic checks found nothing. Set false for a free "
+                        "deterministic-only scan."
+                    ),
+                },
+            },
+            [],
+        ), run=audit_cast),
+    ]
+
+
 # ## The cross-check
 #
 # One tool, given to the three agents that check the assets stage's work. It looks and it
@@ -1036,16 +1096,17 @@ def _director_delegate(llm: llm_mod.LLM) -> list[Tool]:
         ), run=delegate_agent),
         Tool(spec=llm.tool(
             "run_crew_stage",
-            "Run the next gated phase of a stage (designs, seams, panels, stills, or inspect) "
-            "and stop so the director can approve. Pass ungated=true only when the director "
-            "explicitly wants the whole stage without pausing. Prefer this over burning through "
-            "every specialist at once.",
+            "Run the next gated phase of a stage (designs, seams, panels, lock, stills, or "
+            "inspect) and stop so the director can approve. Pass ungated=true only when the "
+            "director explicitly wants the whole stage without pausing. Prefer this over "
+            "burning through every specialist at once.",
             {
                 "stage": {"type": "string", "enum": ["script", "storyboard", "assets"],
                           "description": "script, storyboard, or assets"},
                 "phase": {"type": "string",
                           "description": ("optional phase id: script, designs, seams, panels, "
-                                          "stills, inspect. Default is the awaiting phase.")},
+                                          "lock, stills, inspect. Default is the awaiting "
+                                          "phase.")},
                 "note": {"type": "string",
                          "description": "anything specific the director wants them to know"},
                 "ungated": {"type": "boolean",

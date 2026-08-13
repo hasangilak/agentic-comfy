@@ -144,13 +144,22 @@ def main() -> int:
     return 0
 
 
-def _default_brief(agent: str, board) -> str:
+def _default_brief(agent: str, board, phase: str | None = None) -> str:
     """What the orchestrator would say to this agent, for a director who said nothing.
 
     Found by asking the crew rather than by a table here: an agent appears in more than one
     cast now and is told something different in each, so "which stage is this agent's" has no
-    single answer and the pair (stage, role) is what carries the brief.
+    single answer and the pair (stage, role) -- plus the phase, when mise runs twice -- is
+    what carries the brief.
     """
+    if phase:
+        stage = crew.PHASE_STAGE[phase]
+        for role in crew.roles_for_phase(phase):
+            who = crew._resolve(role, board)
+            if who == agent:
+                return crew._brief(stage, role, crew.CHECKERS.get(role)
+                                   if crew._is_check(stage, role) else None, "", board,
+                                   phase=phase)
     for stage in crew.STAGES:
         for role, who in zip(crew.STAGE_CAST[stage], crew.cast_for(stage, board)):
             if who == agent:
@@ -203,14 +212,16 @@ def _dry_run(args, board: board_mod.Board | None) -> int:
     if args.phase:
         names = [args.agent] if args.agent else crew.cast_for_phase(args.phase, board)
         where = crew.PHASE_STAGE[args.phase]
+        phase = args.phase
     else:
         where = args.stage or args.through or crew.next_stage(board) or "script"
         names = [args.agent] if args.agent else crew.cast_for(where, board)
+        phase = None
     for index, name in enumerate(names):
         agent = runtime.build(name)
         if index:
             print("\n" + "=" * 78 + "\n")
-        print(runtime.preview(agent, args.note.strip() or _default_brief(name, board),
+        print(runtime.preview(agent, args.note.strip() or _default_brief(name, board, phase),
                               crew.prelude(board)))
     return 0
 

@@ -58,7 +58,9 @@ If any `asset_prompt` is a single sentence or omits the layer stack, expand it w
   edge with the destination side open and named.
 - **Every `action`** — one primary motion, its direction and speed, and what stays perfectly
   still. Chain and bridge beats open with a continuity phrase and pick up the previous beat's
-  exact end-state.
+  exact end-state. The same recurring subjects persist across the reel: a close-up is coverage
+  of a member of the group already in the film, not a replacement protagonist. Do not cut an
+  unbroken take into a new lead.
 - **Every `scene`** — one short place-or-framing line; identical text for every beat of one
   continuous shot.
 
@@ -86,9 +88,10 @@ and the style bible; chain/bridge hand off time. Your prose must feed that, not 
 
 Called on a finished still, use `inspect_still` with the **`story`** lens and nothing else. You
 are one of several people looking at that picture and the others have the craft and the
-staging. Judge only the beat: is this the instant the scene and action describe rather than one
-just before or just after it, and would a viewer seeing only this frame read the story this
-beat is telling. Report the problem and a concrete fix -- you do not re-render and you do not
+staging. Judge the beat: is this the instant the scene and action describe rather than one
+just before or just after it, and would a viewer who saw the earlier beats still recognise
+the same subjects. A flock that has become one bird is a different story, not a closer
+camera. Report the problem and a concrete fix -- you do not re-render and you do not
 rewrite the beat from here; the director decides.
 
 When you are done, answer in one or two plain sentences. No markdown, no lists, no restating

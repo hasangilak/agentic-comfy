@@ -169,10 +169,24 @@ def wanted(board: board_mod.Board, requested: list[int] | None) -> list[int]:
     pictures it was conditioned on. It is the default cut now: the still goes in as <Picture 1>
     and the join does not move, so there is nothing left to protect it from.
     """
+    from . import crew as crew_mod
+
     if board.data.get("manual_stills"):
         raise StillsError(
             "this reel supplies its own opening stills, so image generation is off. Upload "
             "them, or switch the stills back to generated on the script node.",
+        )
+    # Storyboard before stills. One of four panels is not a storyboard, and a gated board
+    # that never locked the roster would draw the flock-to-one-bird split again.
+    if not crew_mod.panels_written(board):
+        raise StillsError(
+            "every beat needs a storyboard panel before a still is drawn. Write the panels "
+            "on the storyboard stage first.",
+        )
+    if crew_mod.needs_lock(board):
+        raise StillsError(
+            "the cast and sets have not been locked against the storyboard yet. Run the lock "
+            "phase on the storyboard stage first — stills come after that.",
         )
     beats = board.to_json()["assets_needed"] if requested is None else list(requested)
     unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]

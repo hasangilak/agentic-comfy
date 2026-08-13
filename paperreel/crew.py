@@ -9,8 +9,8 @@ prevent -- and a director agent would spend a model turn per decision on a quest
 statements answer for nothing.
 
     script      no beats yet          script-writer, then the style artist
-    storyboard  no panel written      style, character-sheet, set-designer, mise, coherence,
-                                      continuity, panels
+    storyboard  panels or lock missing  style, character-sheet, set-designer, mise, coherence,
+                                      continuity, panels, then mise again to lock the roster
     assets      beats waiting on a still   asset-maker, then three agents check its work
     None        nothing left that does not cost GPU money
 
@@ -65,15 +65,18 @@ STYLE = "@style"
 #   storyboard  the style artist first (bible + medium), then character-sheet (cast locks),
 #               then set-designer (place locks), then mise-en-scene binds, then coherence
 #               reconciles action/blocking/still fights, then continuity audits seams --
-#               and the panels come last because `panels._digest` names the designs a beat
-#               binds, so a panel written before the binding is a panel written about a cast
-#               it could not see.
+#               then the panels, because `panels._digest` names the designs a beat binds, so
+#               a panel written before the binding is a panel written about a cast it could
+#               not see -- then mise-en-scene again, to lock the roster against those panels
+#               before anyone draws a still. A flock that became one bird was written into
+#               the board at seams and then inspected against that beat text; the second
+#               pass is what makes that drop visible before it costs an image.
 #   assets      the maker first and the three checkers after, which is the only order that
 #               makes sense for a check.
 STAGE_CAST: dict[str, tuple[str, ...]] = {
     "script": ("script-writer", STYLE),
     "storyboard": (STYLE, "character-sheet", "set-designer", "mise-en-scene",
-                   "coherence", "continuity", "storyboarder"),
+                   "coherence", "continuity", "storyboarder", "mise-en-scene"),
     "assets": ("asset-maker", STYLE, "mise-en-scene", "script-writer"),
 }
 
@@ -89,6 +92,7 @@ STAGE_PHASES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ("designs", (STYLE, "character-sheet", "set-designer")),
         ("seams", ("mise-en-scene", "coherence", "continuity")),
         ("panels", ("storyboarder",)),
+        ("lock", ("mise-en-scene",)),
     ),
     "assets": (
         ("stills", ("asset-maker",)),
@@ -137,8 +141,9 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
                                      "design sheet from the script and style bible, draw each "
                                      "sheet once, and bind them into the beats that use them."),
     ("storyboard", "mise-en-scene"): ("Block every shot: what each frame holds and where "
-                                      "everything stands in it. Bind the designs each shot "
-                                      "contains."),
+                                      "everything stands in it. Call audit_cast first. Bind "
+                                      "the designs each shot contains -- the full list, never "
+                                      "an empty one."),
     ("storyboard", "coherence"): ("Audit action against blocking, asset prompts and look-only "
                                   "design notes for fights that make the video model walk in "
                                   "place or invent idle prop motion. Fix what fails, then "
@@ -152,6 +157,19 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
     ("assets", "asset-maker"): ("Render the opening still for every beat waiting on one, look "
                                 "at what came back, and fix what is wrong before you render "
                                 "anything twice."),
+}
+
+# Briefs that differ by phase when the same role appears twice in one stage. The lock pass
+# is mise-en-scene again, after the panels exist, and a brief that said "block every shot"
+# would have it rewrite blocking it already wrote instead of auditing the roster against
+# the sketches.
+PHASE_BRIEF_FOR: dict[tuple[str, str], str] = {
+    ("lock", "mise-en-scene"): (
+        "The panels are written. Audit the roster against every panel, blocking line and "
+        "bind: a flock that became one bird, a sheet that says single while the script's "
+        "subject is a group, a beat that names a design but binds none. Fix the drops. "
+        "Do not draw stills -- those come after this lock."
+    ),
 }
 
 # What a checker is told. One string for all three, with its own lens spliced in, because the
@@ -205,7 +223,7 @@ def phases_for(stage: str) -> list[str]:
 def next_stage(board: board_mod.Board | None) -> str | None:
     """Which stage this board is waiting on, or None when only the GPU stage is left.
 
-    The four reads mirror `resolveStage` in `studio/src/route.ts` line for line, and the
+    The reads mirror `resolveStage` in `studio/src/route.ts` line for line, and the
     duplication is deliberate rather than accidental: the Python answer is not reachable from
     the browser without adding a route, and a route is a bigger change than four lines twice.
     `crew.py --where` is what makes a disagreement between the two observable in one command.
@@ -215,11 +233,37 @@ def next_stage(board: board_mod.Board | None) -> str | None:
     """
     if board is None or not board.beats:
         return "script"
-    if not any(str(beat.get("panel") or "").strip() for beat in board.ordered_beats()):
+    if not panels_written(board):
+        return "storyboard"
+    if needs_lock(board):
         return "storyboard"
     if not board.data.get("manual_stills") and board.to_json()["assets_needed"]:
         return "assets"
     return None
+
+
+def panels_written(board: board_mod.Board | None) -> bool:
+    """Every beat has a panel line. One of four is not a storyboard."""
+    if board is None or not board.beats:
+        return False
+    return all(str(beat.get("panel") or "").strip() for beat in board.ordered_beats())
+
+
+def needs_lock(board: board_mod.Board | None) -> bool:
+    """A gated storyboard that has panels but has not run the lock pass yet.
+
+    Boards that never gated (empty cursor) are unchanged: hand-written panels are enough to
+    leave storyboard, which is the stages-are-separable rule. A cursor that says stills over
+    a board that never locked is how the flock reel would have drawn another one-bird still.
+    """
+    if board is None or not panels_written(board):
+        return False
+    record = crew_record(board)
+    if "lock" in record["done"]:
+        return False
+    if not record["done"] and record["awaiting"] is None:
+        return False
+    return True
 
 
 def crew_record(board: board_mod.Board | None) -> dict:
@@ -246,8 +290,13 @@ def awaiting_phase(board: board_mod.Board | None) -> str | None:
     `next_stage`: `inspect` after the stills landed, and `stills` again after inspect
     reopened it over standing failures. Otherwise the first incomplete phase of the current
     stage. Boards that never gated start at the first phase of `next_stage`.
+
+    Lock is a prerequisite of stills. A cursor that says stills or inspect over a board that
+    never locked is the studio lying about what the next specialist should do.
     """
     record = crew_record(board)
+    if record["awaiting"] in ("stills", "inspect") and needs_lock(board):
+        return "lock"
     if record["awaiting"] is not None:
         return record["awaiting"]
     where = next_stage(board)
@@ -400,7 +449,7 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
         if lens and not _checkable(board):
             hooks.say(f"[crew] {who}: nothing to check yet")
             continue
-        message = _brief(name, role, lens, note, board)
+        message = _brief(name, role, lens, note, board, phase=phase)
         label = f"{name} · {phase} · {who}" if phase else f"{name} · {who}"
         hooks.say(f"[crew] {name}/{who}" + (f" ({phase})" if phase else ""))
         hooks.doing(label + (f" · {lens}" if lens else ""))
@@ -557,9 +606,11 @@ def _checkable(board: board_mod.Board) -> bool:
 
 
 def _brief(stage_name: str, role: str, lens: str | None, note: str,
-           board: board_mod.Board | None = None) -> str:
+           board: board_mod.Board | None = None, phase: str | None = None) -> str:
     if lens:
         body = CHECK_BRIEF.format(lens=lens)
+    elif phase and (phase, role) in PHASE_BRIEF_FOR:
+        body = PHASE_BRIEF_FOR[(phase, role)]
     else:
         body = BRIEF_FOR.get((stage_name, role), "Do what this board needs next.")
     if stage_name == "assets" and role == "asset-maker" and board is not None:

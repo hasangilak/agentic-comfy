@@ -23,6 +23,7 @@ import {
 import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 import { StagePage, WaitingOn } from "./parts";
+import { stillsAllowed } from "../route";
 
 /**
  * Stage three: the still every shot opens on, and what each one is drawn from.
@@ -67,6 +68,7 @@ export function Assets() {
 
   const done = new Set(board.crew?.done ?? []);
   const awaiting = board.crew?.awaiting ?? null;
+  const canGenerate = stillsAllowed(board);
   const atStillsGate = !missing.length && (awaiting === "inspect" || done.has("stills"))
     && !done.has("inspect");
   const atInspectGate = !missing.length && done.has("inspect");
@@ -98,6 +100,13 @@ export function Assets() {
           <WaitingOn tone="quiet">
             This reel supplies its own stills. Every generate control is off and the server
             refuses to spend on one.
+          </WaitingOn>
+        ) : !canGenerate ? (
+          <WaitingOn
+            action={<Button onClick={() => studio.goStage("storyboard")}>→ Storyboard</Button>}
+          >
+            Every shot needs a storyboard panel, and a gated reel needs the cast locked against
+            those panels, before a still is drawn. Uploads still work.
           </WaitingOn>
         ) : defining !== null && missing.includes(defining) ? (
           <WaitingOn
@@ -249,7 +258,13 @@ export function Assets() {
 
         {picked ? (
           <>
-            <Still beat={picked} board={board} defining={picked.n === defining} onGenerate={generate} />
+            <Still
+              beat={picked}
+              board={board}
+              defining={picked.n === defining}
+              onGenerate={generate}
+              canGenerate={canGenerate}
+            />
             <Talk beat={picked} board={board} />
           </>
         ) : (
@@ -459,11 +474,13 @@ function Still({
   board,
   defining,
   onGenerate,
+  canGenerate,
 }: {
   beat: Beat;
   board: Board;
   defining: boolean;
   onGenerate: (beats?: number[]) => void;
+  canGenerate: boolean;
 }) {
   const studio = useStudio();
   const picker = useRef<HTMLInputElement>(null);
@@ -508,9 +525,11 @@ function Still({
           <Button
             tone="primary"
             onClick={() => onGenerate([beat.n])}
-            disabled={offline || busy}
+            disabled={offline || busy || !canGenerate}
             title={
-              beat.asset
+              !canGenerate
+                ? "write every storyboard panel, and lock the cast, before a still is drawn"
+                : beat.asset
                 ? "draw it again from the same prompt, with the seed moved — no model turn"
                 : "draw this still"
             }
