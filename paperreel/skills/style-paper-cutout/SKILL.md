@@ -42,6 +42,14 @@ a specification a second artist could build from:
 - **Every recurring character in forensic detail** — the exact paper and colour of each part,
   eyes, joints, garments, outline weight, and one or two unmistakable identifying marks.
   Written so two artists reading it would cut the same puppet.
+- **Anatomy the model will believe.** Count limbs, eyes and wings against the real creature.
+  If the bible says a spider has six legs, the image model draws eight anyway — on every
+  sheet, every still, every frame — and no prompt rewrite will ever win that fight, because
+  the bible is arguing with what a spider IS.
+- **The cast's relative scale, in one sentence.** "The flea stands one quarter the spider's
+  height." Sheets are drawn in isolation and shots are framed one at a time, so nothing else
+  carries how big one puppet is against another — without this sentence a dialogue shot can
+  grow the small character threefold.
 - **5–7 named colours.** Nothing outside them.
 - **One light rig**, one key direction, described once. Say how the light rakes across the
   sheets so the grain and the layer edges catch it. Light that changes direction between
