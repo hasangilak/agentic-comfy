@@ -543,10 +543,11 @@ class Board:
 
         Positions are found by matching PATHS against the list handed in, never by counting the
         automatic slots. That is what lets one method serve `pictures_for` (own still, cast,
-        uploads), `still_pictures` (cast first, capped at four) and a picture redraw (itself,
-        then the cast) without any of them having to declare how they are ordered -- and it is
-        what makes a truncated list answer None for the pictures that fell off the end, which
-        is the signal the expander needs to stop naming a position the model was never given.
+        uploads), `still_pictures` (identity sheets or the cast still, capped at four) and a
+        picture redraw (itself, then the cast) without any of them having to declare how they
+        are ordered -- and it is what makes a truncated list answer None for the pictures that
+        fell off the end, which is the signal the expander needs to stop naming a position the
+        model was never given.
         """
         where = {path: position for position, (path, _note) in enumerate(pictures, start=1)}
         found: dict[str, tuple[int | None, str]] = {}
@@ -780,25 +781,32 @@ class Board:
     def staging_pictures(self, n: int, *, for_still: bool) -> list[tuple[Path, str]]:
         """The bound design sheets that go into THIS render as images, with their roles.
 
-        The two callers want different lists, and the difference is the one measured constraint
-        in the whole feature: the video model takes nine pictures and the still renderer takes
-        `config.MAX_STILL_REFS` (four, one of which is already the cast reference). Three
-        characters and a set do not fit on the still side, so something has to give -- and what
-        gives is the set, which reaches the still as words instead (`staging_text` picks up
-        whatever this list drops). Characters are what drift visibly between shots; a clearing
-        redrawn from a fixed sentence is survivable, a wolf that changes species is not.
+        The two callers want different ORDERINGS, and the difference is the one measured
+        constraint in the whole feature: the video model takes nine pictures and the still
+        renderer takes `config.MAX_STILL_REFS` (four, one of which is already the cast
+        reference). When the still's cap bites, the set is what should give -- characters are
+        what drift visibly between shots; a clearing redrawn from a fixed sentence is
+        survivable, a wolf that changes species is not. So on the still side environments
+        sort last and the truncation in `still_pictures` drops them first, and `staging_text`
+        picks up whatever falls off as words. Dropping the set unconditionally was the
+        spider-flea reel's five-different-webs failure: a set that fits the cap is a picture,
+        because prose invents a new geometry for it in every shot.
 
         A sheet with no file on disk is skipped here and picked up as text by `staging_text`, so
         writing the bible is useful before a single sheet has been drawn.
         """
         found = []
         for entry in self.bound_staging(n):
-            if for_still and self.stage_kind(entry) == config.STAGE_ENVIRONMENT:
-                continue
             path = self.stage_path(str(entry.get("id")))
             if path.is_file():
-                found.append((path, self.stage_role(entry)))
-        return found
+                found.append((path, self.stage_role(entry),
+                              self.stage_kind(entry) == config.STAGE_ENVIRONMENT))
+        if for_still:
+            # Stable sort: characters and props keep their binding order, sets move behind
+            # them, so a tight cap sacrifices the set first rather than whatever was bound
+            # last.
+            found.sort(key=lambda item: item[2])
+        return [(path, role) for path, role, _is_set in found]
 
     def staging_text(self, n: int, shown: list[tuple[Path, str]]) -> str:
         """What the bound sheets say, for the ones this render was NOT handed as pictures.
@@ -1177,42 +1185,54 @@ class Board:
             self.auto_pictures(n) + self.staging_pictures(n, for_still=False) + uploaded
         )[:config.MAX_REF_IMAGES]
 
+    def still_identity_sheets(self, n: int) -> list[tuple[Path, str]]:
+        """Bound character and prop sheets on disk, in binding order.
+
+        These are the identity lock for a still. Beat 1's composed opening is a camera angle; a
+        turnaround is a puppet. Sending both made Gemini copy the wide.
+        """
+        found = []
+        for entry in self.bound_staging(n):
+            if self.stage_kind(entry) == config.STAGE_ENVIRONMENT:
+                continue
+            path = self.stage_path(str(entry.get("id")))
+            if path.is_file():
+                found.append((path, self.stage_role(entry)))
+        return found
+
     def still_pictures(self, n: int, limit: int | None = None) -> list[tuple[Path, str]]:
         """What beat `n`'s STILL is drawn from, paired with what each picture is for.
 
         A different list from `pictures_for`, and the difference is the beat's own still: that is
-        the thing being generated here, so it cannot also condition itself. What is left is the
-        reel's locked cast reference -- the one image a still has always been conditioned on, and
-        first here because that is the order it was the only entry in -- followed by the
-        director's uploads on this beat.
+        the thing being generated here, so it cannot also condition itself. What is left, in this
+        order:
 
-        Sending the uploads to the still renderer as well as to the video model is the point.
-        They are pictures of the cast, the set or a prop: the things that must look the same in
-        this shot as everywhere else in the film. Conditioning the clip on them while the frame
-        it opens on was drawn from the style bible alone left the two disagreeing about the same
-        puppet, and the frame is what the clip's first sampling steps are anchored to.
+          1. the reel's locked cast reference -- beat 1's still -- ONLY when this beat binds no
+             character or prop sheet. A turnaround is the puppet; the composed wide is a shot,
+             and sending both locked every later still to that camera;
+          2. the bound design sheets, characters and props first, environments last so the
+             four-slot cap drops the set first (`staging_pictures`). A set that fits is a
+             picture: dropping it unconditionally was five different webs from one environment
+             note. Sheets are join-agnostic -- an asset or bridge still still has to match the
+             puppets;
+          3. the director's uploads, only on a reference join. `uses_refs` still gates those,
+             because a picture on a keyframe beat reaches the clip never, and must not quietly
+             steer the still either.
 
-        Guarded on `uses_refs` for the same reason `pictures_for` is: a beat moved off the
-        reference join keeps its uploaded files on disk, and a picture that is not in the video
-        render must not quietly steer the still either. One rule, read off the join.
+        Beat 1 itself has no cast slot (`reference_for` is None) and now gets the sheets, so the
+        defining still is drawn from the designs rather than from a paragraph.
 
-        Pairs, like `pictures_for`, though the still prompt names nothing by number: the notes are
-        the director's words about a specific picture, and a path list beside a note list that can
-        slip by one is the bug that method exists to make impossible.
-
-        The bound staging sheets sit between the cast and the uploads, mirroring `pictures_for`
-        -- but only the ones that are images here. An environment sheet is dropped and picked up
-        by `staging_text` as prose instead, because four slots (one already the cast) do not hold
-        three characters and a set, and what a still must not get wrong is the cast. A set
-        redrawn from a fixed sentence in every shot is the failure this feature was built to
-        stop being unavoidable; it is not the failure it is worst at.
+        Pairs, like `pictures_for`: the notes are the director's words about a specific picture,
+        and a path list beside a note list that can slip by one is the bug that method exists to
+        make impossible. The still prompt names nothing by number.
         """
         found: list[tuple[Path, str]] = []
-        cast = self.reference_for(n)
-        if cast is not None:
-            found.append((cast, ""))
+        if not self.still_identity_sheets(n):
+            cast = self.reference_for(n)
+            if cast is not None:
+                found.append((cast, ""))
+        found += self.staging_pictures(n, for_still=True)
         if uses_refs(self.source_for(self.beat(n))):
-            found += self.staging_pictures(n, for_still=True)
             found += list(zip(self.ref_paths(n), self.ref_prompts(n)))
         cap = config.MAX_STILL_REFS if limit is None else min(limit, config.MAX_STILL_REFS)
         return found[:max(0, cap)]
@@ -1551,6 +1571,10 @@ class Board:
             n = beat["n"]
             seconds = self.seconds_for(beat)
             frames = config.frame_count(seconds)
+            still = self.still_pictures(n)
+            cast = self.reference_for(n)
+            stage_paths = {path for path, _ in self.staging_pictures(n, for_still=True)}
+            upload_paths = set(self.ref_paths(n))
             beats.append({
                 "n": n,
                 "scene": beat.get("scene", ""),
@@ -1617,22 +1641,25 @@ class Board:
                 # numbered. Ids rather than objects: the sheets themselves are published once at
                 # board level, and a second copy per beat is a second thing to keep in step.
                 "staging": [str(entry.get("id")) for entry in self.bound_staging(n)],
-                # How many of them actually reach the clip and the still as PICTURES. A set
-                # sheet is in the first and not the second by design, and a node that showed the
-                # binding without showing that would be claiming something untrue about the
-                # still -- see `staging_pictures`.
+                # How many of them actually reach the clip and the still as PICTURES. Counted
+                # off the lists those renders are handed, after the still's cap, so a set that
+                # fitted is a picture here and a set that did not is only in staging_still_text.
                 "staging_refs": len(self.staging_pictures(n, for_still=False)),
-                "staging_still_refs": len(self.staging_pictures(n, for_still=True)),
+                "staging_still_refs": sum(1 for path, _ in still if path in stage_paths),
+                # Whether beat 1's still is in this beat's still_pictures. False when character
+                # sheets are the identity lock -- the canvas must not draw a cast slot Gemini
+                # is never handed.
+                "still_cast": bool(cast) and any(path == cast for path, _ in still),
                 # What the sheets this render was not handed say instead, exactly as the model
                 # will be told it. Published rather than recomputed on the canvas so there is
                 # one answer to "does binding this set actually do anything here".
                 #
-                # Two of them, because the two renders answer differently and the difference is
-                # the whole design: the clip has nine picture slots and usually needs no prose at
-                # all, while the still has four and hands the sets over as words. One field
-                # showing the clip's empty answer beside "1 of 2 reach the still" reads as a bug.
+                # Two of them, because the two renders answer differently: the clip has nine
+                # picture slots, the still has four, and a set that does not fit the still's cap
+                # arrives as prose. One field showing the clip's empty answer beside "1 of 2
+                # reach the still" reads as a bug.
                 "staging_text": self.staging_text(n, self.pictures_for(n)),
-                "staging_still_text": self.staging_text(n, self.still_pictures(n)),
+                "staging_still_text": self.staging_text(n, still),
                 # How far the director's pictures are pushed down the numbering by the automatic
                 # slots AND the bound sheets. The prompt calls upload i <Picture ref_offset + i>,
                 # and the node has to show the same number the model is told or the notes
@@ -1642,16 +1669,9 @@ class Board:
                 ) if uses_refs(self.source_for(beat)) else len(self.auto_pictures(n)),
                 # What is left of the model's nine after the automatic ones.
                 "ref_slots": self.ref_budget(n),
-                # How many of the director's pictures also condition the STILL, which takes far
-                # fewer than the video model: the cast reference is one of them, and the still
-                # renderer encodes every picture through every sampling step. Derived here rather
-                # than worked out on the canvas so there is one answer to "is this picture in the
-                # still" -- see `still_pictures`.
-                "still_refs": max(
-                    0, len(self.still_pictures(n))
-                    - (self.reference_for(n) is not None)
-                    - len(self.staging_pictures(n, for_still=True))
-                ),
+                # How many of the director's pictures also condition the STILL, counted off the
+                # capped list `still_pictures` actually returns -- see that method.
+                "still_refs": sum(1 for path, _ in still if path in upload_paths),
                 # Whether this beat's still is wired as the composition it opens on. False on a
                 # reference beat carrying the previous clip, which opens on that instead.
                 "opens_on": self.opens_on_still(beat),

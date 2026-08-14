@@ -9,10 +9,10 @@ The seam is HTTP on loopback, not shared code. Papercut owns prompt composition,
 lock and the progress scraping; this side owns the board and the joins. Neither imports the
 other.
 
-What a still is drawn from is `Board.still_pictures`: the reel's locked cast reference, then the
-director's uploads on that beat -- the same pictures the video model is shown, so the puppet in
-the clip and the puppet in the frame it opens on are held to one set of images. They go over as
-`referencePaths`, capped by whatever the image server reports in `limits.maxReferences`.
+What a still is drawn from is `Board.still_pictures`: the bound design sheets (and the reel's
+locked cast still only when those sheets are missing), then the director's uploads on a
+reference join. They go over as `referencePaths`, capped by whatever the image server reports
+in `limits.maxReferences`.
 
     if papercut.available():
         made = papercut.generate(board, [2, 3, 5], log=print)
@@ -224,11 +224,11 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
             f"only -- compose this frame at the shot scale and camera angle described above; "
             f"do not copy a reference's framing."
         ).strip()
-    # And the bound design sheets this still was NOT handed, as words. On the still side that is
-    # normally the sets: four slots, one of them already the cast, do not hold three characters
-    # and a clearing -- so `still_pictures` spends them on the cast and the clearing arrives as a
-    # sentence. Computed against the very list being conditioned on, so a sheet is never both an
-    # unnamed reference image and a description of a second one of it.
+    # And the bound design sheets this still was NOT handed, as words. Four slots do not hold
+    # three characters and a clearing, so `still_pictures` spends them on identity and a set
+    # that does not fit arrives as a sentence. Computed against the very list being conditioned
+    # on, so a sheet is never both an unnamed reference image and a description of a second one
+    # of it.
     staged = " ".join(config.expand_mentions(
         board.staging_text(n, pictures), mentions, prose=True
     ).split()).strip().rstrip(".")

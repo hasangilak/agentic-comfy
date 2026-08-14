@@ -7,11 +7,12 @@ import { mentionsIn } from "../beat";
  *
  * The token a field stores carries the picture's **id**, never its number, and that is the whole
  * design. The same text is read by two prompt builders with two incompatible orderings — the
- * video model gets `<Picture N>` off one list, the still model gets prose off another, cast-first
- * and capped — so no single literal is correct in both places. And `ref_offset` moves whenever a
- * still lands, a cast reference is pinned, carry is ticked or the join is cycled: four events
- * that touch no text and would silently relabel a number typed into prose. The server expands
- * tokens at render time; this only inserts them and shows what they currently mean.
+ * video model gets `<Picture N>` off one list, the still model gets prose off another,
+ * identity sheets first and capped — so no single literal is correct in both places. And
+ * `ref_offset` moves whenever a still lands, a cast reference is pinned, carry is ticked or
+ * the join is cycled: four events that touch no text and would silently relabel a number typed
+ * into prose. The server expands tokens at render time; this only inserts them and shows what
+ * they currently mean.
  *
  * Deliberately narrow. The menu is an absolutely positioned div inside a wrapper the field owns:
  * no portal, no fixed positioning, no collision detection, and no generic Popover in `ui.tsx`.

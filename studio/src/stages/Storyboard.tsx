@@ -892,9 +892,9 @@ function ShotCard({
                 </button>
               );
             })}
-            {/* The short form of the two sentences `StagingBind` prints. The asymmetry is the
-                feature — a set is bound and still reaches the still as prose — so it must not
-                quietly disappear at grid scale. */}
+            {/* The short form of the two sentences `StagingBind` prints. The still's cap is the
+                feature — a set that does not fit reaches it as prose — so it must not quietly
+                disappear at grid scale. */}
             <span className="w-full text-[10px] leading-snug text-zinc-400">
               clip: {beat.staging_refs} of {bound.length} as pictures · still:{" "}
               {beat.staging_still_refs}

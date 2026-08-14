@@ -113,10 +113,15 @@ export interface Beat {
   ref_slots: number;
   /**
    * How many of `refs` also condition the STILL, counted from the first. The still renderer
-   * takes far fewer pictures than the video model — `max_still_refs` including the reel's cast
-   * reference — so this is usually smaller than `refs.length`.
+   * takes far fewer pictures than the video model — `max_still_refs` — so this is usually
+   * smaller than `refs.length`.
    */
   still_refs: number;
+  /**
+   * Whether beat 1's still is in this beat's still conditioning. False when character sheets
+   * are the identity lock.
+   */
+  still_cast: boolean;
   /**
    * Which of the reel's designs this scene contains, in the order they are numbered. Ids into
    * `Board.staging`, not copies: the designs themselves are reel-level, and a second copy per
@@ -128,7 +133,7 @@ export interface Beat {
    * `auto_refs` and `refs` in the numbering, which is why `ref_offset` counts them.
    *
    * The two differ on purpose: the still renderer takes four pictures where the video model
-   * takes nine, so a set sheet is dropped from the still and reaches it as prose instead. A
+   * takes nine, so a set that does not fit the still's cap reaches it as prose instead. A
    * node that showed the binding without showing that would be claiming something untrue.
    */
   staging_refs: number;
@@ -136,9 +141,9 @@ export interface Beat {
   /**
    * What the designs this render was NOT handed as pictures say instead, as the model gets it.
    *
-   * Two, because the two renders answer differently and that difference is the whole design: the
-   * clip has nine picture slots and usually needs no prose at all, while the still has four and
-   * hands the sets over as words.
+   * Two, because the two renders answer differently: the clip has nine picture slots and
+   * usually needs no prose at all, while the still has four and hands a set that does not
+   * fit as words.
    */
   staging_text: string;
   staging_still_text: string;
@@ -289,8 +294,8 @@ export interface Board {
   /** The model's hard cap on pictures per beat: nine. Per-beat `ref_slots` is what a node shows. */
   max_refs: number;
   /**
-   * And the still renderer's cap, cast reference included — a beat's first `still_refs` pictures
-   * are drawn into its still as well as into its clip. The image server may report a lower one.
+   * And the still renderer's cap. A beat's first `still_refs` uploads are drawn into its still
+   * as well as into its clip. The image server may report a lower one.
    */
   max_still_refs: number;
 }

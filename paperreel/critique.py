@@ -149,8 +149,9 @@ def _sheet_label(board: board_mod.Board, entry: dict) -> str:
 def shot_pictures(board: board_mod.Board, n: int) -> list[tuple[Path, str]]:
     """Pictures the blocking lens looks at for beat `n`, numbered in this order.
 
-    Bound design sheets first (character AND environment -- the still renderer drops sets to
-    words; the auditor must not), then the panel if it is on disk, then the still last.
+    Bound design sheets first (character AND environment -- the still renderer may drop a set
+    that does not fit the cap; the auditor must not), then the panel if it is on disk, then the
+    still last.
 
     Never the reel's locked cast reference (beat 1's composed still). That picture turns
     every verdict into "does it match", which is `stills.review`'s job. Identity-lock sheets

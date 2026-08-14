@@ -6,9 +6,10 @@ import type { Beat, StageEntry } from "./types";
  * There are two because the server has two, and they are ordered differently. The VIDEO model
  * is given `Board.pictures_for` — this beat's own still, then the reel's cast reference, then
  * the designs this scene binds, then the director's uploads — and addresses them as
- * `<Picture N>`. The STILL model is given `Board.still_pictures` — cast reference FIRST, then
- * the bound designs that are not sets, then the uploads, capped at four — and is given no tags
- * at all. The same picture is a different number in each, and in the two fields that feed them.
+ * `<Picture N>`. The STILL model is given `Board.still_pictures` — identity sheets (or the
+ * cast still when there are none), then uploads on a reference join, capped at four — and is
+ * given no tags at all. The same picture is a different number in each, and in the two fields
+ * that feed them.
  *
  * This module mirrors those two methods and must not drift from them; `board.py` is the
  * authority, and every guard below quotes the line it is mirroring. Before this existed the
@@ -92,28 +93,30 @@ function uploads(beat: Beat): PictureRef[] {
 
 /**
  * The designs this scene binds that reach THIS render as pictures. Mirrors
- * `Board.staging_pictures`, whose `for_still` argument is the one asymmetry: a set sheet is a
- * picture for the clip and prose for the still, because four slots (one already the cast) do not
- * hold three characters and a clearing.
+ * `Board.staging_pictures`. On the still side environments sort last so the four-slot cap
+ * drops the set first; a set that fits is a picture, because prose invents a new geometry
+ * every shot.
  *
  * A design with no sheet drawn yet is skipped here and reaches both renders as words instead,
  * which is what makes writing the bible useful before anything has been drawn.
  */
 function stagePictures(beat: Beat, staging: StageEntry[], forStill: boolean): PictureRef[] {
   const byId = new Map(staging.map((entry) => [entry.id, entry]));
-  return (beat.staging ?? [])
+  const found = (beat.staging ?? [])
     .map((id) => byId.get(id))
-    .filter((entry): entry is StageEntry => Boolean(entry?.sheet))
-    .filter((entry) => !(forStill && entry.kind === "environment"))
-    .map((entry) => ({
-      index: null,
-      id: stageId(entry.id),
-      url: entry.sheet,
-      note: entry.role,
-      tag: "",
-      label: entry.name,
-      token: mentionToken(stageId(entry.id)),
-    }));
+    .filter((entry): entry is StageEntry => Boolean(entry?.sheet));
+  if (forStill) {
+    found.sort((a, b) => Number(a.kind === "environment") - Number(b.kind === "environment"));
+  }
+  return found.map((entry) => ({
+    index: null,
+    id: stageId(entry.id),
+    url: entry.sheet,
+    note: entry.role,
+    tag: "",
+    label: entry.name,
+    token: mentionToken(stageId(entry.id)),
+  }));
 }
 
 /**
@@ -144,33 +147,38 @@ export function videoPictures(beat: Beat, staging: StageEntry[] = []): PictureRe
 }
 
 /**
- * What the STILL model is given. Mirrors `Board.still_pictures`, including its asymmetry.
+ * What the STILL model is given. Mirrors `Board.still_pictures`.
  *
- * The cast reference is in **unconditionally**; the bound designs and the director's uploads are
- * in **only** on a reference join. Getting that backwards would have the @-menu naming pictures
- * Gemini is never handed. Everything past the cap stays in the list but is marked unavailable —
- * hiding it would make the menu disagree with the tray you are looking at.
+ * Identity sheets (character/prop) are join-agnostic. The composed cast still is in only when
+ * those sheets are missing. Director uploads are in only on a reference join. Everything past
+ * the cap stays in the list but is marked unavailable — hiding it would make the menu disagree
+ * with the tray you are looking at.
  */
 export function stillPictures(beat: Beat, staging: StageEntry[] = []): PictureRef[] {
-  const cast = castRef(beat);
-  const found: PictureRef[] = cast
-    ? [{
-        index: null,
-        id: "cast",
-        url: cast.url,
-        note: cast.note,
-        tag: "",
-        label: "cast reference",
-        token: "@cast",
-      }]
-    : [];
+  const hasIdentity = (beat.staging ?? [])
+    .map((id) => staging.find((entry) => entry.id === id))
+    .some((entry) => Boolean(entry?.sheet) && entry?.kind !== "environment");
+  const cast = hasIdentity ? null : castRef(beat);
+  const found: PictureRef[] = [];
+  if (cast) {
+    found.push({
+      index: null,
+      id: "cast",
+      url: cast.url,
+      note: cast.note,
+      tag: "",
+      label: "cast reference",
+      token: "@cast",
+    });
+  }
+  found.push(...stagePictures(beat, staging, true));
   if (beat.source === "reference") {
-    found.push(...stagePictures(beat, staging, true), ...uploads(beat));
+    found.push(...uploads(beat));
   }
   // How many of this list the still renderer actually gets. Counted off the three numbers the
   // server publishes rather than off `max_still_refs`, because the image server may report a
   // lower cap than ours and those three are what it decided.
-  const reaching = (cast ? 1 : 0) + beat.staging_still_refs + beat.still_refs;
+  const reaching = (beat.still_cast ? 1 : 0) + beat.staging_still_refs + beat.still_refs;
   return found.map((picture, at) => ({
     ...picture,
     tag: `the ${ordinal(at + 1)} reference image`,

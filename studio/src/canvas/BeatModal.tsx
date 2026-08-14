@@ -614,7 +614,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                       drawn from
                     </span>
                     {/* `stillPictures`, not `videoPictures`: this text reaches Gemini, whose
-                        picture list is cast-first and capped — so the same picture is a
+                        picture list is identity-first and capped — so the same picture is a
                         different number here than it is in the action field below. */}
                     <PromptField
                       className={`${inputClass} thin h-24 leading-relaxed`}

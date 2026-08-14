@@ -29,11 +29,11 @@ import { stillsAllowed } from "../route";
  * Stage three: the still every shot opens on, and what each one is drawn from.
  *
  * The hard part of this stage was invisible before it existed. `Board.still_pictures` is
- * cast-first, capped at four, drops set sheets to prose, and contributes nothing at all off the
- * reference join — and the only thing that showed any of it was the @-mention menu.
- * `beat.ts`'s `stillPictures` already mirrors that method line for line, so the conditioning
- * strip below is a reading of what the model is actually handed rather than a second guess at
- * it. That is the whole feature, and it needed nothing new from the server.
+ * identity-sheets first (or the cast still when those are missing), capped at four, and a set
+ * that fits the cap is a picture — and the only thing that showed any of it was the @-mention
+ * menu. `beat.ts`'s `stillPictures` already mirrors that method line for line, so the
+ * conditioning strip below is a reading of what the model is actually handed rather than a
+ * second guess at it. That is the whole feature, and it needed nothing new from the server.
  *
  * There is deliberately no board conversation on this stage. The board agent cannot see a
  * picture; `stills.converse` can, and it is the panel on the right.
@@ -278,15 +278,15 @@ export function Assets() {
 /**
  * What the whole reel's stills are conditioned on, said once at reel level.
  *
- * The `MAX_STILL_REFS` consequence belongs here rather than repeated on every card: four slots,
- * one of them already the cast, so a set sheet is dropped and told in words instead. That is
- * `Board.staging_pictures(for_still=True)`, and it is the one asymmetry a director has to know.
+ * The `MAX_STILL_REFS` consequence belongs here rather than repeated on every card: four
+ * slots, identity first, a set that fits is a picture and one that does not is told in words.
+ * That is `Board.still_pictures`, and it is the one asymmetry a director has to know.
  */
 function Conditioning({ board }: { board: Board }) {
   const studio = useStudio();
   const picker = useRef<HTMLInputElement>(null);
   const asPictures = board.staging.filter((entry) => entry.kind !== "environment");
-  const asWords = board.staging.filter((entry) => entry.kind === "environment");
+  const sets = board.staging.filter((entry) => entry.kind === "environment");
 
   return (
     <div className="flex flex-wrap items-start gap-4 rounded-2xl border border-edge bg-ink p-3">
@@ -370,20 +370,31 @@ function Conditioning({ board }: { board: Board }) {
               <span className="text-[10px] text-zinc-400">reach the still as pictures</span>
             ) : null}
           </div>
-          {asWords.length ? (
+          {sets.length ? (
             <div className="flex flex-wrap items-center gap-1.5">
-              {asWords.map((entry) => (
-                <span
+              {sets.map((entry) => (
+                <button
                   key={entry.id}
+                  onClick={() => {
+                    studio.setStagingPick(entry.id);
+                    studio.goStage("storyboard");
+                  }}
                   title={entry.role}
-                  className="rounded-full bg-panel px-2 py-0.5 text-[10px] text-zinc-500"
+                  className="flex items-center gap-1.5 rounded-full bg-soft py-0.5 pl-0.5 pr-2.5 text-[10px] text-zinc-700 hover:bg-softer"
                 >
+                  <span className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-panel">
+                    {entry.sheet ? (
+                      <img src={entry.sheet} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      KIND_LOOK[entry.kind].icon
+                    )}
+                  </span>
                   {entry.name}
-                </span>
+                </button>
               ))}
               <span className="text-[10px] text-zinc-400">
-                reach it as words — {board.max_still_refs} slots do not hold a cast and a set, and
-                what a still must not get wrong is the cast
+                reach the still as a picture when they fit the {board.max_still_refs}-slot cap,
+                otherwise as words
               </span>
             </div>
           ) : null}

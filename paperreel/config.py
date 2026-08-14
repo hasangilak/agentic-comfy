@@ -636,8 +636,8 @@ REF_CHAT_MEMORY = int(os.environ.get("PAPERREEL_REF_CHAT_MEMORY", "12"))
 # appear in as the same image and the same sentence, rather than as two readings of the bible.
 #
 # Three kinds, and the kind is not decoration -- it decides three separate things: what the sheet
-# is drawn as (the suffixes below), what shape it is drawn at, and whether it reaches the still
-# renderer as an image or only as words. See `Board.staging_pictures`.
+# is drawn as (the suffixes below), what shape it is drawn at, and how `Board.staging_pictures`
+# orders it for the still (environments last, so the four-slot cap drops the set first).
 STAGE_CHARACTER = "character"
 STAGE_ENVIRONMENT = "environment"
 STAGE_PROP = "prop"
@@ -945,7 +945,8 @@ def reference_roles(notes: list[str]) -> str:
 # The token carries the picture's ID, not its number, and that is the whole design. The same
 # stored string is read by two prompt builders with two incompatible orderings -- the video
 # model gets `pictures_for` (own still, cast, uploads) tagged `<Picture N>`, the still model
-# gets `still_pictures` (cast first, capped at four) with no tags at all -- so one literal
+# gets `still_pictures` (identity sheets or the cast still, then uploads on a reference join,
+# capped at four) with no tags at all -- so one literal
 # expansion cannot be correct in both places, and a number typed into prose is persisted
 # derived state, which is the thing `board.py` exists to not have. `ref_offset` alone moves
 # when beat 1's still lands, when a character.png is uploaded, when carry is ticked, and when

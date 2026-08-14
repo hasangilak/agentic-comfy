@@ -186,14 +186,14 @@ boundary:
   no constraint — a reference picture is conditioning, never a frame handed to H3 — so it can be
   retuned freely.
 
-**What a still is drawn from is `Board.still_pictures`** — the reel's locked cast reference, then
-the director's uploads on that beat, sent as `referencePaths` with the first also in the legacy
-`referencePath`. Deliberately *not* the beat's own still, which is the thing being generated. It
-is a different list from `pictures_for` and a much shorter one (4 against 9): Gemini accepts
-conditioning image through every sampling step. The uploads are there because the still is what
-the clip's opening sampling steps are anchored to — a picture the clip is held to and the frame it
-opens on never saw is two answers to the same puppet. Both methods guard on `uses_refs`, so the
-join decides whether a picture counts, in one place.
+**What a still is drawn from is `Board.still_pictures`** — bound character/prop sheets first
+(the identity lock), then a set sheet if it fits the four-slot cap, then director uploads on a
+reference join. Beat 1's composed still is in **only when this beat binds no character sheet**:
+sending both locked every later still to that camera. Deliberately *not* the beat's own still,
+which is the thing being generated. It is a different list from `pictures_for` and a much
+shorter one (4 against 9). Sheets are join-agnostic so an asset or bridge still still matches
+the puppets; uploads stay gated on `uses_refs`, because a picture on a keyframe beat reaches
+the clip never.
 
 Papercut is the **only** stills generator; there is no backend switch and no fallback. With
 `/api/health` not answering, a beat's still is an upload — that is what `manual_stills` is for.
@@ -295,7 +295,7 @@ beat binds ids in `beat["staging"]`, and `Board.bind_stage` replaces rather than
 | kind | style suffix | aspect | in the clip | in the still |
 | --- | --- | --- | --- | --- |
 | `character`, `prop` | `REF_DRAW_STYLE_SUFFIX` | `PAPERCUT_REF_ASPECT` | a picture | a picture |
-| `environment` | `SET_DRAW_STYLE_SUFFIX` | `PAPERCUT_SET_ASPECT` | a picture | **words** |
+| `environment` | `SET_DRAW_STYLE_SUFFIX` | `PAPERCUT_SET_ASPECT` | a picture | a picture if it fits the cap, otherwise **words** |
 
 The set suffix exists because `REF_DRAW_STYLE_SUFFIX` asks for "the subject complete and centred"
 on a "plain neutral background" with "no scenery", and a set sheet is nothing but scenery with
@@ -303,10 +303,13 @@ the subject deliberately absent — handed the prop-sheet suffix, "a moonlit cle
 birches" is a single birch on grey, which is a faithful reading of what it was told.
 
 **The one measured constraint is the still's cap**, and everything else falls out of it. The
-video model takes `MAX_REF_IMAGES` (9); the still takes `MAX_STILL_REFS` (4), one already the
-cast. Three characters and a set do not fit, so the set is dropped and `Board.staging_text` picks
-it up — **whatever a render is not handed as a picture, it is told in words**, one rule applied by
+video model takes `MAX_REF_IMAGES` (9); the still takes `MAX_STILL_REFS` (4). Three characters
+and a set do not fit, so the set is dropped and `Board.staging_text` picks it up — **whatever
+a render is not handed as a picture, it is told in words**, one rule applied by
 `config.build_prompt(staging=...)` and `papercut._beat_text`, each computing it against *the very
+list it is conditioning on* so a sheet is never both `<Picture 2>` and a sentence about a second
+one of it. A set that **does** fit is a picture: dropping it unconditionally invented a new
+web in every shot.
 list it is conditioning on* so a sheet is never both `<Picture 2>` and a sentence about a second
 one of it. It is also what makes a written-but-undrawn entry useful.
 
@@ -394,8 +397,8 @@ reasons, any one sufficient:
 
 1. The same stored string is read by two prompt builders with incompatible orderings. The video
    model gets `pictures_for` tagged `<Picture N>`; the still model gets `still_pictures`, which is
-   cast-first and capped at four, with no tags at all. One literal cannot be right in both, so
-   `expand_mentions` takes a `prose=` flag and each consumer passes its own list.
+   identity sheets (or the cast still) capped at four, with no tags at all. One literal cannot be
+   right in both, so `expand_mentions` takes a `prose=` flag and each consumer passes its own list.
 2. `ref_offset` moves when beat 1's still lands, when a `character.png` is pinned, when carry is
    ticked, and when the join is cycled — four events that touch no text and would silently
    relabel every number typed into prose. A number in prose is persisted derived state, which is
@@ -882,7 +885,8 @@ the right column for one. Four pieces exist so that neither view owns a copy of 
 
 - **`studio/src/beat.ts`** is the only place either picture numbering is computed. It mirrors
   `Board.pictures_for` (`videoPictures`, `<Picture N>`, empty off the reference join) and
-  `Board.still_pictures` (`stillPictures`, cast-first, capped) line for line, and `board.py` is
+  `Board.still_pictures` (`stillPictures`, identity sheets or the cast still, capped) line for
+  line, and `board.py` is
   the authority it must not drift from. Before it, the arithmetic was hand-rolled in three
   components; `@` would have made it five.
 - **`AddPicture`** owns the file input, the slot budget and the join warning, and is used by the
