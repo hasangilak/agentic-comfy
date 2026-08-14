@@ -867,10 +867,11 @@ def _cast_tools(llm: llm_mod.LLM) -> list[Tool]:
             "audit_cast",
             "Read-only audit of who is in the film across beats: a flock that becomes one "
             "bird, a character sheet that says 'single' while the script's subject is a "
-            "group, a beat that names a design but binds none, a one-take request broken "
-            "by a cut that also changes the subject. Returns findings only — fix them with "
-            "set_blocking / bind_designs / set_asset_prompt / set_beat, then re-audit. "
-            "Costs nothing when deep is false (deterministic only).",
+            "group, a beat that names a design but binds none, a panel that drops a bound "
+            "set the scene line still names, a one-take request broken by a cut that also "
+            "changes the subject. Returns findings only — fix them with set_blocking / "
+            "bind_designs / set_asset_prompt / set_beat, then re-audit. Costs nothing when "
+            "deep is false (deterministic only).",
             {
                 "deep": {
                     "type": "boolean",

@@ -22,6 +22,13 @@ export function CanvasToolbar() {
   const selected = studio.renderSelection.filter((n) => board.beats.some((beat) => beat.n === n));
   const [selectedEstimate, setSelectedEstimate] = useState<Estimate | null>(null);
   const [selectedDraftEstimate, setSelectedDraftEstimate] = useState<Estimate | null>(null);
+  // Same arm-then-confirm as AddPicture's join warning: the render API never 409s over
+  // inspect, because `manual_stills`, imported boards and `reel.py` must still spend.
+  const [pendingDraft, setPendingDraft] = useState<boolean | null>(null);
+
+  const inspectDone = (board.crew?.done ?? []).includes("inspect");
+  const failing = board.inspect_failing ?? [];
+  const inspectWarn = !inspectDone || failing.length > 0;
 
   useEffect(() => {
     let current = true;
@@ -50,6 +57,10 @@ export function CanvasToolbar() {
     };
   }, [board.slug, board.beats, selected.join(","), studio.setError]);
 
+  useEffect(() => {
+    setPendingDraft(null);
+  }, [board.slug, inspectDone, failing.length, selected.join(",")]);
+
   const renderBeats = selected.length ? selected : undefined;
   const renderCount = selected.length
     ? (selectedEstimate?.beats?.length ?? selected.length)
@@ -62,15 +73,28 @@ export function CanvasToolbar() {
     : board.pending_cost.predicted_seconds;
   const canRender = renderCount > 0 && !busy;
 
-  const startRender = (draft: boolean) => {
+  const spend = (draft: boolean) => {
+    setPendingDraft(null);
     void studio.guard(async () => {
       await api.render(board.slug, renderBeats, draft);
       studio.setRenderSelection([]);
     });
   };
 
+  const requestRender = (draft: boolean) => {
+    if (inspectWarn) {
+      setPendingDraft(draft);
+      return;
+    }
+    spend(draft);
+  };
+
+  const inspectMessage = failing.length
+    ? `Inspect failed on ${failing.length} still${failing.length === 1 ? "" : "s"}. This spend is not blocked.`
+    : "Inspect has not run on these stills. This spend is not blocked.";
+
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center">
+    <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex flex-col items-center gap-1.5">
       <div
         className="lift pointer-events-auto flex max-w-[calc(100%-2rem)] items-center gap-2
           rounded-full border border-edge bg-panel/95 px-2 py-1.5 backdrop-blur"
@@ -86,7 +110,7 @@ export function CanvasToolbar() {
           <>
             <Button
               tone="ghost"
-              onClick={() => startRender(true)}
+              onClick={() => requestRender(true)}
               title={
                 selected.length
                   ? `draft the ${renderCount} selected/dependent scenes`
@@ -102,7 +126,7 @@ export function CanvasToolbar() {
             </Button>
             <Button
               tone="primary"
-              onClick={() => startRender(false)}
+              onClick={() => requestRender(false)}
               title={`${renderCount} beats including chained dependencies, about ${
                 renderSeconds === undefined ? "…" : clock(renderSeconds)
               }`}
@@ -144,6 +168,25 @@ export function CanvasToolbar() {
           </Button>
         ) : null}
       </div>
+      {pendingDraft !== null ? (
+        <div
+          className="lift pointer-events-auto max-w-[calc(100%-2rem)] rounded-xl border
+            border-warm/40 bg-panel/95 px-3 py-2 backdrop-blur"
+        >
+          <p className="text-[10px] leading-snug text-warm">⚠ {inspectMessage}</p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <Button tone="primary" onClick={() => spend(pendingDraft)}>
+              {pendingDraft ? "draft anyway" : "render anyway"}
+            </Button>
+            <button
+              onClick={() => setPendingDraft(null)}
+              className="px-1.5 text-[11px] text-zinc-400 hover:text-zinc-700"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

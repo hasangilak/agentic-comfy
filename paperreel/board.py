@@ -1565,6 +1565,8 @@ class Board:
         return self.data.setdefault("canvas", {}).setdefault("nodes", {})
 
     def to_json(self, *, rendering: set[int] | None = None) -> dict:
+        from . import critique as critique_mod
+
         beats = []
         states = self.states(rendering=rendering)  # once: each call hashes files
         for beat in self.ordered_beats():
@@ -1747,6 +1749,13 @@ class Board:
                  "awaiting": self.data["crew"].get("awaiting")}
                 if isinstance(self.data.get("crew"), dict) else None
             ),
+            # Standing inspect failures, derived from `asset_chat`. The canvas render bar
+            # confirms against this rather than 409ing the render API -- `manual_stills`,
+            # imported boards and `reel.py` must still be able to spend.
+            "inspect_failing": [
+                {"beat": item["beat"], "lens": item["lens"], "text": item["text"]}
+                for item in critique_mod.failing(self)
+            ],
             "beats": beats,
             # The whole reel's panels on one numbered sheet, or None until one has been built.
             # Reel-level because that is what a storyboard is -- the sequence read at once.

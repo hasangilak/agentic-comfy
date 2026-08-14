@@ -26,6 +26,7 @@ KIND_SUBJECT_DROPPED = "subject_dropped"
 KIND_SHEET_VS_SCRIPT = "sheet_vs_script"
 KIND_EMPTY_BINDS = "empty_binds"
 KIND_UNBROKEN_TAKE = "unbroken_take"
+KIND_SET_DROPPED = "set_dropped"
 KIND_SOFT = "soft"
 
 FINDING_SCHEMA = {
@@ -65,6 +66,7 @@ FINDING_SCHEMA = {
                             KIND_SHEET_VS_SCRIPT,
                             KIND_EMPTY_BINDS,
                             KIND_UNBROKEN_TAKE,
+                            KIND_SET_DROPPED,
                             KIND_SOFT,
                         ],
                     },
@@ -138,8 +140,9 @@ _SOFT_SYSTEM = (
     "recurring subjects persist for the whole film. A close-up is coverage of a member of "
     "a group already in the film, not a replacement protagonist. A design sheet of one "
     "puppet plus a count in blocking is how identical multiples work -- never a sheet note "
-    "that says 'single' when the script's subject is a flock. Report only real drops. Pass "
-    "silently when the roster holds -- an empty findings list is correct."
+    "that says 'single' when the script's subject is a flock. A panel that drops a bound "
+    "set the scene line still names is a vanished place, not a closer camera. Report only "
+    "real drops. Pass silently when the roster holds -- an empty findings list is correct."
 )
 
 
@@ -209,6 +212,7 @@ def _deterministic(board: board_mod.Board) -> list[dict[str, Any]]:
     found.extend(_sheet_vs_script_findings(board))
     found.extend(_empty_bind_findings(board))
     found.extend(_subject_dropped_findings(board))
+    found.extend(_set_dropped_findings(board))
     found.extend(_unbroken_take_findings(board, found))
     return found
 
@@ -344,6 +348,53 @@ def _subject_dropped_findings(board: board_mod.Board) -> list[dict[str, Any]]:
                 "same character sheet; put the count in blocking."
             ),
         ))
+    return found
+
+
+def _set_dropped_findings(board: board_mod.Board) -> list[dict[str, Any]]:
+    """A bound set the scene still names, gone from the panel.
+
+    Roster audit (who is the subject) is the wrong question for a vanished place: a close-up
+    of a spider on a web still takes place on that web. The scene line is the authority on
+    where the shot is; the panel dropping it is how a later still invents a new diorama.
+    """
+    found: list[dict[str, Any]] = []
+    for beat in board.ordered_beats():
+        n = int(beat["n"])
+        scene = str(beat.get("scene") or "")
+        panel = str(beat.get("panel") or "")
+        if not scene.strip() or not panel.strip():
+            continue
+        missing: list[str] = []
+        for entry in board.bound_staging(n):
+            if board.stage_kind(entry) != config.STAGE_ENVIRONMENT:
+                continue
+            name = board.stage_name(entry)
+            entry_id = str(entry.get("id") or "")
+            if not name or name == "an unnamed design":
+                continue
+            if not _names_design(scene, name, entry_id):
+                continue
+            if _names_design(panel, name, entry_id):
+                continue
+            missing.append(name)
+        if missing:
+            named = ", ".join(missing)
+            found.append(_finding(
+                kind=KIND_SET_DROPPED,
+                beat=n,
+                field="panel",
+                problem=(
+                    f"The scene line still names {named} and this beat binds "
+                    f"{'that set' if len(missing) == 1 else 'those sets'}, but the panel "
+                    "does not -- a vanished place, not a closer camera."
+                ),
+                fix=(
+                    f"Rewrite the panel so {named} is still the place this shot is in, even "
+                    "on a close-up (the set holds in the background or off-frame). Unbind "
+                    "only if the scene line no longer names that set."
+                ),
+            ))
     return found
 
 

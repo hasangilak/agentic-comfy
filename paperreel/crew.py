@@ -205,8 +205,10 @@ PHASE_BRIEF_FOR: dict[tuple[str, str], str] = {
         "The panels are written and attached, with the design sheets. Audit the roster "
         "against every panel, blocking line and bind: a flock that became one bird, a "
         "sheet that says single while the script's subject is a group, a beat that "
-        "names a design but binds none. Look at the pictures. Fix the drops. Do not "
-        "draw stills -- those come after this lock."
+        "names a design but binds none, a panel that drops a bound set the scene line "
+        "still names. That last one is a fail even when audit_cast reports 0 cast "
+        "findings -- a vanished web is not a closer camera. Look at the pictures. Fix "
+        "the drops. Do not draw stills -- those come after this lock."
     ),
 }
 

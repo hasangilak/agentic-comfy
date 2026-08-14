@@ -258,10 +258,10 @@ def generate(board: board_mod.Board, beats: list[int], *,
     so reviewing it at the end of the batch would be too late: rejecting it there would
     replace the reference every other still in the same run had already been matched against.
 
-    What each still is conditioned on is `Board.still_pictures` -- the cast reference plus the
-    director's uploads on that beat. The review below is deliberately shown only the cast
-    reference: it answers "does this belong in the reel", and the uploads are the director's own
-    intent for one shot rather than something the reel is held to.
+    What each still is conditioned on is `Board.still_pictures` -- character sheets first, the
+    set if it fits the cap, uploads only on a reference join, and beat 1's still only when this
+    beat binds no character sheet. The review is shown those identity sheets (or that still
+    when there are none). The uploads are the director's intent for one shot, not a lock.
     """
     made: list[int] = []
     remaining = list(beats)
@@ -279,7 +279,30 @@ def generate(board: board_mod.Board, beats: list[int], *,
                           announce=announce, cancelled=cancelled,
                           gemini_model=gemini_model, gemini_image_size=gemini_image_size)
         remaining = []
-    return sorted(set(made))
+    landed = sorted(set(made))
+    _advance_stills_gate(board)
+    return landed
+
+
+def _advance_stills_gate(board: board_mod.Board) -> None:
+    """Complete the stills phase when the pictures exist, so inspect becomes awaiting.
+
+    The Assets button and the chat tool both land in `generate`, and neither is a crew phase.
+    Without this, `awaiting` stays on `stills` after the stills exist, inspect never becomes
+    the next gate, and the canvas render bar has nothing to check. Only when every beat that
+    needs a still has one -- a partial batch must not skip the rest of the maker's work.
+    """
+    from . import crew
+
+    if crew.awaiting_phase(board) != "stills":
+        return
+    needed = [
+        beat["n"] for beat in board.ordered_beats()
+        if board.needs_still(beat) and not board.asset_path(beat["n"]).exists()
+    ]
+    if needed:
+        return
+    crew.mark_phase_done(board, "stills")
 
 
 def _attempts(board: board_mod.Board, beats: list[int], *,

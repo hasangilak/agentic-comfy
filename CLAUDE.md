@@ -865,7 +865,9 @@ ways to make a board), the canvas as a single white card, `panels/ChatPanel.tsx`
 saying about it). The full-width bar that used to hold container state, the billing clock and the
 render buttons is gone: the three readouts are `RailRow`s in the sidebar and the two controls that
 spend money are `panels/CanvasToolbar.tsx`, floating over the board they would spend it on —
-the price quoted is the price of the beats you can see. `ChatPanel` still cannot render, and that
+the price quoted is the price of the beats you can see. It confirms before spend when inspect
+has not run or standing inspect failures remain; the render API itself never 409s over that.
+`ChatPanel` still cannot render, and that
 is load-bearing rather than an omission (see `StoryPanel`'s note, which moved with it).
 
 **Colour is tokens, never hexes at the call site.** `index.css` `@theme` owns `ink` (the page and

@@ -262,6 +262,12 @@ export interface Board {
    * board never ran a gated phase; the UI then starts at the first phase of the current stage.
    */
   crew: { done: string[]; awaiting: string | null } | null;
+  /**
+   * Latest inspect-lens fails, derived from each beat's `asset_chat`. Empty when every
+   * latest verdict passes, or when inspect has never filed one. The render bar confirms
+   * against this; the render API does not refuse.
+   */
+  inspect_failing: { beat: number; lens: string; text: string }[];
   /** The still every cut's image is generated from, so the cast survives a scene change. */
   reference: string | null;
   /** False when it is only beat 1's own still standing in. */

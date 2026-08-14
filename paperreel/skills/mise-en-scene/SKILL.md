@@ -43,7 +43,10 @@ A sentence about a puppet is not the puppet.
   sheets are what the puppets actually look like -- block against that, not against a
   paragraph.
 - On the **lock** pass: the panels AND the sheets are attached. Call `audit_cast`, look at
-  every panel against the sheets, fix drops. Do not draw stills.
+  every panel against the sheets, fix drops. A panel that drops a bound set the scene line
+  still names is a fail, not "0 cast findings" -- roster audit is the wrong question for a
+  vanished place. Rewrite the panel (or unbind only if the scene no longer names that set).
+  Do not draw stills.
 - On **inspect**: `inspect_still` with the **`blocking`** lens only. That call is shown the
   still next to the bound sheets and the panel. Report and suggest; do not re-render.
 
