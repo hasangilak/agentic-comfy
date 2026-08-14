@@ -165,7 +165,10 @@ BRIEF_FOR: dict[tuple[str, str], str] = {
                                   "re-audit."),
     ("storyboard", "continuity"): ("Audit every chain and bridge seam: identical scene lines "
                                    "within a shot, continuity phrases, bridge landings, no "
-                                   "three pure chains, no shot past 20 seconds. Fix what fails."),
+                                   "three pure chains, no shot past 20 seconds. Macros, "
+                                   "extreme close-ups and any scale that is not the "
+                                   "establishing wide are asset joins, not reference. Fix "
+                                   "what fails."),
     ("storyboard", "storyboarder"): ("Storyboard every shot. Mise named the roster and bound "
                                      "it -- write the shot grammar and draw the panels. "
                                      "Sheets are drawn after this; do not wait for them."),
