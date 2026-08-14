@@ -7,10 +7,11 @@ not belong in the reel.
 The review pass is the point of this module. A style bible is words, and words land
 differently on every generation: the same paragraph that produced a round-eared pink pig in
 beat 1 produces a sharper-eared one in beat 4, and neither prompt was wrong. Conditioning
-every still on the reel's locked cast reference fixed most of that, but not all of it, and
-nothing in the pipeline ever checked. Now something does: the model has vision, and a look
-costs one small request against the still it just paid for. A still that misses gets its asset
-prompt rewritten against the specific thing that is wrong and is rendered again.
+every still on the character sheets (or the locked cast still when there are none) fixed
+most of that, but not all of it, and nothing in the pipeline ever checked. Now something
+does: the model has vision, and a look costs one small request against the still it just
+paid for. A still that misses gets its asset prompt rewritten against the specific thing
+that is wrong and is rendered again.
 
     made = stills.generate(board, [2, 3, 5], log=print)
 
@@ -25,7 +26,7 @@ So every generated still also has a conversation of its own:
 
     stills.converse(board, 4, "she should be looking out of frame, not at us", log=print)
 
-Same vision call, same cast reference alongside it, and it ends in the same two places: the
+Same vision call, same identity images alongside it, and it ends in the same two places: the
 beat's `asset_prompt` is rewritten and the still is rendered again. What is deliberately
 absent from that path is the automatic review -- see `converse`.
 """
@@ -74,12 +75,21 @@ REVIEW_SCHEMA = {
 # paper would have every still it rendered thrown away by its own review pass.
 JUDGEMENT = (
     "Judge only these, and reject only for something you can name:\n"
-    "- the characters: species, colour, markings, proportions, ear and tail shape, face. "
-    "These must be the SAME design as the reference, in every detail.\n"
+    "- the characters: species, colour, markings, proportions, ear and tail shape, face, "
+    "eye count, limb count. These must be the SAME design as the identity images, in every "
+    "detail.\n"
+    "- relative scale when the style bible names one (one creature a fraction of another's "
+    "height). Reject if the picture violates that ratio.\n"
     "- the medium: {medium}, not a flat vector drawing.\n"
     "- the palette and the art direction.\n"
-    "- the frame: tall vertical 9:16, the character fully inside it, no text, no watermark, "
-    "no signature, no border or frame drawn around the picture.\n"
+    "- the frame: tall vertical 9:16, the subject fully inside it, no text, no watermark, "
+    "no signature, no border or picture-frame drawn around the picture that the style bible "
+    "did not ask for.\n"
+    "- shot size and camera against THIS STILL WAS ASKED FOR / THIS BEAT'S SCENE: a medium "
+    "must not be a wide two-shot; a macro of one leg tip must not show the whole puppet. The "
+    "identity images lock who is in the film and what they are made of, not the camera.\n"
+    "- set geometry, only when a set sheet is among the images: the still must be the same "
+    "place (same architecture, same web, same branches), not a new reading of the note.\n"
     "- whether the still actually shows what its prompt asked for.\n"
     "- leave room for the action: the still is frame one of the beat's motion, not the "
     "climax. If THIS BEAT'S ACTION describes travel across the frame — walk, cross, slide "
@@ -87,9 +97,10 @@ JUDGEMENT = (
     "destination with no empty travel space, reject it. Rewrite the asset_prompt so they "
     "start at the near edge with the destination side open and named. Do not reject a still "
     "that correctly opens a travel beat with empty space ahead.\n\n"
-    "The setting, the framing, the scale and the pose are SUPPOSED to differ from the "
-    "reference -- each beat is a different shot. Never reject a still for those, except the "
-    "leave-room rule above when travel space was consumed."
+    "Do not reject for differing from another shot's camera, pose, or setting when this beat "
+    "asked for a different shot -- each beat is a different shot. Never reject a still for "
+    "those, except the leave-room rule above when travel space was consumed, and except shot "
+    "size against THIS beat's own prompt."
 )
 
 
@@ -371,30 +382,68 @@ def _rejected(board: board_mod.Board, beats: list[int], *,
     return failed
 
 
+def _review_lock(board: board_mod.Board, n: int) -> list[tuple[Path, str]]:
+    """What the automatic review holds a still to, in picture order.
+
+    Character and prop sheets when they exist -- those are the puppets. Beat 1's composed still
+    only when they do not, which is the legacy path. Set sheets that actually reached this
+    still as pictures come after, so geometry can be checked without sending a set the still
+    never saw.
+    """
+    locks = list(board.still_identity_sheets(n))
+    if not locks:
+        cast = board.reference_for(n)
+        if cast is not None:
+            locks.append((cast, ""))
+    shown = {path for path, _ in board.still_pictures(n)}
+    for entry in board.bound_staging(n):
+        if board.stage_kind(entry) != config.STAGE_ENVIRONMENT:
+            continue
+        path = board.stage_path(str(entry.get("id")))
+        if path in shown:
+            locks.append((path, board.stage_role(entry)))
+    return locks
+
+
 def review(board: board_mod.Board, n: int) -> dict:
     """Look at one finished still and say whether it belongs in this reel.
 
-    Two images when there is a cast reference, one when this beat IS the reference. Referred
-    to as "the first image" and "the second image" rather than with tags like <Picture 1>:
+    Identity images (sheets, or the cast still when there are none) then the still, last.
+    Referred to as "the first image" / "the last image" rather than with tags like <Picture 1>:
     the tag vocabulary is what the *video* model was trained on, and asked that way here the
     reviewer answered about only one of the two pictures it had been given.
     """
     still = board.asset_path(n)
     if not still.is_file():
         raise gemini.GeminiError(f"beat {n} has no still to look at")
-    reference = board.reference_for(n)
     beat = board.beat(n)
     prompt = (beat.get("asset_prompt") or "").strip()
     action = (beat.get("action") or "").strip()
+    locks = _review_lock(board, n)
+    images: list[Path] = [path for path, _ in locks]
     parts: list[str] = []
-    images: list[Path] = []
-    if reference is not None:
-        images.append(reference)
-        parts.append(
-            "The first image is this reel's locked cast reference: it fixes what the "
-            "characters, the materials and the palette look like. The second image is a new "
-            "opening still for a different shot in the same reel."
-        )
+    if locks:
+        count = len(locks)
+        if count == 1 and not board.still_identity_sheets(n):
+            parts.append(
+                "The first image is this reel's locked cast reference: it fixes what the "
+                "characters, the materials and the palette look like. The last image is a new "
+                "opening still for a different shot in the same reel."
+            )
+        else:
+            listed = []
+            for index, (_path, role) in enumerate(locks, start=1):
+                said = " ".join(str(role or "").split())
+                listed.append(
+                    f"{index}. a design sheet this still is held to"
+                    + (f" -- {said}" if said else ".")
+                )
+            listed.append(f"{count + 1}. the opening still under review.")
+            parts.append(
+                f"You are given {count + 1} images, in this order:\n" + "\n".join(listed)
+                + " The design sheets lock who is in the film and what they are made of, not "
+                "the camera. The last image is a new opening still for a different shot."
+            )
     else:
         parts.append(
             "The image is the opening still that will define the look of a whole reel, so "
@@ -404,6 +453,10 @@ def review(board: board_mod.Board, n: int) -> dict:
     images.append(still)
     parts.append(f"STYLE BIBLE: {board.identity()}")
     parts.append(f"REQUIRED OF EVERY STILL: {board.look().still}")
+    if beat.get("scene"):
+        parts.append(f"THIS BEAT'S SCENE (shot size and place): {beat['scene']}")
+    if beat.get("blocking"):
+        parts.append(f"IN FRAME: {beat['blocking']}")
     if action:
         parts.append(f"THIS BEAT'S ACTION (what moves after frame one): {action}")
     if prompt:
@@ -635,10 +688,10 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
 
     The pictures are `Board.still_pictures` -- what this still is actually drawn from -- and
     then the still itself, last. Showing the director's own uploads here rather than only the
-    cast reference is what makes "give her the scarf from the picture I just sent" answerable
-    instead of guessed at. The automatic `review` is deliberately shown only the cast reference,
-    because it answers a different question: whether the still belongs in the reel, which the
-    director's intent for one shot has no bearing on.
+    identity lock is what makes "give her the scarf from the picture I just sent" answerable
+    instead of guessed at. The automatic `review` is shown the identity sheets (or the cast
+    still when there are none), because it answers a different question: whether the still
+    belongs in the reel, which the director's intent for one shot has no bearing on.
 
     Numbered rather than tagged. `<Picture 1>` is the *video* model's vocabulary, and asked in
     it the reviewer answered about one of the two images it had been given -- but "the first
@@ -651,20 +704,25 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
     beat = board.beat(n)
     reference = board.reference_for(n)
     drawn_from = board.still_pictures(n)
+    identity = {path for path, _ in board.still_identity_sheets(n)}
     images: list[Path] = [path for path, _ in drawn_from] + [board.asset_path(n)]
     parts: list[str] = []
     listed = []
     for index, (path, note) in enumerate(drawn_from, start=1):
+        said = " ".join(str(note or "").split())
         if reference is not None and path == reference:
             listed.append(
                 f"{index}. this reel's locked cast reference: it fixes what the characters, the "
                 "materials and the palette look like, and this still is held to it."
             )
-        else:
-            said = " ".join(str(note or "").split())
+        elif path in identity:
             listed.append(
-                f"{index}. a picture the director attached to this shot, which this still is "
-                "drawn from as well as the clip"
+                f"{index}. a character design sheet this still is held to"
+                + (f" -- {said}" if said else ".")
+            )
+        else:
+            listed.append(
+                f"{index}. a picture this still is drawn from"
                 + (f". They say it is for: {said}" if said else ".")
             )
     listed.append(f"{len(images)}. the still you are talking about.")

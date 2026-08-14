@@ -215,10 +215,11 @@ which is a *different* judgement, see below — and `gemini.py` is the model.
 `pictures.py` exists because a reference picture is now drawn, not only uploaded: `pictures.draw`
 renders one into `beat<n>_ref<i>.png`, `pictures.converse` is a vision turn about it that ends in
 a redraw. It is **not** part of `stills.py`, and growing it there would break the split above.
-`stills.review` holds a still to the reel's cast reference and rejects it for drift; a reference
-picture is *supposed* to differ from the cast — it is a prop, a set with nobody in it, a colour
-chart — so the reviewer would reject almost every one. **There is no review pass on a picture,
-ever.**
+`stills.review` holds a still to the character sheets (or the cast still when there are none)
+and rejects it for drift, wrong shot size against this beat's prompt, and a set that was
+handed as a picture and came back as a different place; a reference picture is *supposed* to
+differ from the cast — it is a prop, a set with nobody in it, a colour chart — so the
+reviewer would reject almost every one. **There is no review pass on a picture, ever.**
 
 Three things about a drawn picture were measured on a live render and are all the same mistake in
 different clothes — a model shown the cast will draw the cast:
