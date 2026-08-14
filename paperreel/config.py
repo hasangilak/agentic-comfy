@@ -379,7 +379,7 @@ MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "4"))
 # "paper" -- and it is reasoned, not measured. Nothing has been rendered in it yet.
 @dataclass(frozen=True)
 class Medium:
-    """One medium's words, in the eleven places a render or a review asks for them."""
+    """One medium's words, in the fourteen places a render or a review asks for them."""
 
     key: str
     # What the prompts call it, e.g. "paper-cutout stop-motion". Spliced into six system
@@ -396,8 +396,10 @@ class Medium:
     # The still's style suffix -- and, because the review judges against the same medium, the
     # thing `judge` has to agree with word for word.
     still: str
-    # A character or prop design sheet: the subject whole, centred, on nothing.
+    # A prop design sheet: the subject whole, centred, on nothing.
     sheet: str
+    # A character model sheet: the same puppet packed as numbered views, not a centred portrait.
+    model: str
     # A set sheet: nothing but scenery, the subject deliberately absent.
     set: str
     # What the vision review holds a finished still to.
@@ -414,6 +416,27 @@ class Medium:
     physics: str
     # Section 6(a) of the brief: what the style bible must lock down about construction.
     construction: str
+
+
+# The layout every character sheet is asked for, medium-agnostic. Construction stays on
+# `Medium.model` so paper and clay do not share a suffix; this paragraph is the one copy of
+# the sections themselves, concatenated into both. Four sections, not nine: micro-expressions,
+# action poses, hand macros, fabric crops and a lore blurb shrink the puppet below what H3
+# can lock to. Small labels are required so Gemini packs the cells; a personality paragraph
+# is forbidden because lettering on a sheet leaks into the clip.
+CHAR_SHEET_LAYOUT = (
+    "plain light-grey ground, no scenery. One character model sheet of a SINGLE puppet packed "
+    "as four numbered labeled sections: "
+    "(1) FULL BODY TURNAROUND -- FRONT, 3/4, SIDE, BACK, standing at rest, faint height guides, "
+    "figures complete and not cropped; "
+    "(2) EXPRESSION SHEET -- six head-and-shoulders of the SAME face: NEUTRAL, HAPPY, ANGRY, "
+    "SAD, SURPRISED, DETERMINED; "
+    "(3) HEAD DETAIL -- FRONT, 3/4 and SIDE close-ups of that same face; "
+    "(4) COLOR PALETTE -- labeled swatches sampled from this puppet, not invented hex. "
+    "Every cell is the same character: same silhouette, markings, palette and construction. "
+    "Small printed section labels only (FRONT, NEUTRAL, and so on). No personality paragraph, "
+    "no lore, no watermarks, no signature."
+)
 
 
 PAPER_CUTOUT = Medium(
@@ -445,6 +468,8 @@ PAPER_CUTOUT = Medium(
     sheet=("Handcrafted layered paper-cutout construction, visible paper grain, soft contact "
            "shadows, plain neutral background, the subject complete and centred with nothing "
            "cropped, even frontal lighting, no scenery, no text, no watermarks, no signature."),
+    model=("Handcrafted layered paper-cutout construction, visible paper grain, soft contact "
+           "shadows, even frontal lighting, " + CHAR_SHEET_LAYOUT),
     set=("Handcrafted layered paper-cutout construction, visible paper grain, soft contact "
          "shadows, layered depth from foreground to sky, even daylight unless the description "
          "says otherwise, an empty set with no characters, no people and no animals anywhere "
@@ -517,6 +542,9 @@ CLAYMATION = Medium(
            "thumbprints and tool marks, soft practical shadows, plain neutral background, the "
            "subject complete and centred with nothing cropped, even frontal lighting, no "
            "scenery, no text, no watermarks, no signature."),
+    model=("Handcrafted plasticine clay construction, matte clay surface with visible "
+           "thumbprints and tool marks, soft practical shadows, even frontal lighting, "
+           + CHAR_SHEET_LAYOUT),
     set=("Handcrafted plasticine clay construction, matte clay surface with visible "
          "thumbprints and tool marks, sculpted terrain receding into depth, even daylight "
          "unless the description says otherwise, an empty set with no characters, no people "
@@ -665,15 +693,25 @@ SET_DRAW_STYLE_SUFFIX = PAPER_CUTOUT.set
 # -- so it is the same string for a reason rather than by obligation.
 PAPERCUT_SET_ASPECT = PAPERCUT_ASPECT
 
+# A character model sheet is the other kind the square is wrong for: four labeled sections
+# side by side, and a 1:1 pack crushes the turnaround. `16:9` is already a Papercut preset
+# (1152x640, Gemini 2K scales it). Unlike PAPERCUT_ASPECT this carries no hard constraint --
+# a sheet is conditioning and is never handed to H3 as a frame. Prop sheets stay on the
+# square above; they are one object, not a pack.
+PAPERCUT_CHAR_ASPECT = "16:9"
+CHAR_DRAW_STYLE_SUFFIX = PAPER_CUTOUT.model
+
 # What a bound sheet is called in the prompt when the director has written nothing about it. The
 # name alone, in a sentence, because `reference_roles` splices this after "<Picture 3> is " and a
 # bare noun reads as a fragment there. A sheet WITH a note uses the note instead: the director's
 # own words about their own design always win.
 STAGE_ROLE = {
     STAGE_CHARACTER: "{name}, one of this reel's characters -- this sheet is that character's "
-                     "appearance reference only: it fixes what {name} looks like (shapes, "
-                     "markings, colours, materials), not this shot's pose or framing, and the "
-                     "same single {name} performs the action below",
+                     "appearance reference only: it may show several views of the same puppet "
+                     "(turnaround, expressions, head, palette) and is still one {name}. It "
+                     "fixes what {name} looks like (shapes, markings, colours, materials), not "
+                     "this shot's pose or framing, and the same single {name} performs the "
+                     "action below",
     STAGE_ENVIRONMENT: "{name}, the set this shot takes place in -- this sheet is that set's "
                        "locked design, empty of characters",
     STAGE_PROP: "{name}, a prop in this film -- this sheet is its locked design",

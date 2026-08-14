@@ -53,8 +53,8 @@ export const KIND_LOOK: Record<StageKind, { label: string; icon: string; hint: s
   character: {
     label: "character",
     icon: "🦊",
-    hint: "someone who acts. Drawn as a design sheet — the puppet whole and centred on a plain "
-      + "ground — and sent to both the clip and the still it opens on",
+    hint: "someone who acts. Drawn as a model sheet — turnaround, expressions, head, palette "
+      + "on a plain ground — and sent to both the clip and the still it opens on",
   },
   environment: {
     label: "set",
@@ -66,8 +66,8 @@ export const KIND_LOOK: Record<StageKind, { label: string; icon: string; hint: s
   prop: {
     label: "prop",
     icon: "🔦",
-    hint: "a thing that has to look the same wherever it turns up. Drawn like a character sheet "
-      + "and sent to both renders",
+    hint: "a thing that has to look the same wherever it turns up. Drawn as one object complete "
+      + "and centred on a plain ground, and sent to both renders",
   },
 };
 

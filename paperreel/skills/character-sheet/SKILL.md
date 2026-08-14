@@ -46,19 +46,19 @@ anyone has drawn a still.
 
 ## What a sheet must look like
 
-An identity lock, not a story moment — and preferably a **one-image turnaround** so H3 sees
-more angles without spending extra reference slots:
+An identity lock, not a story moment. One image, one file, so H3 sees more of the puppet
+without spending extra reference slots. The pipeline appends this layout; do **not** restage
+it in `draw` -- `draw` describes the puppet (materials, colours, markings, from the bible's
+exact wording). `note` is the same forensic look and reaches the video and still prompts;
+never put the section list in `note`.
 
-- Pack **front + three-quarter** (and **back** if markings differ on the reverse) into a
-  single sheet on a plain neutral ground, subjects complete and clearly lit, labeled or
-  spaced as distinct views of the SAME puppet.
-- Every marking visible across the views. Neutral readable poses — standing or sitting at
-  rest, not mid-action.
+{{CHAR_SHEET}}
+
 - Copy countable anatomy from the style bible **verbatim**: eye count, limb count, named extra
-  parts. Do not add a part the bible did not name (a spinneret, a sixth eye, a second creature
-  on the sheet).
-- No scenery, no other characters, no dramatic heroic pose, no heavy silhouette, no crop at
-  the frame edge.
+  parts. Do not add a part the bible did not name (a spinneret, a sixth eye, a second distinct
+  character on the sheet). Many cells of the SAME puppet are the layout, not a second character.
+- No scenery, no other characters, no dramatic heroic pose. Turnaround figures complete; head
+  crops belong only in the expression and detail sections.
 - Still one `draw_design` and one file. Do not mint a second sheet for a second angle.
 
 Story poses belong in stills and panels. A sheet frozen mid-leap becomes a second character the

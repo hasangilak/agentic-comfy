@@ -26,8 +26,8 @@ and all three are recorded next to the code that acts on them:
     model shown the cast draws the cast -- "a single iron-grey club" against a fox reference came
     back as the fox. The medium travels as words instead.
   * **the board's style bible never reaches this render.** It describes the cast and the set, and
-    a prop sheet is neither. `config.REF_DRAW_STYLE_SUFFIX` (or the set suffix) goes in the
-    scene `style` slot in its place.
+    a prop sheet is neither. `board.look().sheet` (prop), `.model` (character) or `.set`
+    goes in the scene `style` slot in its place.
   * **a redraw is `consistency="edit"`**, the one conditioned mode with no continuity clause.
     Every other clause ends "but move the subject into a clearly different pose and position",
     which is right for the next frame of a moving sequence and exactly wrong when the reference
@@ -114,11 +114,15 @@ REVIEW_SCHEMA = {
 # the whole point of a character sheet.
 KIND_RULES = {
     "character": (
-        "This is a CHARACTER sheet: the subject complete and centred on a plain ground. "
-        "Reject scenery, other characters, a composed shot, or a crop at the frame edge. "
-        "Anatomy must match the NOTE and style bible exactly -- eye count, limb count, named "
-        "extra parts. An extra spinneret, a missing eye, or a second creature on the sheet "
-        "is a fail. Colours only those the note or bible named for this character."
+        "This is a CHARACTER model sheet: four labeled sections of ONE puppet on a plain "
+        "ground (turnaround, expressions, head detail, sampled palette). Many cells of the "
+        "SAME character are required, not a fail. Reject a second distinct character, scenery, "
+        "a composed shot, or identity drift across cells -- eye count, limb count, markings, "
+        "garment, palette vs the NOTE. Head crops in expression and detail cells are correct; "
+        "a cropped turnaround figure is a fail. A missing required section is a fail. Do not "
+        "reject for messy labels or inaccurate hex. Anatomy must match the NOTE and style "
+        "bible exactly -- an extra spinneret or a missing eye is a fail. Colours only those "
+        "the note or bible named for this character."
     ),
     "prop": (
         "This is a PROP sheet: one object complete and centred on a plain ground. Reject "
@@ -155,12 +159,15 @@ SYSTEM_TEMPLATE = (
     "looking at ONE design sheet with the director -- a character, a set, or a prop -- and your "
     "job is to turn what they say about it into the prompt it is drawn from next time.\n\n"
     "A design sheet is not a shot. It is the locked design of one thing, drawn so that every "
-    "shot in the film containing that thing can be held to it. A character or prop sheet shows "
-    "the subject complete and centred on a plain ground: nothing cropped, no scenery, no "
-    "staging, no implied camera. A SET sheet is the opposite and the only exception -- it is the "
-    "place itself with no characters in it at all, framed as the shots in it will be framed. If "
-    "the director asks a character sheet for a composition, they are asking for the wrong thing "
-    "here; say so in your reply while still doing what they asked to the subject.\n\n"
+    "shot in the film containing that thing can be held to it. A PROP sheet shows the subject "
+    "complete and centred on a plain ground: nothing cropped, no scenery, no staging, no "
+    "implied camera. A CHARACTER sheet is a model sheet of that one puppet -- turnaround, "
+    "expressions, head angles and a sampled palette, packed as labeled sections on a plain "
+    "ground; many cells of the SAME character, never a second creature, never a composed "
+    "shot. Keep that layout on a redraw. A SET sheet is the place itself with no characters "
+    "in it at all, framed as the shots in it will be framed. If the director asks a character "
+    "sheet for a story composition, they are asking for the wrong thing here; say so in your "
+    "reply while still doing what they asked to the subject, and keep the model-sheet layout.\n\n"
     "WHAT THIS SHEET IS OF DOES NOT CHANGE. The prompt you write describes the SAME thing the "
     "current prompt describes, with the director's note applied to it. If it is a club, it stays "
     "a club. If you are shown other sheets alongside it, they are there for the paper, the "
@@ -188,32 +195,43 @@ class StagingError(RuntimeError):
 def style_for(board: board_mod.Board, entry: dict) -> str:
     """The scene `style` one sheet is drawn under -- the medium, never the board's style bible.
 
-    Two suffixes, picked off the kind, and the split is not cosmetic:
-    `config.REF_DRAW_STYLE_SUFFIX` asks for "the subject complete and centred" on a "plain
-    neutral background" with "no scenery", which describes a character or a prop and is the exact
-    opposite of a set. Handed the prop-sheet suffix, "a moonlit clearing ringed with birches"
-    comes back as a single birch on grey -- a faithful reading of the instruction it was given.
+    Three suffixes, picked off the kind, and the split is not cosmetic. `look().sheet` asks
+    for "the subject complete and centred" on a "plain neutral background" with "no scenery",
+    which describes a prop and is the exact opposite of a set -- handed that suffix, "a
+    moonlit clearing ringed with birches" comes back as a single birch on grey. `look().model`
+    is the other half of that lesson: a character sheet that shares the prop suffix comes back
+    as one centred portrait, and H3 never sees the turnaround. A set gets `look().set`.
 
-    The board's style bible is absent from both, and that is what `papercut.draw`'s `style`
-    override exists for. It describes the cast and the set, so on a real board Gemini would be
-    handed "a single iron-grey club. A single fox ... on layered green paper hills." and draw the
-    fox. Measured on a live render, one level down, in `pictures.draw_text`.
+    The board's style bible is absent from all three, and that is what `papercut.draw`'s
+    `style` override exists for. It describes the cast and the set, so on a real board Gemini
+    would be handed "a single iron-grey club. A single fox ... on layered green paper hills."
+    and draw the fox. Measured on a live render, one level down, in `pictures.draw_text`.
     """
-    if board.stage_kind(entry) == config.STAGE_ENVIRONMENT:
-        return board.look().set
-    return board.look().sheet
+    kind = board.stage_kind(entry)
+    look = board.look()
+    if kind == config.STAGE_ENVIRONMENT:
+        return look.set
+    if kind == config.STAGE_CHARACTER:
+        return look.model
+    return look.sheet
 
 
 def aspect_for(board: board_mod.Board, entry: dict) -> str:
-    """The shape one sheet is drawn at: square for a subject, the reel's frame for a set.
+    """The shape one sheet is drawn at: landscape for a character pack, square for a prop,
+    the reel's frame for a set.
 
-    A set is the one design sheet whose framing is load-bearing -- what a still needs from it is
-    how much of this clearing sits above the puppet's head, and a square answers a different
-    question. Neither preset constrains anything downstream: a sheet is conditioning and is never
-    handed to H3 as a frame, so unlike `config.PAPERCUT_ASPECT` these are free to be retuned.
+    A set is the one design sheet whose framing is load-bearing -- what a still needs from it
+    is how much of this clearing sits above the puppet's head, and a square answers a
+    different question. A character model sheet is the other kind the square is wrong for:
+    four labeled sections side by side, crushed at 1:1. None of these presets constrain
+    anything downstream: a sheet is conditioning and is never handed to H3 as a frame, so
+    unlike `config.PAPERCUT_ASPECT` they are free to be retuned.
     """
-    if board.stage_kind(entry) == config.STAGE_ENVIRONMENT:
+    kind = board.stage_kind(entry)
+    if kind == config.STAGE_ENVIRONMENT:
         return config.PAPERCUT_SET_ASPECT
+    if kind == config.STAGE_CHARACTER:
+        return config.PAPERCUT_CHAR_ASPECT
     return config.PAPERCUT_REF_ASPECT
 
 

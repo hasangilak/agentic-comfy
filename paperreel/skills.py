@@ -82,6 +82,7 @@ def _placeholders() -> dict[str, Callable[[], str]]:
         "MAX_REF_IMAGES": lambda: str(config.MAX_REF_IMAGES),
         "MAX_STILL_REFS": lambda: str(config.MAX_STILL_REFS),
         "MAX_STAGE_SHEETS": lambda: str(config.MAX_STAGE_SHEETS),
+        "CHAR_SHEET": lambda: config.CHAR_SHEET_LAYOUT,
     }
 
 

@@ -368,7 +368,8 @@ The kind is not decoration; it decides three things at once:
 
 |  | drawn as | drawn at | reaches the clip | reaches the still |
 | --- | --- | --- | --- | --- |
-| `character` / `prop` | subject whole and centred, plain ground | 1:1 | a picture | a picture |
+| `character` | model sheet: turnaround, expressions, head, palette | 16:9 | a picture | a picture |
+| `prop` | subject whole and centred, plain ground | 1:1 | a picture | a picture |
 | `environment` | the place, empty of characters | 9:16 | a picture | **words** |
 
 That last cell is the one measured constraint in the feature. The video model takes nine
@@ -709,7 +710,10 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   drawn a character sheet, redrawn one from a note, or looked at whether a scene conditioned on
   two design sheets holds its cast better than one conditioned on the cast reference alone —
   which is the entire claim the feature makes. The set-sheet suffix and its 9:16 shape are
-  reasoned from the prop-sheet failure one level down, not measured.
+  reasoned from the prop-sheet failure one level down, not measured. The character model sheet
+  (16:9, four labeled sections in one Gemini shot) is the same kind of claim: one-shot Gemini
+  may drop a section or smear labels; the review retry is the mitigation; no quality claim
+  until a live draw.
 - **No storyboard panel has been drawn against a live model either.** The machinery is exercised:
   the routes answer, both job kinds run, a panel follows its scene through a delete-and-renumber,
   the contact sheet builds, and every beat's fingerprint is verified *byte identical* before and

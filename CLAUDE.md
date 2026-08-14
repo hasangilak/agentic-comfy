@@ -295,13 +295,19 @@ beat binds ids in `beat["staging"]`, and `Board.bind_stage` replaces rather than
 
 | kind | style suffix | aspect | in the clip | in the still |
 | --- | --- | --- | --- | --- |
-| `character`, `prop` | `REF_DRAW_STYLE_SUFFIX` | `PAPERCUT_REF_ASPECT` | a picture | a picture |
-| `environment` | `SET_DRAW_STYLE_SUFFIX` | `PAPERCUT_SET_ASPECT` | a picture | a picture if it fits the cap, otherwise **words** |
+| `character` | `CHAR_DRAW_STYLE_SUFFIX` (`look().model`) | `PAPERCUT_CHAR_ASPECT` (16:9) | a picture | a picture |
+| `prop` | `REF_DRAW_STYLE_SUFFIX` (`look().sheet`) | `PAPERCUT_REF_ASPECT` | a picture | a picture |
+| `environment` | `SET_DRAW_STYLE_SUFFIX` (`look().set`) | `PAPERCUT_SET_ASPECT` | a picture | a picture if it fits the cap, otherwise **words** |
 
-The set suffix exists because `REF_DRAW_STYLE_SUFFIX` asks for "the subject complete and centred"
+The set suffix exists because `look().sheet` asks for "the subject complete and centred"
 on a "plain neutral background" with "no scenery", and a set sheet is nothing but scenery with
 the subject deliberately absent — handed the prop-sheet suffix, "a moonlit clearing ringed with
-birches" is a single birch on grey, which is a faithful reading of what it was told.
+birches" is a single birch on grey, which is a faithful reading of what it was told. The
+character suffix exists for the other half of that lesson: sharing the prop suffix packed one
+centred portrait into the identity slot, and H3 never saw the turnaround. `CHAR_SHEET_LAYOUT`
+is four labeled sections of one puppet (turnaround, expressions, head, palette), not the
+nine-section reference that would shrink the figure below a lock. Small labels are required;
+a lore paragraph is forbidden because lettering leaks into the clip.
 
 **The one measured constraint is the still's cap**, and everything else falls out of it. The
 video model takes `MAX_REF_IMAGES` (9); the still takes `MAX_STILL_REFS` (4). Three characters
@@ -505,9 +511,10 @@ picks one. Before it, every string that named paper was a module-level global �
 reached a render and one of them, the vision review's, *rejected* a still for not being paper.
 So a board whose style bible said clay was fighting its own reviewer.
 
-A `Medium` carries thirteen fields, which is the honest count of how many places a medium is
+A `Medium` carries fourteen fields, which is the honest count of how many places a medium is
 named: `shot` (every video prompt's opening clause), `surface` (the material words in the
-reference paragraph), `craft`, `audio`, `still` / `sheet` / `set` (the three image suffixes),
+reference paragraph), `craft`, `audio`, `still` / `sheet` / `model` / `set` (the four image
+suffixes — still, prop sheet, character model sheet, set sheet),
 `judge` (what the review holds a still to), `essence` (the parenthetical four chat prompts use
 for "not yours to overrule"), `negate` (what a storyboard panel must NOT look like), `name`,
 `opening`, `physics` and `construction` (the brief's two medium-bound sections).
@@ -1018,8 +1025,11 @@ byte-identical on a board that binds nothing, which is what keeps every existing
 `stale`. What has NOT happened is one sheet being drawn: nobody has rendered a character sheet,
 redrawn one from a note, or compared a scene conditioned on two design sheets against the same
 scene on the cast reference alone — which is the entire claim. `SET_DRAW_STYLE_SUFFIX` and the
-9:16 set shape are reasoned from `pictures.py`'s prop-sheet failure, not measured. `StagingPanel`
-and the bind toggles have not been clicked in a browser either.
+9:16 set shape are reasoned from `pictures.py`'s prop-sheet failure, not measured. The character
+model sheet (`CHAR_SHEET_LAYOUT`, 16:9, four sections in one Gemini shot) is the same kind of
+claim: one-shot Gemini may drop a section or smear labels; the review retry is the mitigation;
+no quality claim until a live draw. `StagingPanel` and the bind toggles have not been clicked
+in a browser either.
 
 **Nothing arbitrates between a bound design and a beat's own picture of the same thing.** Both go
 over, described twice. `ref_budget` notices the slot; nothing notices the duplication.
@@ -1094,7 +1104,7 @@ blocked, the blocking and the clay audio reaching the video prompt, then three l
 
 So what is NOT known is everything about the *conversations and the pictures*. Specifically:
 
-- **Nothing has been rendered in clay.** `CLAYMATION`'s thirteen fields are reasoned from
+- **Nothing has been rendered in clay.** `CLAYMATION`'s fourteen fields are reasoned from
   `pictures.py`'s measured lessons and from what the two materials physically do, not from a
   render. The claim most likely to be wrong is that `judge` rejects the right things: a reviewer
   told to reject anything that is not "sculpted plasticine with visible thumbprints" may reject

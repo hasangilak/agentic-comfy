@@ -48,8 +48,8 @@ level over for place.
   same street corner — so two artists would build the same diorama.
 - Optional orthographic pack in one image when it helps (wide establishing + a detail wall),
   still one sheet file, plain readable lighting.
-- Match the set style the medium asks for (scenery, not a subject centred on grey — that is
-  the character sheet's framing).
+  - Match the set style the medium asks for (scenery, not a subject centred on grey — that is
+  a prop sheet's framing — and not a character model sheet).
 
 ## How a turn goes
 
