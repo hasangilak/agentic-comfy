@@ -305,9 +305,10 @@ CREW_STILL_BUDGET = int(os.environ.get("PAPERREEL_CREW_STILL_BUDGET", "24"))
 # prompt -- and returns a corrected script plus what it changed. Those are the failures that
 # are invisible on the page and obvious in the render.
 PLAN_REVIEW = os.environ.get("PAPERREEL_PLAN_REVIEW", "1") == "1"
-# The stills pass looks at each finished still next to the reel's locked cast reference and
-# says whether the same characters, palette and paper stock came back. A still that missed
-# gets its asset prompt rewritten and is rendered again.
+# The stills pass looks at each finished still next to the character sheets (or the locked
+# cast still when there are none) and says whether the same characters, palette and paper
+# stock came back. A still that missed gets its asset prompt rewritten and is rendered again.
+# The same switch and attempt bound cover a sheet held to its own note after `staging.draw`.
 #
 # One retry, not five: Gemini is metered and not instant, and a still the
 # model rejects twice is usually telling you the style bible is the problem.

@@ -54,6 +54,9 @@ more angles without spending extra reference slots:
   spaced as distinct views of the SAME puppet.
 - Every marking visible across the views. Neutral readable poses — standing or sitting at
   rest, not mid-action.
+- Copy countable anatomy from the style bible **verbatim**: eye count, limb count, named extra
+  parts. Do not add a part the bible did not name (a spinneret, a sixth eye, a second creature
+  on the sheet).
 - No scenery, no other characters, no dramatic heroic pose, no heavy silhouette, no crop at
   the frame edge.
 - Still one `draw_design` and one file. Do not mint a second sheet for a second angle.

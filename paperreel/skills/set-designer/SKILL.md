@@ -40,6 +40,10 @@ level over for place.
 ## What a set sheet must look like
 
 - The place empty of cast. No characters, no hero posing in frame.
+- Closed palette: only the colours the style bible named for this place. Do not invent a
+  second ground or sky.
+- No decorative picture-frame, shadowbox, or wooden tabletop around the diorama unless the
+  bible named one — that frame becomes the set.
 - Readable architecture / terrain that recurs: the same cave mouth, the same birch ring, the
   same street corner — so two artists would build the same diorama.
 - Optional orthographic pack in one image when it helps (wide establishing + a detail wall),

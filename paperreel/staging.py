@@ -10,12 +10,14 @@ down, drawn once, and bound to whichever beats contain it.
     staging.draw(board, entry["id"])
     staging.converse(board, entry["id"], "her chest should be cream, not white")
 
-**There is no review pass here, ever**, for the reason `pictures.py` gives at greater length:
-`stills.review` holds an image against the reel's locked cast reference and rejects it for
-drift, and a design sheet is *supposed* to differ from that reference -- it is a second
-character, an empty set, a prop. A reviewer told to reject anything that does not match the cast
-would reject almost every sheet. This module is also upstream of that reviewer rather than
-beside it: what these sheets are is the thing later stills get held to.
+There is deliberately no "hold this sheet to the cast still" pass, for the reason
+`pictures.py` gives at greater length: a design sheet is *supposed* to differ from a composed
+shot -- it is a second character, an empty set, a prop -- and a reviewer told to match the
+cast would reject almost every one. What *does* run, from `draw` so an agent cannot skip it,
+is hold the sheet to **its own note**: the eye count the bible named, the closed palette, no
+extra parts, no characters on a set, no scenery on a character. That is a different question
+from the stills reviewer, and this module is upstream of that reviewer rather than beside it:
+what these sheets are is the thing later stills get held to.
 
 Three things about how a sheet is drawn are the same measured lesson wearing different clothes,
 and all three are recorded next to the code that acts on them:
@@ -77,6 +79,72 @@ CHAT_SCHEMA = {
         },
     },
 }
+
+# Same shape as `stills.REVIEW_SCHEMA`, and `draw` last for the same decode-order reason that
+# module records: a field written first becomes the model's scratchpad.
+REVIEW_SCHEMA = {
+    "type": "object",
+    "required": ["consistent", "problems", "draw"],
+    "properties": {
+        "consistent": {
+            "type": "boolean",
+            "description": (
+                "true if this sheet is the thing its note describes. Only false for a concrete, "
+                "nameable mismatch with the note or the kind's framing -- not for a preference "
+                "about pose."
+            ),
+        },
+        "problems": {
+            "type": "array",
+            "description": "One short line per mismatch, naming what is wrong. Empty when consistent.",
+            "items": {"type": "string"},
+        },
+        "draw": {
+            "type": "string",
+            "description": (
+                "The prompt to draw this sheet again from, correcting the problems and nothing "
+                "else. Return the original prompt unchanged when consistent is true."
+            ),
+        },
+    },
+}
+
+# Hold the sheet to its note, never to a still. `{kind_rules}` is the one substitution that is
+# not cosmetic: a character sheet judged as a set would fail for having a subject, which is
+# the whole point of a character sheet.
+KIND_RULES = {
+    "character": (
+        "This is a CHARACTER sheet: the subject complete and centred on a plain ground. "
+        "Reject scenery, other characters, a composed shot, or a crop at the frame edge. "
+        "Anatomy must match the NOTE and style bible exactly -- eye count, limb count, named "
+        "extra parts. An extra spinneret, a missing eye, or a second creature on the sheet "
+        "is a fail. Colours only those the note or bible named for this character."
+    ),
+    "prop": (
+        "This is a PROP sheet: one object complete and centred on a plain ground. Reject "
+        "scenery, characters, or a second object the note did not name. Colours only those "
+        "the note or bible named for this prop."
+    ),
+    "environment": (
+        "This is a SET sheet: the place empty of cast, framed as the shots in it will be "
+        "framed. A figure in the set is a fail. No decorative picture-frame, shadowbox, "
+        "wooden tabletop, or gallery wall around the diorama unless the NOTE asked for one "
+        "-- that frame becomes the set. Colours only those the note or bible named for this "
+        "place; a new sky or ground colour is a fail. The architecture the note described, "
+        "not a different place."
+    ),
+}
+
+JUDGEMENT = (
+    "Judge only these, and reject only for something you can name:\n"
+    "- the note: this sheet must BE the thing the note describes, in every countable detail.\n"
+    "- the kind's framing:\n{kind_rules}\n"
+    "- the medium: {medium}. A sheet that looks like a 3D render or a live photograph is a fail.\n"
+    "Do NOT reject this sheet for differing from a still or from another shot -- a design "
+    "sheet is not a shot, and it is supposed to look like a design sheet. Do not reject for "
+    "pose taste when the anatomy is otherwise the note.\n"
+    "If you reject, rewrite the draw prompt to fix the named problems and nothing else."
+)
 
 # What a design sheet is FOR, in the words the model needs before it can write one. Deliberately
 # insistent about the two failures that were measured on reference pictures one level down: a
@@ -265,6 +333,10 @@ def draw(board: board_mod.Board, entry_id: str, *,
     So the ordering trap that method documents does not exist here either -- a draw prompt is
     stored on an entry that already exists, rather than on a slot that only exists because a file
     does, and a failed first draw keeps the typed prompt.
+
+    The note-check lives here, not in a tool the agent could skip: one flash vision after the
+    image, one rewrite-and-redraw when it fails, same `STILL_ATTEMPTS` bound the stills pass
+    uses. Cheaper than the image it is checking.
     """
     entry = drawable(board, entry_id, prompt)
     text = prompt if prompt is not None else str(board.stage_field(entry, "draw"))
@@ -272,40 +344,122 @@ def draw(board: board_mod.Board, entry_id: str, *,
         raise StagingError(f"say what {board.stage_name(entry)} should look like first",
                            status=422)
 
-    pictures = conditioning(board, entry_id, text)
+    attempts = max(1, config.STILL_ATTEMPTS) if config.STILL_REVIEW else 1
     out_path = board.stage_path(entry_id)
-    made = papercut.draw(
-        board, papercut.NO_BEAT,
-        pictures=pictures,
-        text=draw_text(board, entry_id, text, pictures),
-        out_path=out_path,
-        # True when the first conditioning image IS this sheet, which is what `conditioning`
-        # puts there for a redraw. Only the fallback warning reads it; the mode itself is
-        # `edit` whenever there is anything to condition on, because `edit` is the one that
-        # omits the continuity clause.
-        editing=bool(pictures) and pictures[0][0] == out_path,
-        style=style_for(board, entry),
-        aspect=aspect_for(board, entry),
-        label=f"{board.stage_kind(entry)} {board.stage_name(entry)}",
-        gemini_model=gemini_model,
-        gemini_image_size=gemini_image_size,
-        log=log,
-        progress=progress,
-        cancelled=cancelled,
-        # Held across an edit, moved for a plain retry, for the reason `pictures.draw`
-        # documents: Papercut derives a frame's seed as `scene.seed + index`, and a sheet is
-        # always frame 0 of its own scene -- so two draws off the same board seed come back
-        # byte-identical, which reads as a button that did nothing.
-        seed=None if prompt is not None else _draw_seed(board, entry_id),
-    )
-    if not made:
-        raise StagingError(f"{board.stage_name(entry)} did not render")
+    for attempt in range(1, attempts + 1):
+        if attempt > 1 and cancelled is not None and cancelled():
+            break
+        entry = board.stage_entry(entry_id)
+        pictures = conditioning(board, entry_id, text)
+        made = papercut.draw(
+            board, papercut.NO_BEAT,
+            pictures=pictures,
+            text=draw_text(board, entry_id, text, pictures),
+            out_path=out_path,
+            # True when the first conditioning image IS this sheet, which is what `conditioning`
+            # puts there for a redraw. Only the fallback warning reads it; the mode itself is
+            # `edit` whenever there is anything to condition on, because `edit` is the one that
+            # omits the continuity clause.
+            editing=bool(pictures) and pictures[0][0] == out_path,
+            style=style_for(board, entry),
+            aspect=aspect_for(board, entry),
+            label=f"{board.stage_kind(entry)} {board.stage_name(entry)}",
+            gemini_model=gemini_model,
+            gemini_image_size=gemini_image_size,
+            log=log,
+            progress=progress,
+            cancelled=cancelled,
+            # Held across an edit, moved for a plain retry, for the reason `pictures.draw`
+            # documents: Papercut derives a frame's seed as `scene.seed + index`, and a sheet is
+            # always frame 0 of its own scene -- so two draws off the same board seed come back
+            # byte-identical, which reads as a button that did nothing. A review retry must
+            # move the seed too, or the rewrite is spent on the same pixels.
+            seed=None if (attempt == 1 and prompt is not None) else _draw_seed(board, entry_id),
+        )
+        if not made:
+            raise StagingError(f"{board.stage_name(entry)} did not render")
 
-    entry["draw"] = " ".join(text.split())
-    board.save()
-    if announce is not None:
-        announce()
+        entry["draw"] = " ".join(text.split())
+        board.save()
+        if announce is not None:
+            announce()
+        if attempt >= attempts or not config.STILL_REVIEW:
+            break
+        if cancelled is not None and cancelled():
+            break
+        try:
+            verdict = review(board, entry_id)
+        except gemini.GeminiError as failed:
+            log(f"[staging] {board.stage_name(entry)}: not reviewed ({failed})")
+            break
+        if verdict.get("consistent"):
+            remember(board, entry_id, "gemini", "This sheet matches its note.", verdict="pass")
+            board.save()
+            if announce is not None:
+                announce()
+            break
+        problems = [str(item).strip() for item in (verdict.get("problems") or []) if str(item).strip()]
+        corrected = " ".join(str(verdict.get("draw") or "").split()).strip()
+        why = "; ".join(problems) or "the sheet does not match its note"
+        if not corrected or corrected == text.strip():
+            remember(
+                board, entry_id, "gemini",
+                f"Kept the prompt: {why}.",
+                verdict="fail",
+            )
+            board.save()
+            if announce is not None:
+                announce()
+            log(f"[staging] {board.stage_name(entry)}: kept the prompt ({why})")
+            break
+        text = corrected
+        entry["draw"] = corrected
+        remember(
+            board, entry_id, "gemini",
+            f"Rewrote the prompt: {why}.",
+            prompt=corrected,
+            verdict="fail",
+        )
+        board.save()
+        if announce is not None:
+            announce()
+        log(f"[staging] {board.stage_name(entry)}: rewriting -- {why}")
+        log(f"[staging] {board.stage_name(entry)}: rendering again from the rewritten prompt")
     return entry_id
+
+
+def review(board: board_mod.Board, entry_id: str) -> dict:
+    """Look at one finished sheet and say whether it is the thing its note describes.
+
+    The sheet alone -- not next to a still. Showing the cast still here is the measured
+    failure one level down: a model shown the cast draws (and then judges) the cast.
+    """
+    path = board.stage_path(entry_id)
+    if not path.is_file():
+        raise gemini.GeminiError(f"design {entry_id} has no sheet to look at")
+    entry = board.stage_entry(entry_id)
+    kind = board.stage_kind(entry)
+    note = " ".join(str(board.stage_field(entry, "note") or "").split())
+    prompt = " ".join(str(board.stage_field(entry, "draw") or "").split())
+    look = board.look()
+    parts = [
+        f"This image is a {kind} design sheet named {board.stage_name(entry)!r}.",
+        f"STYLE BIBLE: {board.identity()}",
+        f"NOTE (what this design IS): {note or '(none written)'}",
+        f"IT WAS DRAWN FROM: {prompt or '(none written)'}",
+        JUDGEMENT.format(
+            kind_rules=KIND_RULES.get(kind, KIND_RULES["character"]),
+            medium=look.judge,
+        ),
+        "Return JSON only.",
+    ]
+    return gemini.structured(
+        [{"role": "user", "content": "\n\n".join(parts),
+          "images": [gemini.encode(path)]}],
+        REVIEW_SCHEMA,
+        temperature=0.1,
+        model=config.VISION_MODEL,
+    )
 
 
 def _draw_seed(board: board_mod.Board, entry_id: str) -> int:

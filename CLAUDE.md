@@ -82,7 +82,7 @@ paperreel/papercut.py   HTTP client for image/ — the transport to the Gemini s
 paperreel/gemini.py     Gemini transport: structured output, tool calls, vision
 paperreel/stills.py     rendering stills, then LOOKING at them; the still-job rules
 paperreel/pictures.py   reference pictures as drawable assets; NO review pass, deliberately
-paperreel/staging.py    the reel's cast and sets, designed once and bound to beats
+paperreel/staging.py    the reel's cast and sets; a sheet is held to its note, not the cast still
 paperreel/panels.py     the storyboard: a rough sketch per shot; reaches NO renderer
 paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/develop.py    the same brief WITH its interview: a script talked into existence
@@ -329,8 +329,11 @@ carries staging onto the three joins with no picture list at all.
 them: nothing conditions a first draw unless the director names a sibling with `@stage:` (a model
 shown the cast draws the cast), the board's style bible never reaches the render (`papercut.draw`
 now takes `style` / `aspect` / `label`, defaulted so a reference-picture draw composes the
-byte-identical scene it always did), and a redraw is `consistency="edit"`. **There is no review
-pass, ever** — same reason, one level up: a design sheet is *supposed* to differ from the cast.
+byte-identical scene it always did), and a redraw is `consistency="edit"`. `staging.review`
+holds a sheet to **its own note** (eye counts, closed palette, extra parts) — that is a
+different question from holding it to the cast still, which would reject almost every sheet
+because a design is supposed to differ from a composed shot. `pictures.py` still has no
+review pass, for that same reason.
 
 `papercut.NO_BEAT` is how a reel-level render rides the beat-keyed scene path. `_gemini_settings`
 answers "nothing stored" for a frame that is not a beat rather than raising, which is what lets
@@ -361,9 +364,10 @@ That "reaches no renderer" is the whole design, and four things fall out of it:
   panels is nil — two panels of the same fox are two readings of one sentence — and that is
   acceptable in a storyboard and the reason a panel must never be promoted into conditioning.
 - **There is no review pass and no conversation**, and for a third reason again: `stills.review`
-  holds a still to the cast, `pictures.py`/`staging.py` skip that because a design is supposed to
-  differ from the cast, and here there is nothing for a verdict to be *about*. A wrong panel is
-  redrawn, or its one line is edited by hand.
+  holds a still to the sheets, `pictures.py` skips review because a beat-level picture is
+  supposed to differ from the cast, `staging.review` holds a sheet to its note rather than to
+  a still, and here there is nothing for a verdict to be *about*. A wrong panel is redrawn, or
+  its one line is edited by hand.
 
 `config.PANEL_MODEL` / `PANEL_IMAGE_SIZE` are passed explicitly and therefore beat the beat's own
 `gemini_model` (`papercut.draw` does `gemini_model or beat_model`), so a board whose stills are Pro
