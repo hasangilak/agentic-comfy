@@ -130,8 +130,11 @@ KIND_RULES = {
         "the note or bible named for this prop."
     ),
     "environment": (
-        "This is a SET sheet: the place empty of cast, framed as the shots in it will be "
-        "framed. A figure in the set is a fail. No decorative picture-frame, shadowbox, "
+        "This is a SET sheet: ONE single continuous view of the place, empty of cast, framed "
+        "as the shots in it will be framed. A sheet split into several stacked or tiled "
+        "frames -- a grid, a triptych, a storyboard of views -- is a fail: it conditions "
+        "every still as if the set were three different places. A figure in the set is a "
+        "fail. No decorative picture-frame, shadowbox, "
         "wooden tabletop, or gallery wall around the diorama unless the NOTE asked for one "
         "-- that frame becomes the set. Colours only those the note or bible named for this "
         "place; a new sky or ground colour is a fail. The architecture the note described, "

@@ -633,6 +633,17 @@ CHAR_SHEET_LAYOUT = (
 )
 
 
+# Every set sheet is ONE view, and this is the one copy of that rule, spliced into each
+# medium's `set` suffix the way CHAR_SHEET_LAYOUT is into `model`. Measured failure: asked
+# for a 9:16 set with nothing forbidding a layout, Gemini returned three stacked views of
+# the same clearing in one PNG -- a triptych that then conditioned every still bound to the
+# set, which is a confusing anchor and reads on the canvas as a broken picture.
+SET_SHEET_VIEW = (
+    "One single continuous view of the set -- not a grid, not stacked frames, not a "
+    "multi-panel sheet, no split views, no borders between areas of the picture."
+)
+
+
 PAPER_CUTOUT = Medium(
     key="paper-cutout",
     name="paper-cutout stop-motion",
@@ -667,7 +678,8 @@ PAPER_CUTOUT = Medium(
     set=("Handcrafted layered paper-cutout construction, visible paper grain, soft contact "
          "shadows, layered depth from foreground to sky, even daylight unless the description "
          "says otherwise, an empty set with no characters, no people and no animals anywhere "
-         "in it, nothing cropped at the edges, no text, no watermarks, no signature."),
+         "in it, nothing cropped at the edges, no text, no watermarks, no signature. "
+         + SET_SHEET_VIEW),
     judge=("layered paper-cutout with visible paper grain, crisp cut edges, soft contact "
            "shadows. Not a photograph, not a 3D render, not clay, not felt"),
     essence="layered paper cutout, visible paper grain, soft contact shadows",
@@ -752,7 +764,8 @@ PAPER_CRAFT = Medium(
     set=("Handcrafted folded papercraft construction, visible scored creases, faceted 3D "
          "paper architecture receding into depth, even daylight unless the description says "
          "otherwise, an empty set with no characters, no people and no animals anywhere in "
-         "it, nothing cropped at the edges, no text, no watermarks, no signature."),
+         "it, nothing cropped at the edges, no text, no watermarks, no signature. "
+         + SET_SHEET_VIEW),
     judge=("folded papercraft with visible scored creases, faceted 3D paper forms, assembled "
            "constructions sitting in real volume. Not a photograph, not a 3D render, not "
            "clay, not flat paper-cutout collage"),
@@ -839,7 +852,7 @@ CLAYMATION = Medium(
          "thumbprints and tool marks, sculpted terrain receding into depth, even daylight "
          "unless the description says otherwise, an empty set with no characters, no people "
          "and no animals anywhere in it, nothing cropped at the edges, no text, no "
-         "watermarks, no signature."),
+         "watermarks, no signature. " + SET_SHEET_VIEW),
     judge=("sculpted plasticine clay with a matte surface, visible thumbprints and tool "
            "marks, soft rounded forms. Not a photograph, not a 3D render, not paper, not felt"),
     essence="sculpted plasticine clay, visible thumbprints and tool marks, a matte surface",
