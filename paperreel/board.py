@@ -281,17 +281,27 @@ class Board:
         return config.sequence_length(reserved)
 
     def previous_last_pose(self, n: int) -> Path | None:
-        """The last pose (or still) of the beat before this one, if it is on disk.
+        """The last pose (or still) already on disk in this take, walking back if needed.
 
         Handed to the still renderer as extra continuity when it fits the cap, so beat N's
         opening pose can hold the puppet the previous shot already established rather than
         redrawing it from the bible.
+
+        A chain or bridge with no file is a hole, not the end of the take: walking only one
+        step left a bridge still unconditioned on the last real pose (Pond Dance beat 4
+        never saw beat 1's pose 6, because beats 2 and 3 chained with nothing on disk).
+        Stop at a cut even if that cut has no still -- that is a different shot, not a hole
+        in this one.
         """
         up = self.upstream(n)
-        if up is None:
-            return None
-        poses = self.pose_paths(up["n"])
-        return poses[-1] if poses else None
+        while up is not None:
+            poses = self.pose_paths(up["n"])
+            if poses:
+                return poses[-1]
+            if not chains(self.source_for(up)):
+                return None
+            up = self.upstream(up["n"])
+        return None
 
     def frame_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}_frame.png"
@@ -2091,8 +2101,8 @@ class Board:
                 "poses": [self.media_url(path) for path in poses],
                 "pose_count": self.sequence_count(n),
                 # The previous shot's last pose, when it exists -- extra continuity for the
-                # still renderer if it fitted the cap. Null on beat 1, and on a beat whose
-                # predecessor has no still yet.
+                # still renderer if it fitted the cap. Null on beat 1. Walks past chain/bridge
+                # holes, so a landing still can still see the last real pose in the take.
                 "previous_pose": self.media_url(self.previous_last_pose(n)),
                 "video": self.media_url(self.video_path(n)),
                 "predicted_seconds": round(
