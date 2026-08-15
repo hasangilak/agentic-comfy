@@ -182,6 +182,11 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
             f"MiniMax H3 takes at most {config.MAX_REF_VIDEOS} reference videos, "
             f"got {len(ref_videos)}"
         )
+    if len(ref_images) + len(ref_videos) > config.MAX_REF_FILES:
+        raise ValueError(
+            f"MiniMax H3 takes at most {config.MAX_REF_FILES} reference files mixed, "
+            f"got {len(ref_images)} images + {len(ref_videos)} videos"
+        )
 
     h3_inputs: dict = {
         "clip": ["3", 0],
@@ -193,7 +198,7 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
     }
     graph: dict = {
         "2": {"class_type": "UNETLoader",
-              "inputs": {"unet_name": config.UNET_REF if ref_images else config.UNET,
+              "inputs": {"unet_name": config.UNET_REF if references else config.UNET,
                          "weight_dtype": "default"}},
         "3": {"class_type": "CLIPLoader",
               "inputs": {"clip_name": config.CLIP, "type": "minimax", "device": "default"}},

@@ -177,25 +177,34 @@ AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
 # ## Reference conditioning
 #
 # MiniMaxH3ReferenceToVideo grows one input socket per reference and stops at nine images
-# (`ref_images.ref_image_0` .. `ref_image_8` in the API graph). The other three sockets --
-# videos, their soundtracks, standalone audio -- cap at three each and are not wired here.
+# (`ref_images.ref_image_0` .. `ref_images.ref_image_8` in the API graph), three videos
+# (`ref_videos.ref_video_0` .. `ref_video_2`), three paired soundtracks, and three standalone
+# audio clips. Diffusers and the MiniMax API also cap the MIX at 12 files, so nine pictures
+# plus one previous-clip video is 10 and fits; nine plus three videos is the ceiling.
 #
-# The prompt refers to them as <Picture 1>..<Picture 9>, 1-based and in connection order,
-# which is the tag the text encoder is trained on. Off-by-one matters: image N in the graph
-# is <Picture N+1> in the prompt.
+# The prompt refers to them as <Picture 1>..<Picture 9> and <Video 1>..<Video 3>, 1-based
+# and in connection order, which is the tag the text encoder is trained on. Off-by-one
+# matters: image N in the graph is <Picture N+1> in the prompt. Presentation order inside
+# the node is fixed: images, then videos (soundtrack label before the clip when one is
+# paired), then standalone audio.
 MAX_REF_IMAGES = 9
 MAX_REF_VIDEOS = 3
-# Two of those nine slots fill themselves on a beat that opens a shot, which is why an upload
-# budget exists rather than a flat nine: <Picture 1> is the beat's own generated still -- the
-# composition this shot opens on -- and <Picture 2> is the reel's locked cast reference. The
-# remaining seven are the director's. `Board.pictures_for` is where the order is decided; the
-# roles below are the words each auto-wired slot is described to the model with.
+# Mixed image+video+audio files in one ref2va request. The node has 9+3+3 sockets; the
+# checkpoint will not take more than this many of them at once.
+MAX_REF_FILES = 12
+# On a beat with only its opening still, two of those nine slots fill themselves --
+# <Picture 1> is that still, <Picture 2> is the reel's locked cast reference -- which is why
+# an upload budget exists rather than a flat nine. On a beat whose asset pass drew a
+# stop-motion sequence, the poses themselves take those slots (they ARE the cast, in motion)
+# and fill whatever is left after staging sheets and uploads, so a quiet cut uses all nine.
+# `Board.pictures_for` is where the order is decided; the roles below are the words each
+# auto-wired slot is described to the model with.
 #
-# The two are the reason this join is the default at all: the still alone is one shot's
-# composition and drifts towards its own reading of the style bible over ten seconds, and the
-# cast reference alone fixes the characters but not where the shot opens. Together they are
-# what a keyframe cut had (an exact opening) plus what it never had (the cast, re-asserted
-# through every sampling step).
+# The still plus the cast (or the still plus its in-betweens) are the reason this join is the
+# default at all: one opening composition drifts towards its own reading of the style bible
+# over ten seconds, and a transform with only that one picture drops the puppet mid-clip.
+# The sequence is what a keyframe cut never had -- the action, held, through every sampling
+# step. The previous clip as <Video 1> sits next to that, not instead of it.
 REF_ROLE_OPENING = (
     "the composition this shot opens on: its set, its framing, its subject scale and its "
     "lighting are the ones this whole clip holds"
@@ -203,6 +212,14 @@ REF_ROLE_OPENING = (
 REF_ROLE_CAST = (
     "this reel's locked cast reference -- it fixes what the characters and the materials look "
     "like everywhere in the film, and it is NOT this shot's setting or framing"
+)
+# Poses 2..k of a stop-motion sequence. Pose 1 keeps REF_ROLE_OPENING, because that is still
+# where the clip begins; these are the in-betweens the video model interpolates through so a
+# ten-second transform cannot drop the puppet and invent a new one mid-clip.
+REF_ROLE_POSE = (
+    "stop-motion pose {i} of {k} of this shot: the same locked-off take, the same puppets "
+    "and set, the subject here at this moment of the action -- not a different camera, not "
+    "a different character"
 )
 # "match" scales each reference down to the generation's pixel area; "max" uses the reference
 # pipeline's 2048px short edge for better identity fidelity. Reference tokens ride through
@@ -223,6 +240,11 @@ REF_IMAGE_SIZE = "match"
 # The node trims what it gets down onto the 17k+5 frame grid itself and needs at least 5
 # frames, so 3 s (72 frames at 24 fps) lands at 56 frames after its own trim.
 REF_VIDEO_SECONDS = 3.0
+# How many stop-motion poses asset generation draws per reference beat. Zero means fill
+# whatever of the nine image sockets staging sheets and uploads have not already claimed,
+# so a quiet beat gets nine poses and a beat that already binds three sheets gets six.
+# Pin a number to explore; nine is the node's own cap (Papercut's too).
+STILL_SEQUENCE = int(os.environ.get("PAPERREEL_STILL_SEQUENCE", "0"))
 # The clip's own soundtrack, paired to the video as `ref_video_audio_N`. Off by default:
 # H3 generates each beat's audio anyway, and an audio reference is one more thing for the
 # model to reproduce literally. Turn it on if ambience drifts between beats.
@@ -288,12 +310,13 @@ AGENT_MAX_ROUNDS = int(os.environ.get("PAPERREEL_AGENT_MAX_ROUNDS", "8"))
 # being a setting rather than an import is that adding a second is a file rather than a
 # search-and-replace through every module that writes a prompt.
 LLM_PROVIDER = os.environ.get("PAPERREEL_LLM_PROVIDER", "gemini")
-# How many stills one crew run may render before the tool starts refusing. AGENT_MAX_ROUNDS
-# bounds turns, not money, and `generate_stills` is the one tool in the crew's toolbox that
-# spends any: an agent that keeps rejecting its own stills would otherwise be capped only by
-# how many rounds it has left. Twenty-four is a guess sized to a long reel re-rendered a couple
-# of times, not a measurement -- the first real run is what should replace this number.
-CREW_STILL_BUDGET = int(os.environ.get("PAPERREEL_CREW_STILL_BUDGET", "24"))
+# How many stills one crew run may render before the tool starts refusing. Counted in pose
+# frames, not beats: a reference cut draws up to nine stop-motion poses, so a per-beat cap of
+# 24 would run out on the third scene. AGENT_MAX_ROUNDS bounds turns, not money, and
+# `generate_stills` is the one tool in the crew's toolbox that spends any. Seventy-two is a
+# guess sized to an eight-beat reel drawn once -- not a measurement, and the first real run
+# is what should replace this number.
+CREW_STILL_BUDGET = int(os.environ.get("PAPERREEL_CREW_STILL_BUDGET", "72"))
 
 # ## Reviewing its own work
 #
@@ -857,6 +880,19 @@ OPEN_REFERENCE_STILL = (
     "on-screen sizes changing only if the action explicitly moves a subject toward or away "
     "from the camera. "
 )
+# When asset generation drew a stop-motion sequence, those pictures ARE the shot, in order.
+# OPEN_REFERENCE says a reference's pose is not where the shot starts, which is right for a
+# cast sheet and exactly wrong for pose 3 of 7 of this beat's action. Named as a sequence so
+# the model interpolates through them instead of treating nine stills as nine cuts.
+OPEN_REFERENCE_SEQUENCE = (
+    "{tags} are successive stop-motion poses of THIS shot, in order. {first} is where the "
+    "clip begins -- its framing, subject sizes, set and light are the ones this whole take "
+    "holds -- and each next picture is the next pose of the same locked-off take. "
+    "Interpolate the action through those poses, evenly, without cutting, without skipping "
+    "a pose, and without treating any of them as a different camera or a second puppet. "
+    "The puppets, the set, the lighting and the framing are the same in every one; only the "
+    "moving subject changes. "
+)
 # What a carried reference video is, and it has to be said in the same breath as "compose the
 # opening frame yourself" -- otherwise the two instructions fight and the model either ignores
 # the clip or treats it as footage to replay. This is the reference join's answer to
@@ -868,6 +904,16 @@ CARRY_VIDEO = (
     "moment -- and continue its movement onward at the same speed and in the same direction. "
     "Do not replay {tag}, do not cut to it, do not re-establish the scene, do not grow or "
     "shrink anyone, and do not let the subject settle to rest and start again. "
+)
+# The other job a previous clip can do: identity, not opening. A hard cut still begins on
+# its own still (or its pose sequence); the video is there so a transform cannot drop the
+# puppet the last shot already established. Must never be paired with CARRY_VIDEO -- those
+# are two answers to where the shot opens.
+HOLD_VIDEO = (
+    "{tag} is the clip immediately before this one in the same film. It locks how the "
+    "characters, the materials, the motion and the set look. Reproduce them exactly. Do not "
+    "replay {tag}, do not cut to it, and do not re-establish the scene from it. This shot "
+    "begins on its own opening composition, not on the moment {tag} ends. "
 )
 # What each picture is FOR, when the user has said. Without this the model has to guess from
 # the picture alone, and it guesses "this is the scene" -- which is how a reference showing the
@@ -951,13 +997,47 @@ def snap_seconds(value: float | int | str) -> float:
     return min(BEAT_LENGTHS, key=lambda option: abs(option - wanted))
 
 
-def reference_tags(count: int) -> str:
+def sequence_length(reserved: int) -> int:
+    """How many stop-motion poses a beat should draw, given slots already spoken for.
+
+    `reserved` is staging sheets plus director uploads -- the pictures that are not the
+    sequence. Zero `STILL_SEQUENCE` fills whatever of the nine is left, so the video model
+    is handed a full set rather than one still and eight empty sockets.
+    """
+    room = max(1, MAX_REF_IMAGES - max(0, reserved))
+    wanted = STILL_SEQUENCE or MAX_REF_IMAGES
+    return max(1, min(wanted, room, MAX_REF_IMAGES))
+
+
+def pose_phase(index: int, total: int, action: str) -> str:
+    """Where in the beat's action this pose sits, in words the still model can draw.
+
+    Papercut's own `beatHint` is a left-to-right walk, which is the wrong action for most
+    shots. This one names the beat's actual action and only the phase changes, so pose 4 of
+    7 of "she raises the lantern" is the lantern partway up, not a step to the right.
+    """
+    said = " ".join(str(action or "").split()) or "the action"
+    if total <= 1:
+        return f"single opening pose, before {said}"
+    p = index / (total - 1)
+    if p == 0:
+        return f"the opening: {said} has not started, weight settled, limbs at rest"
+    if p < 0.35:
+        return f"{said} has just begun, the first increment of the move"
+    if p < 0.65:
+        return f"the midpoint of {said}, the pose at its widest, strongest silhouette"
+    if p < 1:
+        return f"{said} is nearly complete, follow-through in the trailing limbs"
+    return f"{said} has just completed, weight settled again"
+
+
+def reference_tags(count: int, *, start: int = 1) -> str:
     """The prompt's name for the supplied references: "<Picture 1>, <Picture 2> and <Picture 3>".
 
     1-based and in connection order, which is what the text encoder was trained on. The graph
     sockets are 0-based, so this deliberately does not match the key names in comfy.build_graph.
     """
-    tags = [f"<Picture {i}>" for i in range(1, max(0, count) + 1)]
+    tags = [f"<Picture {i}>" for i in range(start, start + max(0, count))]
     if len(tags) <= 1:
         return "".join(tags)
     return ", ".join(tags[:-1]) + " and " + tags[-1]
@@ -1141,7 +1221,8 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
                  ref_notes: list[str] | None = None, ref_videos: int = 0,
                  opens_on: bool = False, staging: str = "", blocking: str = "",
                  medium_key: str | None = None,
-                 mentions: dict[str, tuple[int | None, str]] | None = None) -> str:
+                 mentions: dict[str, tuple[int | None, str]] | None = None,
+                 poses: int = 0, hold_video: bool = False) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -1166,6 +1247,16 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     the clip begins on it instead of on something the model invents from the scene line. It is
     a flag rather than being inferred from `refs`, because the same picture count means the
     opposite thing on a beat whose references are all uploads of the cast.
+
+    `poses` is how many of those pictures are a stop-motion sequence of THIS shot, counting
+    from <Picture 1>. Zero or one keeps the old "design references plus an opening still"
+    wording; two or more swaps that for OPEN_REFERENCE_SEQUENCE, because nine poses of one
+    take are not nine design sheets.
+
+    `hold_video` says a reference video is identity, not the opening. CARRY_VIDEO and
+    HOLD_VIDEO are two answers to where the shot begins and must not both fire; an opening
+    still (or a pose sequence) can sit next to HOLD_VIDEO, which is the whole point of
+    sending the previous clip on a hard cut.
 
     `staging` is what the reel's bound design sheets say, for the ones this render was NOT
     handed as pictures -- a set on a beat that spent its slots on characters, or anything past
@@ -1192,28 +1283,42 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     action = expand_mentions(action, mentions)
     scene = expand_mentions(scene, mentions)
     ref_notes = [expand_mentions(note, mentions) for note in (ref_notes or [])] or None
+    poses = max(0, int(poses or 0))
     if refs > 0 or ref_videos > 0:
         parts = [look.shot]
         if refs > 0:
-            parts.append(OPEN_REFERENCE.format(tags=reference_tags(refs),
-                                               surface=look.surface))
+            if poses > 1:
+                # The sequence is this shot, in order. Remaining pictures (sheets, uploads)
+                # still get the design-reference paragraph, which is what they always were.
+                parts.append(OPEN_REFERENCE_SEQUENCE.format(
+                    tags=reference_tags(min(poses, refs)), first="<Picture 1>"))
+                rest = refs - min(poses, refs)
+                if rest > 0:
+                    parts.append(OPEN_REFERENCE.format(
+                        tags=reference_tags(rest, start=poses + 1), surface=look.surface))
+            else:
+                parts.append(OPEN_REFERENCE.format(tags=reference_tags(refs),
+                                                   surface=look.surface))
             # Straight after the paragraph that says what a reference IS, because these are
             # the exceptions to it: which picture is the cast, which is only the set, which
-            # prop.
+            # prop, which pose.
             roles = reference_roles(list(ref_notes or []))
             if roles:
                 parts.append(REFERENCE_ROLES.format(roles=roles))
-        # Exactly one of these three, and they are mutually exclusive because they are three
-        # different answers to the one question the model has to have settled before it starts:
-        # where does this shot open? A carried clip says "where the last one ended", an opening
-        # still says "on this picture", and neither leaves anything for "compose it yourself".
-        # Two of them present at once is two instructions fighting, which reads in the render
-        # as a clip that starts, settles, and starts again.
-        if ref_videos > 0:
+        # A carried clip and an opening still used to be mutually exclusive -- two answers
+        # to where the shot opens. HOLD_VIDEO is a third job for the same socket: identity
+        # from the previous take, while the still (or the pose sequence) still says where
+        # THIS shot begins. CARRY_VIDEO remains exclusive with COMPOSE_OPENING; it is not
+        # exclusive with a sequence whose first pose is that continuation.
+        if ref_videos > 0 and not hold_video:
             parts.append(CARRY_VIDEO.format(tag="<Video 1>"))
-        elif opens_on and refs > 0:
+        elif ref_videos > 0 and hold_video:
+            parts.append(HOLD_VIDEO.format(tag="<Video 1>"))
+            if opens_on and refs > 0 and poses <= 1:
+                parts.append(OPEN_REFERENCE_STILL.format(tag="<Picture 1>"))
+        elif opens_on and refs > 0 and poses <= 1:
             parts.append(OPEN_REFERENCE_STILL.format(tag="<Picture 1>"))
-        elif refs > 0:
+        elif refs > 0 and poses <= 1:
             parts.append(COMPOSE_OPENING)
     else:
         parts = [look.shot, OPEN_CONTINUATION if continues else OPEN_CUT]

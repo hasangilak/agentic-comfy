@@ -49,8 +49,8 @@ GPU = "RTX-PRO-6000"
 # Both diffusion checkpoints ship, because H3 splits the tasks between them:
 #
 #   fl2va  -- text / first frame / last frame, i.e. every keyframe join
-#   ref2va -- reference conditioning: up to 9 images (MiniMaxH3ReferenceToVideo), and
-#             no keyframe inputs at all
+#   ref2va -- reference conditioning: up to 9 images and 3 videos
+#             (MiniMaxH3ReferenceToVideo), and no keyframe inputs at all
 #
 # Only one is resident at a time -- ComfyUI loads whatever the queued graph names and evicts
 # the other -- so the second checkpoint costs Volume space and one model swap per switch,
