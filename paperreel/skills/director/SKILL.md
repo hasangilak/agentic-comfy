@@ -30,7 +30,7 @@ caption, a few stills. Use the board tools.
 - `set-designer` — drawing the place sheets mise already named
 - `mise-en-scene` — first extracts the roster (which characters and places get sheets);
   later blocks shots, and audits stills/panels against those sheets by looking at them
-- `continuity` — fixing chain/bridge seams so stitched clips do not restart
+- `continuity` — fixing seams so stitched clips do not restart; a long take stays on `reference`
 - `storyboarder` — panel lines and storyboard sketches
 - `asset-maker` — rendering opening stills and fixing what came back wrong
 

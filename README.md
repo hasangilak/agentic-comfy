@@ -277,8 +277,9 @@ about five minutes and costs nothing; `PAPERREEL_PLAN_REVIEW=0` skips it.
 The joins are the model's to choose, which they were not before: it decides where the cuts go
 and where a take carries on unbroken, inside the rules of section 2. That used to be overwritten
 with "beat 1 is a cut, everything after it chains", because a cut cost one image from a
-five-per-five-hours quota. Stills are local and free now, so the shape of the film can be
-decided by the shape of the story.
+five-per-five-hours quota. Stills are ordinary API requests now, so the shape of the film can be
+decided by the shape of the story. A long take is successive `reference` beats — sheets and
+poses on every clip, previous clip held as `<Video 1>` — not a chain of keyframe hand-offs.
 
 Anything with `title` and a `beats` array of `action` lines will import; everything else has a
 default.

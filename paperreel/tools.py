@@ -331,7 +331,7 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             "preview_video_prompt",
             "Read the exact MiniMax-H3 video prompt one beat would send, plus the "
             "<Picture N> roles wired into it. Read-only: changes nothing and spends no "
-            "render. Use before fixing a chain or bridge seam.",
+            "render. Use before fixing a continuation seam.",
             {
                 "n": {"type": "integer", "description": "which beat, 1-based"},
             },

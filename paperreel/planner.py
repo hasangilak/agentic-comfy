@@ -85,9 +85,11 @@ PLAN_SCHEMA = {
                             "direction and speed, and what stays perfectly still. Do NOT "
                             "restate materials, colours, markings, or construction -- those "
                             "live in style_bible and reference pictures; restating them with "
-                            "drift invents a second puppet mid-clip. On chain or bridge, open "
-                            "with a continuity phrase and pick up the exact end-state of the "
-                            "beat before; on bridge, finish in the state asset_prompt describes."
+                            "drift invents a second puppet mid-clip. On a same-shot "
+                            "continuation (reference after the opening beat, or chain/bridge), "
+                            "open with a continuity phrase and pick up the exact end-state of "
+                            "the beat before; on bridge, finish in the state asset_prompt "
+                            "describes."
                         ),
                     },
                     "asset_prompt": {
@@ -108,12 +110,13 @@ PLAN_SCHEMA = {
                         "enum": WRITABLE_SOURCES,
                         "description": (
                             "Joins are a consistency tool across stitched clips. reference = "
-                            "new shot cut on ref2va (cast held through reference pictures) -- "
-                            "prefer this for cuts. chain = continues previous beat unbroken. "
-                            "bridge = continues AND must arrive at its own still (use to "
-                            "re-anchor a long take). asset = exact-keyframe cut with no cast "
-                            "ref through the clip -- rare. Beat 1 is always reference. Never "
-                            "three pure chains without a bridge or cut."
+                            "ref2va with stills, sheets and poses -- use for a new shot AND "
+                            "for a long take (previous clip held as Video 1 once poses exist). "
+                            "chain = pixel-exact last-frame handoff, no pictures. bridge = "
+                            "that handoff AND must arrive at its own still. asset = "
+                            "exact-keyframe cut with no cast ref through the clip -- rare. "
+                            "Beat 1 is always reference. Prefer reference, reference, "
+                            "reference over reference, chain, chain, bridge."
                         ),
                     },
                     "camera": {
@@ -313,9 +316,10 @@ def review(draft: dict, instructions: str, *,
         "stitched clips; an empty, single-sentence, or label-free asset_prompt (missing "
         "FOREGROUND/MIDGROUND/BACKGROUND/LIGHT/COMPOSITION); an action line that redesigns "
         "appearance (materials, colours, markings) instead of describing motion only; a "
-        "chain or bridge whose action lacks a continuity phrase or does not pick up the "
-        "exact end-state of the beat before; a chained beat whose scene line differs from "
-        "its shot's first beat; a character description in an asset_prompt that has drifted "
+        "continuation whose action lacks a continuity phrase or does not pick up the "
+        "exact end-state of the beat before; a same-shot beat whose scene line differs from "
+        "its shot's first beat; a long take written as chain when reference would keep the "
+        "sheets; a character description in an asset_prompt that has drifted "
         "from the style bible; a shot running past 20 seconds; a third chain with no bridge "
         "or cut before it; no genuine close-up or no genuine wide anywhere in the film; no "
         "beat that is nearly motionless; and any banned word from section 5.9.\n\n"

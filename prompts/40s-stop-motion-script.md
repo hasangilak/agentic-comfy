@@ -48,7 +48,9 @@ the director fills fields under each question and sends once.
      `2 × 10s + 4 × 5s` and say why in one line.
 2. **How many separate shots (camera setups)?** Roughly 3–5 works; more than that starts
    to read as an AI slideshow. Ask whether they have a preference, and whether they want
-   one long unbroken chained take somewhere in the film.
+   one long unbroken take somewhere in the film. If they do, write it as successive
+   `"reference"` beats (section 2) — not as `"chain"`. "Chained take" here means one
+   continuous shot, not the keyframe join.
 3. **The cast.** How many recurring characters, and does any of them already have a locked
    look you must match — an existing style bible, or a reference image already pinned in
    the studio? If yes, ask them to paste the existing `style_bible` text so you reuse it
@@ -111,18 +113,21 @@ A **shot** is a run of consecutive beats that share one camera setup and one phy
 diorama. Each beat's `source` field says where its frames come from, and there are three
 values you will use:
 
-- **`"reference"` — this beat begins a NEW shot. It is a CUT, and it is the normal one.** Its
-  own still is generated from its `asset_prompt` and becomes the composition the clip opens
-  on, and the film's locked character reference is shown to the model alongside it for the
-  whole clip. New setup, new framing, possibly a new location. Beat 1 is always
-  `"reference"`.
-- **`"chain"` — this beat CONTINUES the previous beat.** It starts from the *final frame
-  of the beat before it*, and nothing says where it ends. No cut, no camera change, no set
-  change, nothing teleports. It is the same unbroken take, extended.
-- **`"bridge"` — this beat CONTINUES the previous beat AND lands on its own still.** It
-  starts from the final frame of the beat before it, exactly like `"chain"`, and its own
-  still is used as the LAST frame, which the clip must arrive at. Still one unbroken take —
-  but one whose ending was designed instead of drifted into.
+- **`"reference"` — the default join.** Its own still is generated from its `asset_prompt`
+  and becomes the composition the clip opens on. Bound character sheets and a stop-motion
+  pose sequence fill MiniMax-H3's remaining image sockets, so the video model interpolates
+  the action instead of inventing a mid-clip transform from one picture. Beat 1 is always
+  `"reference"`. A later beat of the **same shot** is also `"reference"`: identical `scene`
+  text, a continuity-phrased `action`, and once poses exist the previous clip is held as
+  `<Video 1>` (identity). That is how a long take keeps the puppets. It is not a pixel-exact
+  last-frame handoff.
+- **`"chain"` — pixel-exact continuation.** It starts from the *final frame of the beat
+  before it*, and nothing says where it ends. No pictures reach the video model — those
+  sockets cannot mix with a keyframe. Use it only when frame 1 must be that exact last
+  pixel. A long take that should keep the sheets belongs on `"reference"` instead.
+- **`"bridge"` — that same pixel-exact handoff, AND it lands on its own still.** The still
+  is the LAST frame the clip must arrive at. Sheets stay words, same as `"chain"`. Use it
+  when the arrival itself must be a keyframe (the lamp lit, the character on its mark).
 
 ### The fourth value, `"asset"`, and why you almost never want it
 
@@ -139,48 +144,41 @@ picture on holding that still, and gives up an exact first frame it did not need
 that depends on one shape sitting in one exact place, a title-card-like composition. If you
 are not sure, write `"reference"`.
 
-The reference join can also carry extra pictures — up to nine in total, so seven beyond the
-two it fills itself. Those are uploads the director adds on the canvas, and nothing you write
-supplies them, so do not plan a beat around them. Mention it in one line if the concept
-really wants it.
+The reference join fills up to nine image sockets. Pose generation and bound sheets occupy
+them; director uploads are extra. Nothing you write supplies an upload, so do not plan a
+beat around one. Mention it in one line if the concept really wants it.
 
-### When to use `"bridge"`
+### When to use `"chain"` or `"bridge"`
 
-Reach for it in exactly two situations, and prefer `"chain"` everywhere else:
+Prefer `"reference"` for a long take. Reach for the keyframe joins only when the seam
+itself must be exact:
 
-1. **The beat has to end in a definite state** — the lamp lit, the door shut, the character
-   back on its mark — and the next beat depends on it. Told only in words, the model
-   approximates; given the frame, it has to arrive there.
-2. **A long take is drifting.** Because each hand-off degrades the image slightly, the last
-   beat of a 15–20 second run is where the paper starts to smear. Making that beat a
-   `"bridge"` pulls it back onto a clean still by its final frame, so the drift is corrected
-   inside the take rather than carried past it.
+1. **`"chain"`** — frame 1 must be the previous clip's true last pixel, and you are willing
+   to give up the sheets and poses on that clip.
+2. **`"bridge"`** — that same exact handoff, and the beat has to end in a definite state
+   (the lamp lit, the door shut, the character back on its mark) that the next beat depends
+   on. Told only in words, the model approximates; given a last-frame keyframe, it has to
+   arrive there.
 
-It costs one image from the quota, the same as a cut, and it buys continuity a cut cannot.
+A long take written `reference, chain, chain, bridge` is how the later clips lose the
+puppets. Write `reference, reference, reference` instead.
 
-### Rules for chained beats
+### Rules for a continuous shot
 
-These apply to `"chain"` and `"bridge"` alike — a bridge is a continuation, not a cut.
+These apply to a long take on `"reference"` as well as to `"chain"` and `"bridge"`.
 
-1. A `"chain"` beat's `action` must **pick up in the exact physical state the previous
-   beat's action ended in** — same position, same pose, same props, same light. Phrase it
-   so the continuity is explicit: *"Continuing the same rise without pause, …"*,
-   *"Carrying straight on from the break, …"*, *"Still in that movement, …"*.
-2. A `"chain"` beat's `scene` line is **identical text** to the beat it chains from. Same
-   shot, same words.
-3. **A single shot may run at most 20 seconds total.** Each chained hand-off degrades the
-   image slightly, and past ~20s the paper starts to visibly smear and lose its cut edges.
-   So: `reference` + up to three 5s chains, or `reference(10s)` + one 10s chain. Never longer.
-4. **Never leave more than two `"chain"` beats in a row unanchored.** A chained beat knows
-   only the frame handed to it, so nothing in a pure chain ever pulls the look back — every
-   beat inherits the previous one's drift and adds its own. The third beat of any run must
-   therefore be a `"bridge"` (a designed frame it has to arrive at) or a cut. Pattern:
-   `reference, chain, chain, bridge, chain, chain, bridge`. This is the same 20-second ceiling
-   in rule 3 expressed as a rhythm, and it is what keeps a long take from ending as a smear.
-5. Never chain across a location change, a lighting change, or a time jump. Those are
-   cuts, always.
-6. **A chained beat still gets a full `asset_prompt`.** See section 3 — this is not
-   optional.
+1. The `action` must **pick up in the exact physical state the previous beat's action ended
+   in** — same position, same pose, same props, same light. Phrase it so the continuity is
+   explicit: *"Continuing the same rise without pause, …"*, *"Carrying straight on from the
+   break, …"*, *"Still in that movement, …"*.
+2. The `scene` line is **identical text** to the beat it continues. Same shot, same words.
+3. **A single shot may run at most 20 seconds total.** Split with a cut (new vantage, new
+   place). Pattern: `reference` + `reference` + `reference`, not a chain of keyframe
+   hand-offs.
+4. Never continue across a location change, a lighting change, or a time jump. Those are
+   new shots, always.
+5. **Every beat still gets a full `asset_prompt`.** See section 3 — this is not optional.
+   On `"reference"` that prompt is the opening pose of this beat's sequence.
 
 ### Deciding where the cuts go
 
@@ -191,37 +189,38 @@ Cut when the **story** requires a new vantage point or a new place — not on a 
 - Cut to **withhold** something, then reveal it.
 - Do **not** cut just because the previous beat ran 5 seconds.
 
-Chain when the point of the moment is **that it is unbroken** — a fall, a build of tension,
-a single long gesture. An unbroken 20-second take is the single strongest anti-AI signal
-available to you, because AI reels are almost universally cut every 4 seconds.
+Keep the take unbroken — a fall, a build of tension, a single long gesture — by writing
+successive `"reference"` beats with the same `scene`. An unbroken 20-second take is the
+single strongest anti-AI signal available to you, because AI reels are almost universally
+cut every 4 seconds. Do not implement that unbroken take as `"chain"`: that join drops the
+pictures that hold the puppets.
 
 ---
 
 ## 3. Every beat gets an `asset_prompt` — no exceptions
 
-**Never output an empty `asset_prompt`. Every beat, including every `"chain"` beat, must
+**Never output an empty `asset_prompt`. Every beat, including every continuation, must
 carry a complete still description.** This is a hard requirement and the most common way
 these scripts fail.
 
 The reason is how the studio works. Each beat is a node the director can walk between
-`chain`, `bridge` and `reference` while editing. If a chained beat drifts — the puppet smears,
-an edge softens, the pose wanders — the fix is to promote it to its own still: to a
-`"bridge"`, which keeps the take unbroken and pulls it back onto a clean frame by its end, or
-to a `"reference"` cut re-rendered from a clean opening image. Both need the prompt already
-written. A beat with an empty `asset_prompt` is a dead end: it can only ever inherit whatever
-the previous beat degraded into.
+`chain`, `bridge` and `reference` while editing. A long take on `"reference"` generates a
+still and a pose sequence for every beat. If a beat is still `"chain"` and it drifts, the
+fix is to promote it to `"reference"` (sheets and poses) or to a `"bridge"` (pixel-exact
+landing). Both need the prompt already written. A beat with an empty `asset_prompt` is a
+dead end.
 
 So write the prompt for every beat, and set `source` independently:
 
 - On a `"reference"` beat (or an `"asset"` one), the `asset_prompt` describes the **opening
-  frame of a new shot** — new framing, new composition.
+  frame of this beat** — the first pose of its sequence. On a later beat of the same shot
+  that is still `"reference"`, keep camera, set and light identical to the beat before;
+  only pose and position of what moved may differ.
 - On a `"chain"` beat, the `asset_prompt` describes **the frame that beat begins on, which
   is the exact end-state of the previous beat**: same camera, same set, same lighting, same
   scale, with the subject in the pose the previous action finished in. It is a faithful
   written snapshot of that join, so that generating it produces a clean substitute for the
-  degraded video frame. Same shot — so do not reframe, do not move the camera, do not
-  change the light. Only the pose and the positions of the things that moved may differ
-  from the previous beat's prompt.
+  degraded video frame.
 - On a `"bridge"` beat, the `asset_prompt` describes **the frame that beat ENDS on** — the
   state its own action finishes in. This is the one place the prompt looks forward rather
   than back, because that still is handed to the model as the last frame rather than the
@@ -400,10 +399,10 @@ moves**, for a camera that does not move.
   translate, curl, drop into frame*. Never *morphs, flows, transforms, dissolves, ripples
   organically, billows realistically*.
 - No cuts inside a beat. No camera moves. No new characters walking in mid-beat.
-- On a `"chain"` or `"bridge"` beat, open with an explicit continuity phrase and pick up in
-  the exact end-state of the previous beat. On a `"bridge"`, the sentence must also finish in
-  the state its `asset_prompt` describes — the words and the still have to agree about where
-  the beat lands.
+- On a same-shot continuation (`"reference"` after the opening beat, or `"chain"` /
+  `"bridge"`), open with an explicit continuity phrase and pick up in the exact end-state of
+  the previous beat. On a `"bridge"`, the sentence must also finish in the state its
+  `asset_prompt` describes — the words and the still have to agree about where the beat lands.
 
 ## 9. The `scene` line — one per beat
 
@@ -442,17 +441,17 @@ prose, no markdown fences, no commentary before or after.
       "n": 2,
       "scene": "identical text to beat 1, same shot",
       "action": "Continuing without pause, ...",
-      "asset_prompt": "full layered still description of the join: same set, same camera, same light as beat 1, subject in the pose beat 1 ended on",
+      "asset_prompt": "full layered still description of this beat's opening pose: same set, same camera, same light as beat 1, subject in the pose beat 1 ended on",
       "seconds": 10.0,
-      "source": "chain"
+      "source": "reference"
     },
     {
       "n": 3,
       "scene": "identical text to beat 1, same shot",
       "action": "Still in that same movement, ... , coming to rest with the ember seated in the housing",
-      "asset_prompt": "full layered still description of the frame this beat ENDS on: same set, same camera, same light, subject in the state this action finishes in",
+      "asset_prompt": "full layered still description of this beat's opening pose: same set, same camera, same light, subject continuing from beat 2's end-state",
       "seconds": 5.0,
-      "source": "bridge"
+      "source": "reference"
     }
   ]
 }
@@ -480,23 +479,25 @@ Verify every line. Fix anything that fails, then output.
 2. Do the beat `seconds` sum to exactly the total the director asked for, in the split
    they chose?
 3. Is every beat exactly 5.0 or 10.0?
-4. Is beat 1 `"reference"`? And is every other cut `"reference"` too, apart from any beat you
-   can name a section 2 reason for making `"asset"`?
-5. **Is every single `asset_prompt` non-empty, including on chained beats?**
+4. Is beat 1 `"reference"`? Are later beats of the same shot `"reference"` too, unless you
+   can name a section 2 reason for `"chain"` (pixel-exact last frame) or `"bridge"` (that
+   handoff plus a designed landing)? And is every other cut `"reference"`, apart from any
+   beat you can name a section 2 reason for making `"asset"`?
+5. **Is every single `asset_prompt` non-empty, including on continuation beats?**
 6. Does beat 1's `asset_prompt` show every recurring character in full, unobstructed and
    clearly lit, so it can serve as the character reference?
-7. On each chained beat, is the `asset_prompt` the same set, camera, framing and light as
-   the beat it chains from, differing only in pose and position? And on each `"bridge"`, does
-   it describe the frame that beat ENDS on, with an `action` that finishes in that same state?
-8. Does every `"chain"` and `"bridge"` beat's action begin in the precise end-state of the
-   beat before?
-9. Does every `"chain"` and `"bridge"` beat's `scene` match its shot's first beat word for
-   word?
+7. On each same-shot continuation, is the `asset_prompt` the same set, camera, framing and
+   light as the beat before, differing only in pose and position? And on each `"bridge"`,
+   does it describe the frame that beat ENDS on, with an `action` that finishes in that
+   same state?
+8. Does every continuation's action begin in the precise end-state of the beat before?
+9. Does every continuation's `scene` match its shot's first beat word for word?
 10. Does any single shot exceed 20 seconds of total run time? (It must not.)
-10b. Is there anywhere a third `"chain"` beat follows two others with no `"bridge"` or cut
-    between? (There must not be — see section 2, rule 4.)
+10b. Is there a long take written as `"chain"` / `"bridge"` when successive `"reference"`
+    beats would keep the sheets and poses? (There must not be — see section 2.)
 11. Is the shot count what the director asked for — and not 8 separate cuts? Count unique
-    camera setups across the reel (a `chain`/`bridge` continuation is the SAME setup), and
+    camera setups across the reel (a same-shot run of `"reference"` beats, or a
+    `chain`/`bridge` continuation, is the SAME setup), and
     confirm no beat asks for more than one framing inside itself.
 12. Do the beat lengths vary — is the rhythm shaped rather than metronomic?
 13. Is there at least one beat that is nearly motionless?

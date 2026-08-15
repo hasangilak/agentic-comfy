@@ -57,17 +57,18 @@ If any `asset_prompt` is a single sentence or omits the layer stack, expand it w
   of the action, not the climax: if characters walk across the frame, park them at the start
   edge with the destination side open and named.
 - **Every `action`** — one primary motion, its direction and speed, and what stays perfectly
-  still. Chain and bridge beats open with a continuity phrase and pick up the previous beat's
-  exact end-state. The same recurring subjects persist across the reel: a close-up is coverage
-  of a member of the group already in the film, not a replacement protagonist. Do not cut an
-  unbroken take into a new lead.
+  still. Continuation beats (a long take on `reference`, or `chain` / `bridge`) open with a
+  continuity phrase and pick up the previous beat's exact end-state. The same recurring
+  subjects persist across the reel: a close-up is coverage of a member of the group already
+  in the film, not a replacement protagonist. Do not cut an unbroken take into a new lead.
 - **Every `scene`** — one short place-or-framing line; identical text for every beat of one
   continuous shot.
 
 ## H3 consistency — look vs motion, seams, joins
 
-MiniMax-H3 turns each beat into its own clip. Reference cuts hold the cast through pictures
-and the style bible; chain/bridge hand off time. Your prose must feed that, not fight it.
+MiniMax-H3 turns each beat into its own clip. Reference beats hold the cast through pictures
+and the style bible; chain/bridge hand off a keyframe and drop those pictures. Your prose
+must feed that, not fight it.
 
 - **`action` is motion only.** Do not restate paper stock, clay colour, eye material, outfit
   colours, markings, or construction in the action line — those live in the style bible and
@@ -76,13 +77,15 @@ and the style bible; chain/bridge hand off time. Your prose must feed that, not 
 - **Verbatim cast lock.** When look must appear in an `asset_prompt`, copy the style bible's
   exact wording for that character. Never paraphrase, never abbreviate, never let a detail
   drift between beats.
-- **Seam language.** On `chain` and `bridge`, the action opens with an explicit continuity
-  phrase and continues from the previous beat's end-state. Choose `bridge` when a long take
-  needs a designed landing to correct drift — not only when the story "ends somewhere."
-- **Joins are a consistency tool.** Prefer `reference` cuts (cast held on ref2va) over
-  `asset` unless the opening frame itself must land pixel-exact. Never leave three pure
-  `chain` beats in a row without a `bridge` or a cut (brief section 2, rule 4). No shot may
-  run past 20 seconds total.
+- **Seam language.** On a same-shot continuation (`reference` after the opening beat, or
+  `chain` / `bridge`), the action opens with an explicit continuity phrase and continues from
+  the previous beat's end-state.
+- **Joins are a consistency tool.** A long take is successive `reference` beats — same
+  `scene`, continuity actions — so each clip is given the sheets and the pose sequence, and
+  the previous clip is held as `<Video 1>` once poses exist. Prefer that over `chain`. `chain`
+  is the pixel-exact last-frame handoff (no pictures); `bridge` is that handoff plus a
+  designed landing. `asset` only when the opening frame itself must land pixel-exact. Never
+  leave three pure `chain` beats in a row. No shot may run past 20 seconds total.
 
 ## When you are checking rather than writing
 

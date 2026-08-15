@@ -143,13 +143,13 @@ TOOLS = [
             "n": {"type": "integer", "description": "which beat, 1-based"},
             "source": {
                 "type": "string", "enum": list(board_mod.SOURCES),
-                "description": "reference = a hard cut, opening on its own still and shown the "
-                               "reel's cast reference alongside it; this is the normal cut. "
-                               "chain = the same take continuing from the previous clip's last "
-                               "frame. bridge = continues AND lands on its own still. asset = a "
-                               "hard cut whose opening frame is exact instead, with no cast "
-                               "reference carried through the clip -- only for a beat whose "
-                               "first frame has to land precisely.",
+                "description": "reference = the default join: own still plus sheets and poses "
+                               "on ref2va. Use it for a new shot AND for a long take (the "
+                               "previous clip is held as <Video 1> once poses exist). "
+                               "chain = pixel-exact last-frame handoff, no pictures. "
+                               "bridge = that handoff AND lands on its own still. "
+                               "asset = exact-keyframe cut, no cast held through the clip -- "
+                               "only when the first frame must land precisely.",
             },
         },
         ["n", "source"],
@@ -179,9 +179,9 @@ TOOLS = [
         "generate_stills",
         "Ask the local image server to render the opening stills for these beats, then look "
         "at what came back. Gemini is metered and roughly tens of seconds per still, so ask "
-        "for the beats that need one rather than for all of them. Works on every join except a "
-        "'chain' beat, which opens on the previous clip and has nowhere to put one, and a "
-        "'reference' beat set to carry the previous clip, which opens on that instead.",
+        "for the beats that need one rather than for all of them. A chain beat opens on the "
+        "previous clip and has nowhere to put a still. A reference beat gets a still even when "
+        "it holds the previous clip as <Video 1> -- the stills and the video sit together.",
         {
             "beats": {
                 "type": "array", "items": {"type": "integer"},
@@ -218,34 +218,33 @@ quick gesture and 10 for a beat that needs room to breathe.
 
 A beat's frames come from one of four places. This is the single most important choice on the
 board, because it decides what the beat is:
-- "reference": a hard cut, and the normal one. Its own generated still is the composition the
-  clip opens on, and on this join the stills pass draws a stop-motion sequence of poses that
-  fill the remaining image sockets so the video model interpolates through the action instead
-  of inventing a mid-clip transform from one picture. The previous clip is attached as a
-  reference video once those poses exist (identity) or when carry is ticked (continuation).
-  Up to {config.MAX_REF_IMAGES} pictures in total. A still is rendered on this machine and
-  costs no money, but it does cost about 10-18 seconds per pose, and it needs the local image
-  server to be running.
-- "chain": the previous beat's final frame as the FIRST frame, and no end frame. Not a new
-  shot at all -- the same take continuing, same set, same camera, same lighting, with the
-  movement carrying straight through. Needs no still at all.
+- "reference": the default join, for a new shot AND for a long take. Its own generated still
+  is the composition the clip opens on, and the stills pass draws a stop-motion sequence of
+  poses that fill the remaining image sockets so the video model interpolates through the
+  action instead of inventing a mid-clip transform from one picture. Bound character sheets
+  ride those sockets too. The previous clip is attached as a reference video once those poses
+  exist (identity) or when carry is ticked (continuation). Up to {config.MAX_REF_IMAGES}
+  pictures in total. A still is rendered on this machine and costs no money, but it does cost
+  about 10-18 seconds per pose, and it needs the local image server to be running.
+- "chain": the previous beat's final frame as the FIRST frame, and no end frame -- pixel-exact
+  handoff, no pictures. Same set, same camera, same lighting. Needs no still. Use only when
+  that exact last frame must be frame 1; a long take that should keep the sheets belongs on
+  "reference" instead.
 - "bridge": opens on the previous beat's final frame AND is given its own still as the frame it
-  must ARRIVE at. The take carries on unbroken, and it also lands on a composition that was
-  designed rather than one the model drifted into. Needs a still, same as a cut. Choose it when
+  must ARRIVE at. Pixel-exact like chain, so sheets stay words. Needs a still. Choose it when
   a continuous shot has to reach a specific state -- the lamp lit, the character back in
-  position -- or when a long chain of continuations is drifting away from the style bible and
-  needs pinning back to a still.
+  position -- and that arrival must be a keyframe, not a reference picture.
 - "asset": the same cut as "reference", except the still is handed over as an exact keyframe and
   nothing else is. The opening frame lands precisely; the cast is not re-asserted after it. Only
   choose it when the first frame itself has to be exact, and leave it alone where the user has
   already set it.
 
-So choose "reference" when the story genuinely moves somewhere else, "chain" when the movement
-should carry on unbroken and where it ends does not matter, and "bridge" when it should carry
-on unbroken TO somewhere specific. A chained or bridged beat's `action` must read as the
-continuation of the beat before it -- it starts from the pose that beat ended in and takes the
-movement onward. Writing it as a fresh instruction ("the fox sits down in the meadow") makes
-the model reset the puppet and start over, which is visible as a jolt at the join.
+So choose "reference" for a new shot and for a long take that should keep the sheets and poses.
+Choose "chain" only when the opening frame must be the previous clip's true last pixel, and
+"bridge" when that handoff must also land on a designed still. A continuation's `action` must
+read as the beat before it -- it starts from the pose that beat ended in and takes the movement
+onward. Writing it as a fresh instruction ("the fox sits down in the meadow") makes the model
+reset the puppet and start over, which is visible as a jolt at the join.
 
 On a "bridge" beat the `asset_prompt` describes the LAST frame, not the first: the composition
 the clip has to end on. Everything else about writing it is the same, and it must still match
@@ -582,8 +581,9 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
             "action": op.get("action", ""),
             "asset_prompt": op.get("asset_prompt", ""),
             # A new first scene cannot continue from anything, so it falls back to the default
-            # cut. Every other insertion joins the existing linear handoff unless the caller
-            # explicitly asks for another join.
+            # cut. Later insertions used to default to chain because a still was rationed; they
+            # default to reference now so the new beat gets sheets and poses like the rest of
+            # a long take. An explicit chain/bridge is still honoured.
             "source": (
                 # Neither cut join takes anything from upstream, so both are as valid in first
                 # position as anywhere else -- the "new first scene" rule is about the two
@@ -592,7 +592,7 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
                 if requested_source in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)
                 else board_mod.SOURCE_REFERENCE if position == 1
                 else requested_source if requested_source in board_mod.SOURCES
-                else board_mod.SOURCE_CHAIN
+                else board_mod.SOURCE_REFERENCE
             ),
         })
         new = board.beat(position)

@@ -88,13 +88,15 @@ def normalise(data: dict) -> dict:
             # so it falls back to the default cut: `reference`, which is its own still plus the
             # cast on ref2va. The two joins that stand on their own are honoured wherever they
             # appear, including there -- an explicit `asset` is a script asking for the exact
-            # keyframe and must not be overwritten by the default. Later beats default to
-            # chaining, which is the free join.
+            # keyframe and must not be overwritten by the default. Later beats used to default
+            # to chain because a still was rationed; they default to reference now so a long
+            # take keeps the sheets and the pose sequence on every clip. An explicit chain or
+            # bridge is still the pixel-exact last-frame handoff.
             "source": (
                 source if source in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)
                 else board_mod.SOURCE_REFERENCE if index == 1
                 else source if source in board_mod.SOURCES
-                else board_mod.SOURCE_CHAIN
+                else board_mod.SOURCE_REFERENCE
             ),
         })
         # Locked-off angle for this take. Eye is stored by being absent, so a script that

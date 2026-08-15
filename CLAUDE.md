@@ -755,6 +755,12 @@ constants, `config.build_prompt`, `render._frames` and the canvas edge styling m
 | `bridge` | previous clip's last frame | its own still | fl2va | yes, generated |
 | `asset` (exact-keyframe cut) | its own still, exactly | — | fl2va | yes, generated |
 
+**A long take stays on `reference`.** Chain and bridge cannot mix a keyframe latent with
+the nine image sockets, so `reference, chain, chain, bridge` is how later beats lose the
+sheets and the pose sequence. Successive `reference` beats of the same shot hold the
+previous clip as `<Video 1>` once poses exist. `chain` is only the pixel-exact last-frame
+handoff.
+
 `chains()`, `uses_asset()`, `uses_refs()` in `board.py` are the predicates; use them rather
 than comparing strings. `uses_asset()` answers "does the still go into a KEYFRAME slot" and is
 therefore false for `reference` — the question "must a still exist on disk" is
