@@ -203,11 +203,13 @@ quick gesture and 10 for a beat that needs room to breathe.
 A beat's frames come from one of four places. This is the single most important choice on the
 board, because it decides what the beat is:
 - "reference": a hard cut, and the normal one. Its own generated still is the composition the
-  clip opens on, and the reel's locked cast reference goes in alongside it, so the characters
-  keep being held to their design for the whole clip rather than only at the first frame. Up to
-  {config.MAX_REF_IMAGES} pictures in total, so the user can add more of the cast, the set or a
-  prop on the node. A still is rendered on this machine and costs no money, but it does cost
-  about 10-18 seconds, and it needs the local image server to be running.
+  clip opens on, and on this join the stills pass draws a stop-motion sequence of poses that
+  fill the remaining image sockets so the video model interpolates through the action instead
+  of inventing a mid-clip transform from one picture. The previous clip is attached as a
+  reference video once those poses exist (identity) or when carry is ticked (continuation).
+  Up to {config.MAX_REF_IMAGES} pictures in total. A still is rendered on this machine and
+  costs no money, but it does cost about 10-18 seconds per pose, and it needs the local image
+  server to be running.
 - "chain": the previous beat's final frame as the FIRST frame, and no end frame. Not a new
   shot at all -- the same take continuing, same set, same camera, same lighting, with the
   movement carrying straight through. Needs no still at all.
@@ -469,8 +471,8 @@ def generate_stills(board: board_mod.Board, arguments: dict, *,
     """The one tool that reaches outside this process, into the image server next door.
 
     Guarded by exactly the same rules as the canvas button, from the same place: a board whose
-    stills are the user's own work is off limits, and a reference beat must never be handed a
-    still -- doing so would drop its pictures and silently turn it into a cut.
+    stills are the user's own work is off limits. A reference cut is generated like any other
+    -- its still (and its pose sequence) are what the clip is conditioned on.
     """
     requested = arguments.get("beats")
     beats = [int(n) for n in requested if isinstance(n, (int, float, str)) and str(n).isdigit()] \

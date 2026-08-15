@@ -1,7 +1,7 @@
 import { Handle, Position } from "@xyflow/react";
 import { useRef, useState } from "react";
 import { api, clock, money } from "../api";
-import { slotsLeft, videoPictures } from "../beat";
+import { videoPictures } from "../beat";
 import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, STATE_LOOK, inputClass } from "../ui";
@@ -31,11 +31,10 @@ const JOIN_HELP: Record<Source, string> = {
     "frame: continuity plus a composition you chose. Needs one still. Click to make it a " +
     "clean cut instead",
   reference:
-    "a clean cut, and the normal one: this scene opens on its own still and the model is shown " +
-    "the reel's cast reference alongside it for the whole clip, so the puppets keep being held " +
-    "to their design instead of only matching frame one. Add more pictures of the cast, the set " +
-    "or a prop below. Every picture rides through every sampling step, so more of them means a " +
-    "slower render. Click for a cut whose opening frame is exact instead",
+    "a clean cut, and the normal one: this scene opens on its own still — a stop-motion " +
+    "sequence of poses filling the nine image sockets — and the previous clip is held as " +
+    "<Video 1> once that sequence exists. Tick carry to make the video a continuation instead " +
+    "of identity. Click for a cut whose opening frame is exact instead",
   asset:
     "a clean cut whose opening frame is EXACT — the still is handed over as a keyframe, so the " +
     "clip begins on it pixel for pixel. Nothing else is supplied, so the cast is not re-asserted " +
@@ -94,10 +93,6 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         label: `picture ${i + 1}`,
         token: null,
       }));
-  // Against the per-beat budget, not the model's flat cap: two of the nine slots are already
-  // spoken for on a scene that opens a shot.
-  const refSlotsLeft = slotsLeft(beat);
-  // The one reference shape with nowhere to put a still: it opens where the previous clip ended.
   const carrying = isReference && beat.carry;
 
   const action = useDraft(beat.action, (next) =>
@@ -134,10 +129,6 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
     const files = dropped ? Array.from(dropped) : [];
     const file = files[0];
     if (!file) return;
-    // A scene carrying the previous clip opens where that one ended, so it has nowhere to put a
-    // still -- the server refuses one. A picture dropped on it can only be a reference, so it is
-    // taken as one rather than bounced with an error the drop gesture did not deserve.
-    if (carrying) return uploadRefs(files);
     setUploading(true);
     void studio
       .guard(() =>
@@ -146,17 +137,6 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           isBridge ? "bridge" : beat.source === "asset" ? "asset" : "reference",
         ),
       )
-      .finally(() => setUploading(false));
-  };
-
-  // The extra pictures, appended after the ones already there because the prompt names them by
-  // position -- inserting would re-point every note that follows at a different picture.
-  const uploadRefs = (chosen: FileList | File[] | null | undefined) => {
-    const wanted = (chosen ? Array.from(chosen) : []).slice(0, refSlotsLeft);
-    if (!wanted.length) return;
-    setUploading(true);
-    void studio
-      .guard(() => api.uploadRefs(board.slug, beat.n, wanted))
       .finally(() => setUploading(false));
   };
 
@@ -332,7 +312,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                 : isBridge
                   ? `add the still this scene lands on`
                   : carrying
-                    ? `opens where beat ${beat.n - 1} ends — add reference pictures below`
+                    ? `opens where beat ${beat.n - 1} ends — still add this scene's opening still`
                     : "add this scene's opening still"}
             </span>
           </div>
@@ -345,13 +325,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           >
             {uploading
               ? "uploading…"
-              : carrying
-                ? refSlotsLeft
-                  ? `drop to add a reference picture — ${refSlotsLeft} slot${
-                      refSlotsLeft === 1 ? "" : "s"
-                    } left`
-                  : `${board.max_refs} pictures is the model's limit — remove one first`
-                : isBridge
+              : isBridge
                   ? "drop to use as the frame this beat lands on"
                   : "drop to use as this beat's still"}
           </div>
@@ -434,8 +408,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             moved to the Assets stage, where there is room to look at a picture and to see what
             it was actually conditioned on. What is left here is the fact and the way there: the
             canvas is about the chain, and a 240px card was never where a still got judged. */}
-        {carrying ? null : (
-          <button
+        <button
             onClick={() => studio.goStage("assets")}
             className="nodrag flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left
               text-[10px] leading-snug hover:bg-soft"
@@ -451,12 +424,15 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             <span className="min-w-0 flex-1 truncate text-zinc-500">
               {beat.asset
                 ? `${isBridge ? "closing" : "opening"} still` +
-                  (refs.length ? ` · ${refs.length} picture${refs.length === 1 ? "" : "s"}` : "")
+                  ((beat.poses?.length ?? 0) > 1
+                    ? ` · ${beat.poses.length} poses`
+                    : refs.length
+                      ? ` · ${refs.length} picture${refs.length === 1 ? "" : "s"}`
+                      : "")
                 : `needs ${isBridge ? "the still it lands on" : "an opening still"}`}
             </span>
             <span className="shrink-0 text-zinc-400">→</span>
           </button>
-        )}
 
         {/* The storyboard sketch of this shot, above the pictures it is NOT one of: a panel reaches
             no renderer, so it belongs next to what the shot is rather than next to what conditions
@@ -496,10 +472,10 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             className="nodrag flex cursor-pointer items-start gap-1.5 rounded px-1 py-0.5
               text-[10px] leading-snug text-zinc-600 hover:bg-soft"
             title={
-              "sends the last few seconds of the previous clip as <Video 1>, and tells the " +
-              "model to open where it ends and carry the movement on. Makes this scene " +
-              "depend on that one again, so re-rendering it marks this one as following a " +
-              "change"
+              "sends the last few seconds of the previous clip as <Video 1>. Ticked, this " +
+              "scene continues that take. Unticked, a pose sequence still holds the clip as " +
+              "identity so a transform cannot drop the puppet. Re-rendering the previous " +
+              "scene marks this one as following a change either way."
             }
           >
             <input
@@ -517,6 +493,8 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               <code>&lt;Video 1&gt;</code>
               {beat.carry ? (
                 <span className="text-live"> · continues that take</span>
+              ) : beat.hold_video ? (
+                <span className="text-zinc-400"> · already held as identity</span>
               ) : null}
             </span>
           </label>
@@ -560,6 +538,8 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               <span className="text-warm">◈</span>{" "}
               {beat.carry
                 ? `carries beat ${beat.n - 1}`
+                : beat.hold_video
+                  ? `cut · holds beat ${beat.n - 1} as identity`
                 : beat.opens_on
                   ? "cut · opens on this still"
                   : "cut · no opening still yet"}{" "}

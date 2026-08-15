@@ -519,6 +519,33 @@ function Still({
         )}
       </div>
 
+      {(beat.poses?.length ?? 0) > 1 ? (
+        <div className="space-y-1.5">
+          <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+            {beat.poses.length} of {beat.pose_count} stop-motion poses · H3 interpolates through these
+          </p>
+          <div className="flex gap-1 overflow-x-auto">
+            {beat.poses.map((url, at) => (
+              <img
+                key={`${url}-${at}`}
+                src={url}
+                alt={`pose ${at + 1}`}
+                title={`pose ${at + 1} of ${beat.poses.length}`}
+                className={`h-20 w-12 shrink-0 rounded-lg object-cover ${
+                  at === 0 ? "ring-1 ring-solid" : ""
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      ) : beat.pose_count > 1 && beat.source === "reference" ? (
+        <p className="text-[10px] leading-relaxed text-zinc-400">
+          Drawing this scene fills {beat.pose_count} image sockets with successive poses of the
+          action, so the video model interpolates through them instead of inventing a mid-clip
+          transform from one still.
+        </p>
+      ) : null}
+
       {defining ? (
         <p className="rounded-xl border border-warm/30 bg-warm/5 px-3 py-2 text-[10px] leading-relaxed text-warm">
           This scene defines the look. Its still becomes the reel's cast reference, and every
@@ -545,7 +572,15 @@ function Still({
                 : "draw this still"
             }
           >
-            {busy ? "drawing…" : beat.asset ? "↻ another take" : "✦ draw it"}
+            {busy
+              ? "drawing…"
+              : beat.asset
+                ? beat.pose_count > 1
+                  ? `↻ another take · ${beat.pose_count} poses`
+                  : "↻ another take"
+                : beat.pose_count > 1
+                  ? `✦ draw ${beat.pose_count} poses`
+                  : "✦ draw it"}
           </Button>
           <Button tone="ghost" onClick={() => picker.current?.click()}>
             ⤒ use my own

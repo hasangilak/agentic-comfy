@@ -3,10 +3,10 @@
 /**
  * Where a beat's frames come from -- the meaning of the wire on the canvas.
  *
- *   reference -- the default cut, on a different checkpoint: its own still as <Picture 1>
- *                and the reel's cast reference as <Picture 2>, with room for `max_refs` in
- *                total. No keyframe, so it cannot continue from anything -- but the cast is
- *                re-asserted through every sampling step instead of only at frame zero.
+ *   reference -- the default cut, on a different checkpoint: its own still (or a stop-motion
+ *                sequence of poses) filling the image sockets, plus the previous clip as
+ *                <Video 1> once that sequence exists. No keyframe. Tick carry to make the
+ *                video a continuation instead of identity.
  *   chain     -- the previous clip's last frame as the first frame: a continuation
  *   bridge    -- both, so the clip continues AND lands on a still of its own
  *   asset     -- its own still as an exact first keyframe, and nothing else. The cut for a
@@ -106,7 +106,7 @@ export interface Beat {
    * and the reel's cast reference. Read-only — they follow the still and the reference rather
    * than being editable here. Empty on every join but a reference cut.
    */
-  auto_refs: { url: string | null; note: string }[];
+  auto_refs: { url: string | null; note: string; kind?: "opening" | "pose" | "cast" }[];
   /** How far those push the director's pictures down the numbering. `auto_refs.length`. */
   ref_offset: number;
   /** Uploads this beat can still take: `max_refs` less the automatic ones. */
@@ -156,8 +156,22 @@ export interface Beat {
    * invalidate it.
    */
   carry: boolean;
+  /**
+   * The previous clip is wired as <Video 1> for identity, not as the opening. Distinct from
+   * `carry`: that one continues the take. A pose sequence holds the clip even when carry is off.
+   */
+  hold_video: boolean;
   /** The cut tail actually sent, once it has been. */
   carry_clip: string | null;
+  /**
+   * Stop-motion poses this scene drew, opening still first. Length 1 on a board that has a
+   * still and has not been generated since sequences existed. `pose_count` is how many asset
+   * generation should draw, which can be more than `poses.length` before the run.
+   */
+  poses: string[];
+  pose_count: number;
+  /** The previous shot's last pose, when it exists and this still may be drawn from it. */
+  previous_pose: string | null;
   video: string | null;
   predicted_seconds: number;
   predicted_cost: number;
@@ -299,6 +313,8 @@ export interface Board {
   notes: string[];
   /** The model's hard cap on pictures per beat: nine. Per-beat `ref_slots` is what a node shows. */
   max_refs: number;
+  /** The node's cap on reference videos: three. This pipeline wires at most one. */
+  max_ref_videos: number;
   /**
    * And the still renderer's cap. A beat's first `still_refs` uploads are drawn into its still
    * as well as into its clip. The image server may report a lower one.

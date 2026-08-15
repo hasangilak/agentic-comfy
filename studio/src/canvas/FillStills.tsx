@@ -200,11 +200,10 @@ function assign(files: File[], board: Board): { targets: Target[]; unused: File[
     const numbers = (file.name.match(/\d+/g) ?? [])
       .map(Number)
       // A reference beat IS a target now: the still it takes is its opening composition, so
-      // filling one leaves the join exactly where it was. The one that is not is a beat opening
-      // on the previous clip's tail, where a still would never reach the graph. Extra reference
-      // pictures still go on the node itself, where the order they land in is visible.
+      // filling one leaves the join exactly where it was. Extra reference pictures still go
+      // on the node itself, where the order they land in is visible.
       .filter((value) =>
-        board.beats.some((beat) => beat.n === value && !(beat.source === "reference" && beat.carry)),
+        board.beats.some((beat) => beat.n === value),
       );
     // Ambiguous on purpose: "01-02.png" or a date stamp that happens to contain a beat
     // number is not a placement, so it falls through to the order rule below.

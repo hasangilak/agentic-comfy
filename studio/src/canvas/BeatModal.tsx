@@ -84,13 +84,13 @@ type Asset = {
 
 function assetsOf(beat: Beat, allowNewPicture = true): Asset[] {
   const isBridge = beat.source === "bridge";
-  const carrying = beat.source === "reference" && beat.carry;
   const found: Asset[] = [];
 
   // The still first, and present even when it does not exist yet: this is where it is
-  // generated from, so an empty slot is the affordance rather than a gap.
-  if (!carrying) {
-    found.push({
+  // generated from, so an empty slot is the affordance rather than a gap. Carrying the
+  // previous clip used to hide this -- that clip was the opening. The still and the video
+  // now sit together, so the slot stays.
+  found.push({
       id: "still",
       kind: "still",
       url: beat.asset,
@@ -101,12 +101,23 @@ function assetsOf(beat: Beat, allowNewPicture = true): Asset[] {
         : beat.source === "asset"
           ? "the exact first frame of this clip — handed to the model as a keyframe"
           : "the composition this scene opens on",
+  });
+
+  // In-betweens of a stop-motion sequence, after the opening still. Pose 1 IS that still.
+  (beat.poses ?? []).slice(1).forEach((url, at) => {
+    found.push({
+      id: `pose:${at + 2}`,
+      kind: "still",
+      url,
+      label: `pose ${at + 2}`,
+      note: `stop-motion pose ${at + 2} of ${beat.poses.length} — same take, next increment of the action`,
     });
-  }
+  });
 
   // The cast reference, read-only: it belongs to the reel, not to this scene, and it is here to
   // be compared against rather than edited. Skipped when it IS this beat's own still.
-  const cast = beat.auto_refs.find((auto) => auto.url && auto.url !== beat.asset);
+  const cast = beat.auto_refs.find((auto) => auto.kind === "cast" && auto.url)
+    ?? beat.auto_refs.find((auto) => !auto.kind && auto.url && auto.url !== beat.asset);
   if (cast?.url) {
     found.push({ id: "cast", kind: "cast", url: cast.url, label: "cast reference", note: cast.note });
   }
@@ -299,7 +310,9 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
               : isBridge
                 ? `continues from scene ${beat.n - 1} · lands on its still`
                 : carrying
-                  ? `cut · opens where scene ${beat.n - 1} ends`
+                  ? `cut · continues scene ${beat.n - 1}`
+                  : beat.hold_video
+                    ? `cut · holds scene ${beat.n - 1} as identity`
                   : beat.source === "asset"
                     ? "cut · opens on its still exactly"
                     : "cut · opens on its still"}
@@ -360,7 +373,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
               ) : (
                 <div className="px-6 text-center text-[11px] leading-relaxed text-zinc-400">
                   {carrying
-                    ? `this scene opens where scene ${beat.n - 1} ends, so it has no still of its own`
+                    ? `no still yet — this scene continues scene ${beat.n - 1}, but it still opens on a still of its own`
                     : "no still yet — generate it, or upload your own, on the right"}
                 </div>
               )}

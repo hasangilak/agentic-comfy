@@ -176,6 +176,62 @@ def _design(board: board_mod.Board, arguments: dict, key: str = "id") -> dict:
         ) from None
 
 
+def _pose_cost(board: board_mod.Board, beats: list[int]) -> int:
+    """How many Gemini frames generating these beats would spend.
+
+    Reference cuts draw a stop-motion sequence, so a beat is no longer one still. The crew
+    budget is counted in those frames, not in beats, or nine poses on scene 3 would look like
+    one and blow the cap on a later retry.
+    """
+    return sum(board.sequence_count(n) for n in beats)
+
+
+def _fit_stills(board: board_mod.Board, wanted: list[int], room: int) -> list[int]:
+    """Take beats from the front until the next one would not fit the remaining budget.
+
+    An empty result with a non-empty ask means even the first beat is larger than `room` --
+    the caller should still take that one, or the tool could never start a nine-pose scene
+    once a few retries had spent the rest.
+    """
+    taken: list[int] = []
+    spent = 0
+    for n in wanted:
+        need = board.sequence_count(n)
+        if taken and spent + need > room:
+            break
+        if not taken and need > room:
+            return [n]
+        taken.append(n)
+        spent += need
+    return taken
+
+
+def _run_generate_stills(context: Context, arguments: dict) -> Outcome:
+    """Shared body of the two `generate_stills` tools -- budget in pose frames, then the job."""
+    board = context.need_board()
+    wanted = _beat_list(board, arguments) or []
+    if not wanted:
+        raise ToolRefused("say which beats, as a list of beat numbers")
+    spent = int(context.state.get("stills_made") or 0)
+    room = config.CREW_STILL_BUDGET - spent
+    if room <= 0:
+        return (f"this run has already rendered {spent} stills, which is its budget "
+                f"({config.CREW_STILL_BUDGET}). Say what is still wrong and stop."), []
+    taken = _fit_stills(board, wanted, room)
+    if len(taken) < len(wanted):
+        cost = _pose_cost(board, taken)
+        context.hooks.say(
+            f"[stills] budget: rendering {len(taken)} of {len(wanted)} beats "
+            f"({cost} poses of {room} remaining)"
+        )
+    outcome = agent_mod.generate_stills(
+        board, {"beats": taken}, log=context.hooks.log, progress=context.hooks.progress,
+        announce=context.hooks.announce, cancelled=context.hooks.cancelled)
+    context.state["stills_made"] = spent + _pose_cost(board, taken)
+    context.hooks.changed()
+    return outcome, [{"op": "generate_stills", "summary": f"rendered stills for {taken}"}]
+
+
 # ## Shared
 
 
@@ -197,8 +253,10 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
         beat = board.beat(n)
         source = board.source_for(beat)
         pictures = board.pictures_for(n)
+        hold = board.holds_upstream(beat)
         carry = board.carries_motion(beat)
         opens_on = board.opens_on_still(beat)
+        poses = board.pose_paths(n)
         prompt = config.build_prompt(
             beat.get("action", ""),
             scene=beat.get("scene", ""),
@@ -212,12 +270,16 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             staging=board.staging_text(n, pictures),
             blocking=beat.get("blocking", ""),
             medium_key=board.medium(),
-            ref_videos=1 if carry else 0,
+            ref_videos=1 if hold else 0,
+            poses=len(poses),
+            hold_video=hold and not carry,
             mentions=board.mentions(n, pictures),
         )
         lines = [
             f"beat {n} join={source}"
             + (f", carrying upstream motion as <Video 1>" if carry else "")
+            + (f", holding previous clip as <Video 1> (identity)" if hold and not carry else "")
+            + (f", {len(poses)} stop-motion poses" if len(poses) > 1 else "")
             + (f", opens on its own still as <Picture 1>" if opens_on else ""),
             "references:",
         ]
@@ -227,8 +289,9 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
                 lines.append(f"  <Picture {index}> ({on_disk}): {role}")
         else:
             lines.append("  (none -- keyframe path, not ref2va)")
-        if carry:
-            lines.append("  <Video 1>: previous clip's tail")
+        if hold:
+            job = "continuation" if carry else "identity"
+            lines.append(f"  <Video 1>: previous clip's tail ({job})")
         lines.append("prompt:")
         lines.append(prompt)
         return "\n".join(lines), []
@@ -562,29 +625,12 @@ def _asset_tools(llm: llm_mod.LLM) -> list[Tool]:
         """The one metered tool in the crew, and the only one with a budget of its own.
 
         The work is `agent.generate_stills`, which carries the `wanted`/`claim` guards -- a
-        board whose stills are the director's own work is off limits, and a reference beat
-        carrying motion must never be handed a still. What is added here is the count: a round
-        cap bounds turns, and an agent rejecting and re-rendering its own stills is bounded by
-        nothing else.
+        board whose stills are the director's own work is off limits. What is added here is
+        the count: a round cap bounds turns, and an agent rejecting and re-rendering its own
+        stills is bounded by nothing else. Counted in pose frames, because a reference cut
+        draws up to nine of them.
         """
-        board = context.need_board()
-        wanted = _beat_list(board, arguments) or []
-        if not wanted:
-            raise ToolRefused("say which beats, as a list of beat numbers")
-        spent = int(context.state.get("stills_made") or 0)
-        room = config.CREW_STILL_BUDGET - spent
-        if room <= 0:
-            return (f"this run has already rendered {spent} stills, which is its budget "
-                    f"({config.CREW_STILL_BUDGET}). Say what is still wrong and stop."), []
-        if len(wanted) > room:
-            context.hooks.say(f"[stills] budget: rendering {room} of {len(wanted)} asked for")
-            wanted = wanted[:room]
-        outcome = agent_mod.generate_stills(
-            board, {"beats": wanted}, log=context.hooks.log, progress=context.hooks.progress,
-            announce=context.hooks.announce, cancelled=context.hooks.cancelled)
-        context.state["stills_made"] = spent + len(wanted)
-        context.hooks.changed()
-        return outcome, [{"op": "generate_stills", "summary": f"rendered stills for {wanted}"}]
+        return _run_generate_stills(context, arguments)
 
     def revise_still(context: Context, arguments: dict) -> Outcome:
         board = context.need_board()
@@ -595,7 +641,9 @@ def _asset_tools(llm: llm_mod.LLM) -> list[Tool]:
                                announce=context.hooks.announce,
                                cancelled=context.hooks.cancelled)
         if done.get("regenerated"):
-            context.state["stills_made"] = int(context.state.get("stills_made") or 0) + 1
+            context.state["stills_made"] = (
+                int(context.state.get("stills_made") or 0) + board.sequence_count(n)
+            )
         context.hooks.changed()
         again = " and drew it again" if done.get("regenerated") else ""
         return (f"{done['reply']}{again}",
@@ -950,24 +998,7 @@ def _director_board(llm: llm_mod.LLM) -> list[Tool]:
         return written, [{"op": "set_caption", "summary": "wrote the caption"}]
 
     def generate_stills(context: Context, arguments: dict) -> Outcome:
-        board = context.need_board()
-        wanted = _beat_list(board, arguments) or []
-        if not wanted:
-            raise ToolRefused("say which beats, as a list of beat numbers")
-        spent = int(context.state.get("stills_made") or 0)
-        room = config.CREW_STILL_BUDGET - spent
-        if room <= 0:
-            return (f"this run has already rendered {spent} stills, which is its budget "
-                    f"({config.CREW_STILL_BUDGET}). Say what is still wrong and stop."), []
-        if len(wanted) > room:
-            context.hooks.say(f"[stills] budget: rendering {room} of {len(wanted)} asked for")
-            wanted = wanted[:room]
-        outcome = agent_mod.generate_stills(
-            board, {"beats": wanted}, log=context.hooks.log, progress=context.hooks.progress,
-            announce=context.hooks.announce, cancelled=context.hooks.cancelled)
-        context.state["stills_made"] = spent + len(wanted)
-        context.hooks.changed()
-        return outcome, [{"op": "generate_stills", "summary": f"rendered stills for {wanted}"}]
+        return _run_generate_stills(context, arguments)
 
     return [
         Tool(spec=borrowed(llm, "set_script"), run=board_op("set_script")),

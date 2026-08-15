@@ -70,7 +70,14 @@ export function mentionsIn(text: string): string[] {
  * on that beat rather than showing it a picture of itself.
  */
 export function castRef(beat: Beat): { url: string; note: string } | null {
-  const found = (beat.auto_refs ?? []).find((a) => a.url && a.url !== beat.asset);
+  const found = (beat.auto_refs ?? []).find((a) => {
+    if (!a.url) return false;
+    if (a.kind === "cast") return true;
+    // Boards published before `kind` existed: the cast slot is the auto-ref that is not this
+    // beat's own still. A pose sequence would fool that test, which is why `kind` exists.
+    if (a.kind) return false;
+    return a.url !== beat.asset;
+  });
   return found?.url ? { url: found.url, note: found.note } : null;
 }
 
@@ -131,17 +138,25 @@ function stagePictures(beat: Beat, staging: StageEntry[], forStill: boolean): Pi
  */
 export function videoPictures(beat: Beat, staging: StageEntry[] = []): PictureRef[] {
   if (beat.source !== "reference") return [];
-  const autos: PictureRef[] = (beat.auto_refs ?? []).map((auto, at) => ({
-    index: null,
-    id: auto.url === beat.asset ? null : "cast",
-    url: auto.url,
-    note: auto.note,
-    tag: "",
-    // The first automatic slot is this beat's own still when it opens on one; the other is the
-    // cast. `opens_on` is the flag the server publishes rather than something inferred here.
-    label: at === 0 && beat.opens_on ? "opening still" : "cast reference",
-    token: auto.url === beat.asset ? null : "@cast",
-  }));
+  const autos: PictureRef[] = (beat.auto_refs ?? []).map((auto, at) => {
+    const kind =
+      auto.kind ??
+      (at === 0 && beat.opens_on ? "opening" : auto.url === beat.asset ? "opening" : "cast");
+    return {
+      index: null,
+      id: kind === "cast" ? "cast" : null,
+      url: auto.url,
+      note: auto.note,
+      tag: "",
+      label:
+        kind === "opening"
+          ? "opening still"
+          : kind === "pose"
+            ? `pose ${at + 1}`
+            : "cast reference",
+      token: kind === "cast" ? "@cast" : null,
+    };
+  });
   return [...autos, ...stagePictures(beat, staging, false), ...uploads(beat)]
     .map((picture, at) => ({ ...picture, tag: `<Picture ${at + 1}>` }));
 }
@@ -172,13 +187,30 @@ export function stillPictures(beat: Beat, staging: StageEntry[] = []): PictureRe
     });
   }
   found.push(...stagePictures(beat, staging, true));
+  if (
+    beat.previous_pose &&
+    !found.some((picture) => picture.url === beat.previous_pose)
+  ) {
+    found.push({
+      index: null,
+      id: null,
+      url: beat.previous_pose,
+      note: "the last pose of the previous shot -- same puppets and materials, not this shot's camera",
+      tag: "",
+      label: "previous shot's last pose",
+      token: null,
+    });
+  }
   if (beat.source === "reference") {
     found.push(...uploads(beat));
   }
-  // How many of this list the still renderer actually gets. Counted off the three numbers the
+  // How many of this list the still renderer actually gets. Counted off the numbers the
   // server publishes rather than off `max_still_refs`, because the image server may report a
-  // lower cap than ours and those three are what it decided.
-  const reaching = (beat.still_cast ? 1 : 0) + beat.staging_still_refs + beat.still_refs;
+  // lower cap than ours and those are what it decided. The previous pose is extra continuity
+  // and is already in `found` when it fitted.
+  const prevExtra =
+    beat.previous_pose && beat.previous_pose !== cast?.url ? 1 : 0;
+  const reaching = (beat.still_cast ? 1 : 0) + beat.staging_still_refs + beat.still_refs + prevExtra;
   return found.map((picture, at) => ({
     ...picture,
     tag: `the ${ordinal(at + 1)} reference image`,
