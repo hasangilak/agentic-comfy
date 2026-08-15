@@ -209,6 +209,65 @@ class Board:
     def asset_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}_asset.png"
 
+    def pose_path(self, n: int, index: int) -> Path:
+        """One stop-motion pose of this beat, 1-based.
+
+        Pose 1 is the opening still -- `beat<n>_asset.png` -- so every path that already
+        reads the still keeps working, and a sequence of one is indistinguishable from the
+        board that never grew poses. Pose 2 is `beat<n>_pose2.png` and so on, directly in
+        the reel directory because `api.media_file` serves only files whose parent IS that
+        directory.
+        """
+        if index <= 1:
+            return self.asset_path(n)
+        return self.workdir / f"beat{n}_pose{index}.png"
+
+    def pose_paths(self, n: int) -> list[Path]:
+        """The stop-motion poses this beat actually has, in order, opening still first.
+
+        Stops at the first gap after pose 1: a missing pose 3 must not leave the model
+        interpolating from pose 2 to pose 4 as if they were adjacent. Pose 1 missing with
+        later poses on disk is the same -- nothing to open on.
+        """
+        first = self.asset_path(n)
+        if not first.is_file():
+            return []
+        found = [first]
+        for index in range(2, config.MAX_REF_IMAGES + 1):
+            path = self.pose_path(n, index)
+            if not path.is_file():
+                break
+            found.append(path)
+        return found
+
+    def sequence_count(self, n: int) -> int:
+        """How many poses asset generation should draw for this beat.
+
+        Reference beats fill the nine image sockets the node actually has, less whatever
+        staging sheets and uploads already claim, so a quiet cut gets nine and a beat that
+        already binds three sheets gets six. Keyframe joins still get one -- extra poses
+        would reach no renderer there. Existing boards with a single still keep that count
+        until they are generated again.
+        """
+        if not uses_refs(self.source_for(self.beat(n))):
+            return 1
+        reserved = (len(self.staging_pictures(n, for_still=False))
+                    + len(self.ref_paths(n)))
+        return config.sequence_length(reserved)
+
+    def previous_last_pose(self, n: int) -> Path | None:
+        """The last pose (or still) of the beat before this one, if it is on disk.
+
+        Handed to the still renderer as extra continuity when it fits the cap, so beat N's
+        opening pose can hold the puppet the previous shot already established rather than
+        redrawing it from the bible.
+        """
+        up = self.upstream(n)
+        if up is None:
+            return None
+        poses = self.pose_paths(up["n"])
+        return poses[-1] if poses else None
+
     def frame_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}_frame.png"
 
@@ -275,11 +334,11 @@ class Board:
     def next_ref_index(self, n: int) -> int | None:
         """The lowest free picture slot, or None when the beat is already at the cap.
 
-        Capped on the UPLOAD budget rather than flat at config.MAX_REF_IMAGES, because two of
-        the model's nine slots fill themselves on a beat that opens a shot -- its own still and
-        the cast reference. Without this, the ninth upload would be accepted, written to disk,
-        and then silently dropped by `pictures_for` when it truncated the list to what the node
-        actually takes: a picture on the canvas that is not in the render.
+        Capped on the UPLOAD budget rather than flat at config.MAX_REF_IMAGES, because the
+        automatic slots -- a stop-motion sequence, or the opening still plus the cast -- fill
+        themselves first. Without this, an upload that `pictures_for` would truncate would be
+        accepted, written to disk, and then silently dropped: a picture on the canvas that is
+        not in the render.
         """
         budget = self.ref_budget(n)
         for index in range(1, config.MAX_REF_IMAGES + 1):
@@ -610,12 +669,17 @@ class Board:
             (lambda n, index=index: self.ref_path(n, index))
             for index in range(1, config.MAX_REF_IMAGES + 1)
         )
+        poses = tuple(
+            (lambda n, index=index: self.pose_path(n, index))
+            for index in range(2, config.MAX_REF_IMAGES + 1)
+        )
         # The panel is in here despite reaching no renderer, and for exactly the reason the
         # docstring gives: `renumber` renames through this tuple, so a panel left out would hand
         # beat 2 the sketch of the beat that used to be there -- and a panel is read by eye, which
-        # is the one kind of orphan nothing else would catch.
+        # is the one kind of orphan nothing else would catch. Poses 2..9 are here for the same
+        # reason: left out, beat 2 would inherit beat 1's in-betweens.
         return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path,
-                self.carry_path, self.panel_path, *refs)
+                self.carry_path, self.panel_path, *refs, *poses)
 
     def reference_path(self) -> Path | None:
         """The still that fixes what the characters look like, for generating a new scene.
@@ -1073,12 +1137,13 @@ class Board:
         return explicit if explicit in SOURCES else SOURCE_CHAIN
 
     def carries_motion(self, beat: dict) -> bool:
-        """Does this reference beat take the previous clip's tail as a reference video?
+        """Does this reference beat take the previous clip's tail as a continuation?
 
         Only meaningful on the reference join, and only where there IS a previous beat. The
         flag is stored per beat rather than derived, because it is a real editorial choice --
         a reference beat that starts a new shot and one that carries the last one on are the
-        same conditioning with opposite intent.
+        same conditioning with opposite intent. Sending the previous clip as identity (see
+        `holds_upstream`) is a different question and does not set this.
         """
         return (
             uses_refs(self.source_for(beat))
@@ -1086,30 +1151,46 @@ class Board:
             and self.upstream(beat["n"]) is not None
         )
 
+    def holds_upstream(self, beat: dict) -> bool:
+        """Send the previous clip as a reference video for identity, not as the opening.
+
+        True on a reference beat that has a stop-motion sequence (two or more poses) and a
+        previous clip on disk. Old single-still boards keep the fingerprint they had -- an
+        unconditional hold would mark every rendered cut stale at once and re-price a paid
+        render for a feature nobody had generated yet. Carry already sends the same clip,
+        so it is included here too: one method answers "does a video socket get wired".
+        """
+        if not uses_refs(self.source_for(beat)):
+            return False
+        up = self.upstream(beat["n"])
+        if up is None or not self.video_path(up["n"]).is_file():
+            return False
+        return self.carries_motion(beat) or len(self.pose_paths(beat["n"])) > 1
+
     def follows_upstream(self, beat: dict) -> bool:
         """Does anything this beat renders from come out of the beat before it?
 
-        True for both keyframe continuations and for a reference beat carrying motion. This is
-        what staleness and the render cascade key on -- not the join name, since the reference
-        join answers this question either way depending on its flag.
+        True for both keyframe continuations and for a reference beat that takes the previous
+        clip as a video -- whether as a continuation (`carries_motion`) or as identity
+        (`holds_upstream`). This is what staleness and the render cascade key on.
         """
-        return chains(self.source_for(beat)) or self.carries_motion(beat)
+        return chains(self.source_for(beat)) or self.holds_upstream(beat)
 
     def opens_on_still(self, beat: dict) -> bool:
         """Does this reference beat open on a still drawn for it, rather than composing one?
 
         This is what makes `reference` the default cut rather than an uploads-only special case:
         the beat's own still goes in as <Picture 1> and the clip begins on that composition.
-        Three things have to hold -- the beat is on this join, it is not opening on the previous
-        clip's tail instead, and the still is actually on disk.
+        Two things have to hold -- the beat is on this join, and the still is actually on disk.
 
-        The carry check is not a detail. A carried clip and an opening still are two different
-        answers to where the shot begins, and `config.build_prompt` may only ever give one of
-        them, so a beat set to carry does not wire its still at all.
+        A carried clip used to exclude the still, because CARRY_VIDEO and OPEN_REFERENCE_STILL
+        were two answers to where the shot begins. They still are, but a pose sequence plus
+        HOLD_VIDEO (or a continuation whose first pose is that carry) needs the still wired
+        as well: that is how all nine image sockets get used instead of being emptied the
+        moment a video is attached.
         """
         return (
             uses_refs(self.source_for(beat))
-            and not self.carries_motion(beat)
             and self.asset_path(beat["n"]).is_file()
         )
 
@@ -1119,41 +1200,45 @@ class Board:
         Not the same question as `uses_asset`, which asks whether a still goes into a keyframe
         slot. A cut and a bridge are blocked without one either way. A reference beat is only
         blocked when it has nothing else to be conditioned on: uploaded pictures do the job on
-        their own, and a beat carrying the previous clip's tail opens on that instead.
-
-        So this is what drives NEEDS_ASSET and `assets_needed`, and the uploads clause is what
-        keeps a board built before the default moved to ref2va working untouched -- its
-        reference beats have pictures and are not waiting for anything.
+        their own. Carrying the previous clip no longer excuses a missing still -- the video
+        is identity or continuation, and the opening composition is the still (or the pose
+        sequence built from it).
         """
         source = self.source_for(beat)
         if uses_asset(source):
             return True
         if not uses_refs(source):
             return False
-        return not self.carries_motion(beat) and not self.ref_paths(beat["n"])
+        return not self.ref_paths(beat["n"])
 
     def auto_pictures(self, n: int) -> list[tuple[Path, str]]:
         """The reference pictures that wire themselves, in <Picture i> order, with their roles.
 
-        Two, on a beat that opens a shot: its own still as the composition to begin on, and the
-        reel's locked cast reference so the characters keep being re-asserted through every
-        sampling step rather than only at frame zero. Together they are the point of moving the
-        default cut onto ref2va at all.
+        On a beat with only its opening still, two: that still as the composition to begin on,
+        and the reel's locked cast reference so the characters keep being re-asserted through
+        every sampling step. On a beat whose asset pass drew a stop-motion sequence, the
+        poses themselves take those slots -- they ARE the cast, in motion -- and the extra
+        cast still is dropped so the nine sockets fill with the sequence rather than crowding
+        it out. Together with `sequence_count` that is how a quiet cut uses all nine.
 
-        The cast reference is deliberately NOT wired onto the other reference shapes -- an
-        uploads-only beat, or one carrying the previous clip. Those already say what they are
-        conditioned on, and quietly adding a picture to them would change what every board built
-        before this rendered as, mark it stale, and charge for the extra reference tokens.
-
-        `reference_for` returns None on the beat whose own still IS the reference, so beat 1 gets
-        one picture rather than the same file twice.
+        `reference_for` returns None on the beat whose own still IS the reference, so beat 1
+        never gets the same file twice even on the single-still path.
         """
         if not self.opens_on_still(self.beat(n)):
             return []
-        found = [(self.asset_path(n), config.REF_ROLE_OPENING)]
-        cast = self.reference_for(n)
-        if cast is not None:
-            found.append((cast, config.REF_ROLE_CAST))
+        poses = self.pose_paths(n)
+        if not poses:
+            return []
+        found: list[tuple[Path, str]] = []
+        total = len(poses)
+        for index, path in enumerate(poses, start=1):
+            role = (config.REF_ROLE_OPENING if index == 1
+                    else config.REF_ROLE_POSE.format(i=index, k=total))
+            found.append((path, role))
+        if total == 1:
+            cast = self.reference_for(n)
+            if cast is not None:
+                found.append((cast, config.REF_ROLE_CAST))
         return found
 
     def pictures_for(self, n: int) -> list[tuple[Path, str]]:
@@ -1232,6 +1317,17 @@ class Board:
             if cast is not None:
                 found.append((cast, ""))
         found += self.staging_pictures(n, for_still=True)
+        # The previous shot's last pose, when it fits. Identity sheets come first; this is
+        # continuity, not a lock, and a set that already filled the cap must not be pushed
+        # out by it. Deduped against the cast still, which on beat 2 with no sequence IS the
+        # previous shot's only picture.
+        prev = self.previous_last_pose(n)
+        if prev is not None and prev not in {path for path, _ in found}:
+            found.append((
+                prev,
+                "the last pose of the previous shot -- same puppets and materials, not "
+                "this shot's camera",
+            ))
         if uses_refs(self.source_for(self.beat(n))):
             found += list(zip(self.ref_paths(n), self.ref_prompts(n)))
         cap = config.MAX_STILL_REFS if limit is None else min(limit, config.MAX_STILL_REFS)
@@ -1574,6 +1670,8 @@ class Board:
             seconds = self.seconds_for(beat)
             frames = config.frame_count(seconds)
             still = self.still_pictures(n)
+            autos = self.auto_pictures(n)
+            poses = self.pose_paths(n)
             cast = self.reference_for(n)
             stage_paths = {path for path, _ in self.staging_pictures(n, for_still=True)}
             upload_paths = set(self.ref_paths(n))
@@ -1636,8 +1734,14 @@ class Board:
                 # open on, and the reel's cast reference. Read-only on the canvas -- they follow
                 # the still and the reference rather than being editable in their own right.
                 "auto_refs": [
-                    {"url": self.media_url(path), "note": note}
-                    for path, note in self.auto_pictures(n)
+                    {
+                        "url": self.media_url(path),
+                        "note": note,
+                        # opening / pose / cast -- so the canvas can label a nine-pose
+                        # sequence without sniffing the role prose.
+                        "kind": "opening" if index == 1 else ("pose" if index <= len(poses) else "cast"),
+                    }
+                    for index, (path, note) in enumerate(autos, start=1)
                 ],
                 # Which of the reel's design sheets this scene uses, in the order they are
                 # numbered. Ids rather than objects: the sheets themselves are published once at
@@ -1674,14 +1778,26 @@ class Board:
                 # How many of the director's pictures also condition the STILL, counted off the
                 # capped list `still_pictures` actually returns -- see that method.
                 "still_refs": sum(1 for path, _ in still if path in upload_paths),
-                # Whether this beat's still is wired as the composition it opens on. False on a
-                # reference beat carrying the previous clip, which opens on that instead.
+                # Whether this beat's still is wired as the composition it opens on. True on a
+                # reference beat with a still on disk, including one that also holds the previous
+                # clip as a video -- the still is <Picture 1>, the video is <Video 1>.
                 "opens_on": self.opens_on_still(beat),
                 # A reference beat can also be shown the tail of the previous clip, which is
                 # how this join gets continuity without a keyframe.
                 "carry": self.carries_motion(beat),
+                # Identity from the previous clip without making this beat a continuation.
+                # Distinct from `carry`: the prompt says HOLD_VIDEO rather than CARRY_VIDEO.
+                "hold_video": self.holds_upstream(beat) and not self.carries_motion(beat),
                 # The clip that was actually sent, once it has been.
                 "carry_clip": self.media_url(self.carry_path(n)),
+                # Stop-motion poses this beat drew, opening still first. Length 1 on every
+                # board that has a still and has not been generated since sequences existed.
+                "poses": [self.media_url(path) for path in poses],
+                "pose_count": self.sequence_count(n),
+                # The previous shot's last pose, when it exists -- extra continuity for the
+                # still renderer if it fitted the cap. Null on beat 1, and on a beat whose
+                # predecessor has no still yet.
+                "previous_pose": self.media_url(self.previous_last_pose(n)),
                 "video": self.media_url(self.video_path(n)),
                 "predicted_seconds": round(
                     config.predict_render_seconds(frames, steps=self.steps()), 1
@@ -1785,6 +1901,7 @@ class Board:
             # The node grows one upload slot per picture and stops here. Per-beat `ref_slots` is
             # the number that actually matters on a node; this is the model's hard cap.
             "max_refs": config.MAX_REF_IMAGES,
+            "max_ref_videos": config.MAX_REF_VIDEOS,
             # And the still renderer's much smaller cap, so a node can say how many of a beat's
             # pictures reach the still as well as the clip. The image server may report a lower
             # one, which `papercut.max_references` honours -- this is the ceiling, not a promise.
