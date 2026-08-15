@@ -520,7 +520,8 @@ def _clear_extra_poses(board: board_mod.Board, n: int, keep: int) -> None:
 
 
 def _render_sequence(client: httpx.Client, board: board_mod.Board, n: int, *,
-                     cap: int, refs_cap: int, log: Callable[[str], None],
+                     cap: int, refs_cap: int, mode: str,
+                     log: Callable[[str], None],
                      progress: Callable[[int, float], None] | None,
                      on_still: Callable[[int], None] | None,
                      cancelled: Callable[[], bool] | None,
@@ -529,11 +530,16 @@ def _render_sequence(client: httpx.Client, board: board_mod.Board, n: int, *,
                      gemini_image_size: str | None) -> list[int]:
     """One Papercut scene of chained poses for a single reference beat.
 
-    `consistency="chain"` is the point: each pose is the next increment of one take, conditioned
-    on the frame before it, which is how H3 then interpolates through them instead of treating
-    nine stills as nine cuts. `varySeeds` is held for the same reason a walk cycle holds it.
-    The first frame of a defining beat has nothing to match yet -- `_scene_body` honours chain
-    even with no pictures -- and frames 2..k still chain off it.
+    `mode` is `sequence` on an image server that knows it, `chain` on an older build --
+    `generate` decides off `/api/health`, same contract as `edits`. Either way each pose is
+    the next increment of one take, conditioned on the frame before it, which is how H3 then
+    interpolates through them instead of treating nine stills as nine cuts. The difference is
+    what ELSE a pose sees: chain conditions on the previous frame alone, so deviations
+    compound and by pose five the set is a different place (measured on a real board);
+    sequence keeps the identity sheets and the set beside the previous frame, so every pose
+    is pulled back to the anchors. `varySeeds` is held for the same reason a walk cycle
+    holds it. The first frame of a defining beat has nothing to match yet -- `_scene_body`
+    honours an explicit mode even with no pictures -- and frames 2..k still chain off it.
 
     Capped at the image server's per-scene frame limit, because a chain that spanned two
     scenes would lose the previous frame at the cut and the rest would be independent shots.
@@ -541,6 +547,9 @@ def _render_sequence(client: httpx.Client, board: board_mod.Board, n: int, *,
     count = min(board.sequence_count(n), cap)
     pictures = _still_sources(board, n, refs_cap, include_current=False)
     out_paths = [board.pose_path(n, index) for index in range(1, count + 1)]
+    if mode != "sequence":
+        log(f"[stills] beat {n}: this image server predates the `sequence` mode, so the "
+            "poses chain on the previous frame alone and may drift")
     log(f"[stills] beat {n}: {count} stop-motion poses through Gemini"
         + (f", drawn from {', '.join(path.name for path, _ in pictures)}"
            if pictures else " (nothing to match yet -- this defines the look)"))
@@ -554,7 +563,7 @@ def _render_sequence(client: httpx.Client, board: board_mod.Board, n: int, *,
         client, board, [n] * count, pictures, log=log, progress=progress,
         on_still=on_still, cancelled=cancelled, seed=seed,
         texts=_pose_texts(board, n, count, pictures), out_paths=out_paths,
-        consistency="chain", vary_seeds=False,
+        consistency=mode, vary_seeds=False,
         duration=board.seconds_for(board.beat(n)),
         gemini_model=gemini_model, gemini_image_size=gemini_image_size, label=label,
         slide_background=board.is_travel(board.beat(n)),
@@ -628,9 +637,10 @@ def generate(board: board_mod.Board, beats: list[int], *,
             if board.sequence_count(n) > 1:
                 flush_singles()
                 made.extend(_render_sequence(
-                    client, board, n, cap=cap, refs_cap=refs_cap, log=log,
-                    progress=progress, on_still=on_still, cancelled=cancelled,
-                    seed=seed, gemini_model=gemini_model,
+                    client, board, n, cap=cap, refs_cap=refs_cap,
+                    mode="sequence" if sequences(reported) else "chain",
+                    log=log, progress=progress, on_still=on_still,
+                    cancelled=cancelled, seed=seed, gemini_model=gemini_model,
                     gemini_image_size=gemini_image_size))
             else:
                 singles.append(n)
@@ -659,6 +669,17 @@ def slides(reported: dict | None) -> bool:
     on /api/health, same contract as `edit`.
     """
     return "slideBackground" in ((reported or {}).get("modes") or [])
+
+
+def sequences(reported: dict | None) -> bool:
+    """Does this image server know the anchored `sequence` consistency mode?
+
+    An older build handed `sequence` would match no arm of its own `referenceFor` and fall
+    through to chain's backward walk -- which happens to be the right fallback, but by
+    accident and without the anchors. So the caller asks first and sends `chain` to a build
+    that does not advertise it, same contract as `edit`.
+    """
+    return "sequence" in ((reported or {}).get("modes") or [])
 
 
 def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_path: Path,
