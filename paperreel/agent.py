@@ -198,9 +198,13 @@ TOOLS = [
 # different specifications -- the same failure `planner.py` avoids by handing over the whole
 # brief rather than a précis of it.
 MEDIUM = f"""Hard rules of the medium -- breaking these wastes the user's money:
-- The camera never moves, pans, zooms or cuts inside a beat. One beat is one locked-off
+- The camera never pans, zooms or cuts inside a beat. One beat is one locked-off
   framing. Camera setups are unique across the reel (a chain/bridge continues the same
   setup); they are not three angles visited inside every beat.
+- Lateral travel (walk / chase / slide left or right / across the frame) is a
+  **background pull**, not a camera pan and not a walk-cycle on a frozen set. The puppet
+  holds its screen third and on-screen size; the set layers slide opposite the walk.
+  Climbing, dropping, raising, and walking toward the camera stay inside a locked frame.
 - On-screen size stays constant inside a beat unless the action explicitly moves someone
   toward or away from the camera. Characters must not grow, shrink or rescale mid-clip.
 - Only one thing animates at a time. No new characters walk into frame.

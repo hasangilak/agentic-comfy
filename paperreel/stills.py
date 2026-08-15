@@ -93,16 +93,31 @@ JUDGEMENT = (
     "- set geometry, only when a set sheet is among the images: the still must be the same "
     "place (same architecture, same web, same branches), not a new reading of the note.\n"
     "- whether the still actually shows what its prompt asked for.\n"
-    "- leave room for the action: the still is frame one of the beat's motion, not the "
-    "climax. If THIS BEAT'S ACTION describes travel across the frame — walk, cross, slide "
-    "left-to-right — and the picture already parks the subject mid-path or at the "
-    "destination with no empty travel space, reject it. Rewrite the asset_prompt so they "
-    "start at the near edge with the destination side open and named. Do not reject a still "
-    "that correctly opens a travel beat with empty space ahead.\n\n"
+    "{travel}\n"
     "Do not reject for differing from another shot's camera, pose, or setting when this beat "
     "asked for a different shot -- each beat is a different shot. Never reject a still for "
-    "those, except the leave-room rule above when travel space was consumed, and except shot "
+    "those, except the travel / leave-room rule above, and except shot "
     "size against THIS beat's own prompt."
+)
+
+LEAVE_ROOM_JUDGE = (
+    "- leave room for the action: the still is frame one of the beat's motion, not the "
+    "climax. If THIS BEAT'S ACTION describes climbing, dropping, raising, or walking toward "
+    "the camera, and the picture already parks the subject at the end of that motion, reject "
+    "it. Rewrite the asset_prompt so they start where the motion begins. Do not reject a "
+    "still that correctly opens with the motion not yet started.\n"
+)
+
+TRAVEL_JUDGE = (
+    "- locomotion: THIS BEAT'S ACTION is lateral travel. The still is frame one of a "
+    "background pull: the puppets hold their screen third and on-screen size; the set "
+    "layers will slide opposite the walk through later poses. Reject a still that shows "
+    "a walk-cycle gait with the subject planted on a frozen set (legs cycling, garden "
+    "glued). Do not reject a still whose set pieces sit at a different place in the "
+    "frame than a set sheet -- same architecture, pulled in the frame, is the shot. "
+    "Do not reject for missing empty travel space on the destination side: that is the "
+    "locked-camera grammar, and this beat is a pull. A rest pose in the third they will "
+    "hold, set not yet pulled, is the correct opening.\n"
 )
 
 
@@ -524,7 +539,11 @@ def review(board: board_mod.Board, n: int) -> dict:
         "pencil."
         if has_panel else ""
     )
-    parts.append(JUDGEMENT.format(medium=board.look().judge, panel=panel_hold))
+    parts.append(JUDGEMENT.format(
+        medium=board.look().judge,
+        panel=panel_hold,
+        travel=TRAVEL_JUDGE if config.is_travel(action) else LEAVE_ROOM_JUDGE,
+    ))
     parts.append("Return JSON only.")
     return gemini.structured(
         [{"role": "user", "content": "\n\n".join(parts),

@@ -54,13 +54,16 @@ If any `asset_prompt` is a single sentence or omits the layer stack, expand it w
   `BACKGROUND` / `UPPER THIRD` / `LIGHT` / `COMPOSITION`, about 150–250 words, non-empty on
   every beat including chained ones. Beat 1 must show every recurring character full,
   unobstructed, and clearly lit (it becomes the cast reference still). The still is frame one
-  of the action, not the climax: if characters walk across the frame, park them at the start
-  edge with the destination side open and named.
+  of the action, not the climax. Lateral travel (walk / chase / slide left or right) is a
+  background pull: park them in the screen third they will hold, not at the exit edge.
+  Climbing, dropping, raising stay at the start of that motion.
 - **Every `action`** — one primary motion, its direction and speed, and what stays perfectly
-  still. Continuation beats (a long take on `reference`, or `chain` / `bridge`) open with a
-  continuity phrase and pick up the previous beat's exact end-state. The same recurring
-  subjects persist across the reel: a close-up is coverage of a member of the group already
-  in the film, not a replacement protagonist. Do not cut an unbroken take into a new lead.
+  still. On lateral travel, the set layers slide opposite the walk — do not write "the
+  garden stays still" on a chase. Continuation beats (a long take on `reference`, or
+  `chain` / `bridge`) open with a continuity phrase and pick up the previous beat's exact
+  end-state. The same recurring subjects persist across the reel: a close-up is coverage
+  of a member of the group already in the film, not a replacement protagonist. Do not cut
+  an unbroken take into a new lead.
 - **Every `scene`** — one short place-or-framing line; identical text for every beat of one
   continuous shot.
 

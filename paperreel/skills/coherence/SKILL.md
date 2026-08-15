@@ -43,10 +43,13 @@ You run **before** continuity so seam phrases are written on the actions you lea
 
 ## The fights you fix (non-negotiable)
 
-1. **Leave room for travel.** If `action` asks anyone to walk / cross / slide across the
-   frame, the opening `blocking` and `asset_prompt` must park them at the *start* edge with
-   the destination side empty and named. A still that already holds the destination layout
-   produces walk-in-place.
+1. **Lateral travel is a background pull.** If `action` asks anyone to walk / chase / slide
+   left or right / cross the frame, this is not "leave room and park at the start edge".
+   The puppet holds its screen third; the set layers slide opposite the walk. Rewrite
+   `action` that says the garden stays still. Rewrite `blocking` / `asset_prompt` that
+   park them at the exit edge with the destination empty, or that already consume the
+   path as a locked-camera cross. Climbing, dropping, raising still leave room at the
+   start of *that* motion.
 2. **Look-only means state, not capability.** Style bible and design notes say "shut
    mustard-yellow door", never "opening door". Capability words condition every clip that
    binds the sheet.

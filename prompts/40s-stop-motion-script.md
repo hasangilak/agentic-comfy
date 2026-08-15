@@ -255,6 +255,14 @@ cannot serve as the reference and they should pin one by hand.
 - **The camera lives on a rig.** It can be locked off (default and best), slide slowly on
   rails, or rack focus. It cannot orbit, drone, crane, boom, spiral, whip-pan, or push in
   through objects. Prefer locked-off for almost every shot.
+- **Lateral travel on 9:16 is a background pull, not a walk across a locked wide.** The
+  frame is too narrow; the puppet exits in a few steps and the video model fakes a
+  walk-cycle on a treadmill. Keep the camera rig locked. The puppet holds its screen
+  third and on-screen size. The set layers slide opposite the walk — same pieces, same
+  architecture, shifting in the frame, new ground entering from the direction of travel.
+  Write that pull in the action. Do not write "the fence stays still" on a chase. Climbing,
+  dropping, raising, and walking toward or away from the camera are not this: those stay
+  inside a locked frame.
 - **One light rig for the entire film.** Pick a key direction (e.g. warm key from upper
   left, cool fill from lower right) in the style bible and never contradict it. Light that
   changes direction between shots is the fastest way to look computer-generated.
@@ -269,9 +277,11 @@ These are the specific tells that make a short read as AI output. Write against 
    ripple). Everything else in frame is *completely still*. AI video's signature failure is
    that every element drifts at once. Explicitly name what is still.
 2. **No creeping zoom or drift.** Do not write "slow push in", "gentle zoom", "subtle
-   camera drift", or "parallax". Locked off means locked off. The same rule for size: do
-   not write an action that grows or shrinks a character in place. On-screen size holds
-   unless someone actually walks toward or away from the camera.
+   camera drift", or "parallax". The camera rig stays locked. Sliding the *set layers*
+   opposite a walk is not a camera move — it is how cutout locomotion works on a table,
+   and it is required when travel would exit 9:16. The same rule for size: do not write
+   an action that grows or shrinks a character in place. On-screen size holds unless
+   someone actually walks toward or away from the camera.
 3. **Let one beat be almost motionless.** A held image where only smoke curls, or nothing
    moves at all, for 5 full seconds. Stillness is a human editorial choice; AI never
    chooses it.
@@ -371,11 +381,14 @@ Write it as an explicit **layer stack**, the way you would build the diorama:
 
 Then two more requirements, always:
 
-- **Leave room for the action.** The still is frame one, not the climax. If the character
-  walks left across the frame, they must start at the right edge with the whole left side
-  open. If a wave breaks over a raft, the wave must still be gathering and unbroken. State
-  the empty space explicitly: *"leave the lower centre open water — the raft descends into
-  it later in the shot."*
+- **Leave room for the action — or hold the third, if it is a pull.** The still is frame
+  one, not the climax. If the character *climbs, drops, raises, or walks toward camera*,
+  they must start where that motion begins (the foot of the trellis, the wave still
+  gathering). If the action is **lateral travel** that would exit 9:16 — walk, chase,
+  slide left or right, cross the frame — this is a background pull: park them in the
+  screen third they will *hold* for the clip, not at the exit edge with the destination
+  empty. The set will slide through later poses. State it: *"Ginger holds the right
+  third in profile; the trellis and fence will slide right as they run left."*
 - **The subject must be fully visible and unobstructed**, not cropped by frame edges or
   hidden behind foreground layers, unless the shot is deliberately a detail close-up.
 
@@ -391,14 +404,19 @@ set under the same lamp — and change only the `MIDGROUND` pose and positions.
 ## 8. The `action` line — one per beat
 
 One or two sentences. This drives the image-to-video model. It describes **only what
-moves**, for a camera that does not move.
+moves**, for a camera rig that does not pan, tilt, or zoom.
 
 - Name the single primary motion, its direction, and its speed.
-- Name what stays perfectly still.
+- Name what stays perfectly still — except on **lateral travel**, where the set layers
+  must slide opposite the walk. Write that pull ("the fence and soil slide right as the
+  cats run left"). Do not write "the garden stays completely still" on a chase; that is
+  how the video model fakes walking. Props that are not the ground (a snail, a held
+  lantern) can still be named still.
 - Describe motion in the medium's own terms: pieces *slide, pivot, tilt, rotate, are swapped,
   translate, curl, drop into frame*. Never *morphs, flows, transforms, dissolves, ripples
   organically, billows realistically*.
-- No cuts inside a beat. No camera moves. No new characters walking in mid-beat.
+- No cuts inside a beat. No camera moves (the rig stays locked; a background pull is not
+  a pan). No new characters walking in mid-beat.
 - On a same-shot continuation (`"reference"` after the opening beat, or `"chain"` /
   `"bridge"`), open with an explicit continuity phrase and pick up in the exact end-state of
   the previous beat. On a `"bridge"`, the sentence must also finish in the state its

@@ -24,6 +24,7 @@ from . import config, llm as llm_mod
 # Kinds the agent (and the dry-run) can key on. Short, stable, no prose.
 KIND_LOOK_MOTION = "look_motion"
 KIND_LEAVE_ROOM = "leave_room"
+KIND_TRAVEL_SET = "travel_set"
 KIND_BRIDGE_LAND = "bridge_land"
 KIND_AMBIENT_PROP = "ambient_prop"
 KIND_MULTI_MOVER = "multi_mover"
@@ -59,6 +60,7 @@ FINDING_SCHEMA = {
                         "enum": [
                             KIND_LOOK_MOTION,
                             KIND_LEAVE_ROOM,
+                            KIND_TRAVEL_SET,
                             KIND_BRIDGE_LAND,
                             KIND_AMBIENT_PROP,
                             KIND_MULTI_MOVER,
@@ -89,7 +91,9 @@ _LOOK_MOTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Action asks the subject to travel across the locked frame.
+# Action asks the subject to travel across the locked frame. Lateral travel (a pull) is
+# `config.is_travel`; this leftover is the broader "someone is going somewhere" used to
+# skip hinged-prop findings when travel is already the primary.
 _TRAVEL_RE = re.compile(
     r"\b("
     r"walk(?:s|ing)?|cross(?:es|ing)?|traverse|travel(?:s|ing)?|"
@@ -99,6 +103,13 @@ _TRAVEL_RE = re.compile(
     r"move(?:s|ing)? (?:left|right|across|forward|ahead)|"
     r"keep walking|steadily ahead|procession"
     r")\b",
+    re.IGNORECASE,
+)
+
+# Ground / set pieces that must SLIDE on a pull, not be named still.
+_GROUND_RE = re.compile(
+    r"\b(cabbage|trellis|fence|cloud|soil|ground|garden|background|set|"
+    r"leaves?|panels?|reeds?|trees?|path)\b",
     re.IGNORECASE,
 )
 
@@ -131,9 +142,9 @@ _HINGED_RE = re.compile(
 
 _STILL_CLAUSE_RE = re.compile(
     r"\b("
-    r"remain(?:s|ing)? (?:completely |entirely )?(?:still|motionless|frozen|static)|"
-    r"stays? (?:shut|closed|still|motionless|frozen)|"
-    r"perfectly still|completely (?:still|frozen)|entirely (?:still|motionless)|"
+    r"remain(?:s|ing)? (?:completely |entirely )?(?:still|motionless|frozen|static|stationary)|"
+    r"stays? (?:shut|closed|still|motionless|frozen|stationary)|"
+    r"perfectly still|completely (?:still|frozen|stationary)|entirely (?:still|motionless)|"
     r"no other elements move|environment stays|set remains|"
     r"surrounding (?:set|paper|reeds|trees).{0,20}(?:still|motionless|stationary|frozen)"
     r")\b",
@@ -149,7 +160,9 @@ _MOVER_CHUNK_RE = re.compile(
 
 _SOFT_SYSTEM = (
     "You audit a stop-motion reel's stored text for places that will fight the video model. "
-    "The opening still is frame one of the action, not the climax. Look-only fields "
+    "The opening still is frame one of the action, not the climax. Lateral travel on 9:16 "
+    "is a background pull (puppet holds its third, set slides opposite) -- freezing the "
+    "garden on a chase produces walk-in-place. Look-only fields "
     "(style bible, design note/draw) must never name motion or hinged capability. "
     "Report only real fights. Pass silently when nothing fights — an empty findings list is "
     "correct. Do not invent preference notes."
@@ -220,6 +233,7 @@ def _deterministic(board: board_mod.Board) -> list[dict[str, Any]]:
         asset = (beat.get("asset_prompt") or "").strip()
         source = board.source_for(beat)
         found.extend(_leave_room_findings(n, action, blocking, asset))
+        found.extend(_travel_set_findings(n, action))
         found.extend(_ambient_prop_findings(n, action, blocking, asset))
         found.extend(_multi_mover_findings(n, action))
         if source == board_mod.SOURCE_BRIDGE:
@@ -273,6 +287,10 @@ def _look_motion_findings(board: board_mod.Board) -> list[dict[str, Any]]:
 def _leave_room_findings(n: int, action: str, blocking: str, asset: str) -> list[dict[str, Any]]:
     if not action or not _TRAVEL_RE.search(action):
         return []
+    # A pull holds the third; empty destination space is the locked-camera grammar and
+    # is the wrong fix -- it is how the still then fights the sliding set.
+    if config.is_travel(action):
+        return []
     # Still + blocking already consume the path with no named empty travel space.
     planted = bool(_PLANTED_RE.search(blocking) or _PLANTED_RE.search(asset))
     room = bool(_EMPTY_SPACE_RE.search(blocking) or _EMPTY_SPACE_RE.search(asset))
@@ -291,6 +309,28 @@ def _leave_room_findings(n: int, action: str, blocking: str, asset: str) -> list
             "Rewrite blocking and asset_prompt so the opening frame stacks the subject at the "
             "start edge with the destination side open; name the empty space. Keep action's "
             "end state for a later beat or the same beat's landing still on a bridge."
+        ),
+    )]
+
+
+def _travel_set_findings(n: int, action: str) -> list[dict[str, Any]]:
+    """Lateral travel whose action freezes the ground -- the measured treadmill."""
+    if not action or not config.is_travel(action):
+        return []
+    if not _STILL_CLAUSE_RE.search(action) or not _GROUND_RE.search(action):
+        return []
+    return [_finding(
+        kind=KIND_TRAVEL_SET,
+        beat=n,
+        field="action",
+        problem=(
+            "Action is lateral travel but names the set as still -- H3 will walk in place "
+            "against a glued-down garden."
+        ),
+        fix=(
+            "Rewrite the still-clause as a background pull: the set layers slide opposite "
+            "the walk (same pieces, shifting in the frame). Name as still only props that "
+            "are not the ground (a snail, a held lantern)."
         ),
     )]
 
@@ -446,10 +486,11 @@ def _soft(board: board_mod.Board, speaker: llm_mod.LLM) -> list[dict[str, Any]]:
                 "role": "user",
                 "content": (
                     "Audit this reel for fights between action, blocking, asset_prompt, and "
-                    "look-only fields (style bible, design note/draw). Focus on: travel without "
-                    "empty space in the opening still; motion words in look-only fields; "
-                    "hinged props stealing motion on hold beats; bridge action end-state vs "
-                    "asset_prompt disagreement.\n\n"
+                    "look-only fields (style bible, design note/draw). Focus on: lateral travel "
+                    "that freezes the set (a pull must slide the ground); climbing/raising "
+                    "without room at the start of that motion; motion words in look-only "
+                    "fields; hinged props stealing motion on hold beats; bridge action "
+                    "end-state vs asset_prompt disagreement.\n\n"
                     f"{digest}\n\nReturn JSON only."
                 ),
             },

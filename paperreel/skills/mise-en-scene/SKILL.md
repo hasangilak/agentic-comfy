@@ -79,14 +79,17 @@ one.
 
 ## Leave room for the action
 
-The opening frame is frame one of the motion, not the climax. Read the beat's `action` before
-you block it. If the action asks anyone to walk, cross, or slide across the frame, park them
-at the **start** edge in blocking and in `asset_prompt`, with the destination side empty and
-named ("leave the right two-thirds of the path open"). A blocking line that already spreads
-them across the destination thirds produces walk-in-place: legs move, bodies stay.
+The opening frame is frame one of the motion, not the climax. Read the beat's `action`
+before you block it.
 
-Do **not** rewrite `asset_prompt` into the pose the action is still travelling toward. The
-still is the start; the action owns the travel; a bridge's landing still is the end.
+- **Lateral travel** (walk / chase / slide left or right / across the frame) is a
+  background pull on 9:16. Park the subject in the screen third they will *hold*, not at
+  the start edge with the destination empty. Name that the set will slide opposite the
+  walk. A blocking line that already spreads them across the destination thirds as a
+  locked-camera cross produces walk-in-place: legs move, garden stays, bodies stay.
+- **Climb, drop, raise, walk toward camera** still start at the beginning of that motion
+  (the foot of the trellis, the wave gathering). Do not rewrite `asset_prompt` into the
+  pose the action is still travelling toward. A bridge's landing still is the end.
 
 ## What a blocking line says
 
