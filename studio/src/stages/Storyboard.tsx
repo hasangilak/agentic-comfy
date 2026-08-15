@@ -416,7 +416,12 @@ function StoryboardWaiting({
   );
 }
 
-const EXTRACT_AGENTS = ["style-paper-cutout", "style-claymation", "mise-en-scene"];
+const EXTRACT_AGENTS = [
+  "style-paper-cutout",
+  "style-paper-craft",
+  "style-claymation",
+  "mise-en-scene",
+];
 const SHEET_AGENTS = ["character-sheet", "set-designer"];
 const SEAM_AGENTS = ["mise-en-scene", "coherence", "continuity"];
 

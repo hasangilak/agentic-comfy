@@ -26,6 +26,7 @@ const AGENT_ROLES = new Set([
   "set-designer",
   "continuity",
   "style-paper-cutout",
+  "style-paper-craft",
   "style-claymation",
 ]);
 

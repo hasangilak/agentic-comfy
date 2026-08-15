@@ -6,16 +6,24 @@ import { Button, inputClass } from "../ui";
 /** Shown until `/api/agents` answers, so the start screen is not a blank pair of chips. */
 const FALLBACK_MEDIUMS = [
   { key: "paper-cutout", name: "paper-cutout stop-motion" },
+  { key: "paper-craft", name: "papercraft stop-motion" },
   { key: "claymation", name: "clay stop-motion" },
 ];
+
+const MEDIUM_BLURB: Record<string, string> = {
+  "paper-cutout": "rigid, flat, hinged — shapes are swapped",
+  "paper-craft": "folded, scored, assembled — volume from creases",
+  claymation: "soft, heavy — shapes squash and stretch",
+};
 
 /**
  * What the puppets are physically made of — not a tint, the rules the script is written against.
  *
- * Paper is rigid and hinged; clay squashes and stretches. A clay film drafted under paper's
- * physics comes out stiff, which is why this is a create-time pick rather than a PATCH after
- * the model has already written the beats. `board.mediums` is the live catalogue; the fallback
- * is the two that ship, so a start screen that has not fetched yet still has something to tap.
+ * Cutout is stacked flats; papercraft is folded volume; clay squashes and stretches. A film
+ * drafted under the wrong physics comes out looking like a cheap render, which is why this is
+ * a create-time pick rather than a PATCH after the model has already written the beats.
+ * `board.mediums` is the live catalogue; the fallback is the three that ship, so a start
+ * screen that has not fetched yet still has something to tap.
  */
 export function MediumPicker({
   value,
@@ -30,7 +38,7 @@ export function MediumPicker({
   return (
     <div>
       <span className="mb-1 block text-[10px] uppercase tracking-wide text-zinc-400">medium</span>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {list.map((entry) => {
           const selected = entry.key === value;
           return (
@@ -38,7 +46,7 @@ export function MediumPicker({
               key={entry.key}
               type="button"
               onClick={() => onChange(entry.key)}
-              className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+              className={`rounded-xl border px-2.5 py-2 text-left transition-colors ${
                 selected
                   ? "border-transparent bg-solid text-white"
                   : "border-edge bg-ink text-zinc-700 hover:border-zinc-300 hover:bg-hover"
@@ -52,11 +60,7 @@ export function MediumPicker({
                   selected ? "text-white/70" : "text-zinc-400"
                 }`}
               >
-                {entry.key === "claymation"
-                  ? "soft, heavy — shapes squash and stretch"
-                  : entry.key === "paper-cutout"
-                    ? "rigid, flat, hinged — shapes are swapped"
-                    : entry.name}
+                {MEDIUM_BLURB[entry.key] ?? entry.name}
               </span>
             </button>
           );
@@ -121,7 +125,13 @@ export function TalkItThrough({ medium }: { medium: string }) {
             void begin();
           }
         }}
-        placeholder={medium === "claymation" ? "a clay pig finds a hidden pond" : "a paper pig finds a hidden pond"}
+        placeholder={
+          medium === "claymation"
+            ? "a clay pig finds a hidden pond"
+            : medium === "paper-craft"
+              ? "a papercraft pig finds a hidden pond"
+              : "a paper pig finds a hidden pond"
+        }
         autoFocus
       />
       <Button
@@ -173,7 +183,13 @@ export function WriteItForMe({
         className={`${inputClass} h-20`}
         value={concept}
         onChange={(event) => setConcept(event.target.value)}
-        placeholder={medium === "claymation" ? "a clay pig finds a hidden pond" : "a paper pig finds a hidden pond"}
+        placeholder={
+          medium === "claymation"
+            ? "a clay pig finds a hidden pond"
+            : medium === "paper-craft"
+              ? "a papercraft pig finds a hidden pond"
+              : "a paper pig finds a hidden pond"
+        }
       />
       <div className="flex items-center gap-2 text-[11px] text-zinc-500">
         <label className="flex items-center gap-1">

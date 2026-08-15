@@ -438,6 +438,7 @@ export interface ChatTurn {
     | "set-designer"
     | "continuity"
     | "style-paper-cutout"
+    | "style-paper-craft"
     | "style-claymation";
   text: string;
   selection?: number[];

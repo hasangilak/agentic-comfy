@@ -782,6 +782,7 @@ function LensPanel({ beat, slug }: { beat: Beat; slug: string }) {
 const ASSET_AGENTS = [
   "asset-maker",
   "style-paper-cutout",
+  "style-paper-craft",
   "style-claymation",
   "mise-en-scene",
   "script-writer",
