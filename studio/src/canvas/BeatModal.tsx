@@ -326,6 +326,14 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                 void studio.guard(() => api.patchBeat(board.slug, beat.n, { camera }))
               }
             />
+            {beat.travel ? (
+              <span
+                className="px-1.5 text-[10px] uppercase tracking-wide text-zinc-500"
+                title="lateral travel: the camera rig stays locked and the set layers slide opposite the walk"
+              >
+                set slides
+              </span>
+            ) : null}
             {board.lengths.map((option) => {
               const active = Math.round(beat.seconds) === Math.round(option);
               return (

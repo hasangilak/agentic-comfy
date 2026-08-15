@@ -582,6 +582,14 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
               void studio.guard(() => api.patchBeat(board.slug, beat.n, { camera }))
             }
           />
+          {beat.travel ? (
+            <span
+              className="text-[10px] uppercase tracking-wide text-zinc-500"
+              title="lateral travel: the camera rig stays locked and the set layers slide opposite the walk. Not a pan, not a walk-cycle on a frozen garden"
+            >
+              set slides · locked rig
+            </span>
+          ) : null}
         </div>
 
         {/* Two lengths, no stepper. 10s is 243 frames -- exactly the longest render that

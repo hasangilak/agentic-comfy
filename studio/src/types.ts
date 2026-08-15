@@ -79,6 +79,11 @@ export interface Beat {
    * the panel reaches the still only.
    */
   camera: string;
+  /**
+   * Lateral travel: a background pull. Derived from the action — the puppet holds its
+   * screen third, the set layers slide opposite the walk. The camera rig stays locked.
+   */
+  travel: boolean;
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
   frame: string | null;
   /** And, on a bridge, the frame it was told to arrive at. Null on every other join. */
