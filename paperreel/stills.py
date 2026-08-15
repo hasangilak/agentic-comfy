@@ -173,12 +173,14 @@ def wanted(board: board_mod.Board, requested: list[int] | None) -> list[int]:
     Enforced here rather than in the HTTP layer alone, because there are three ways in now --
     the canvas button, a conversation asking for stills, and the CLI -- and the reasons a
     generation must not happen are properties of the board, not of the request. A board whose
-    stills are the user's own work must not be able to spend a render on a stale tab's request;
-    a beat that opens on the previous clip has nowhere to put a still.
+    stills are the user's own work must not be able to spend a render on a stale tab's request.
 
     A reference beat used to be refused outright, because a still would have replaced the
     pictures it was conditioned on. It is the default cut now: the still goes in as <Picture 1>
-    and the join does not move, so there is nothing left to protect it from.
+    and the join does not move, so there is nothing left to protect it from. Carrying the
+    previous clip as <Video 1> used to be the one remaining refusal -- that clip was the
+    opening, so a still would never have been used. The still and the video now sit together
+    (nine image sockets plus one video), so a carrying beat is generated like any other cut.
     """
     from . import crew as crew_mod
 
@@ -203,17 +205,6 @@ def wanted(board: board_mod.Board, requested: list[int] | None) -> list[int]:
     unknown = [n for n in beats if not any(b["n"] == n for b in board.beats)]
     if unknown:
         raise StillsError(f"no such beats: {unknown}", status=404)
-    # The one reference shape that still cannot take a still: a beat carrying the previous
-    # clip's tail already has its opening, and `config.build_prompt` may only ever give the model
-    # one answer to where the shot begins. Generating for one would render a frame that never
-    # reaches the graph, which is worse than refusing -- it looks like it worked.
-    carrying = [n for n in beats if board.carries_motion(board.beat(n))]
-    if carrying:
-        raise StillsError(
-            f"beats {carrying} open on the tail of the clip before them, so a still of their "
-            "own would never be used. Turn off carrying on the node first if you want this "
-            "scene to open on a still instead.",
-        )
     if not beats:
         raise StillsError("no beat needs a still", status=422)
     return beats
@@ -534,16 +525,12 @@ def discussable(board: board_mod.Board, n: int) -> None:
 
     Batch generation still refuses a manual-stills reel, but an uploaded still may be refined:
     that is an edit of a supplied image, not filling the reel's stills automatically. The other
-    guards are a beat that opens on the previous clip, a beat number that is not on this board,
-    and the requirement that there be a picture to look at.
+    guards are a beat number that is not on this board, and the requirement that there be a
+    picture to look at.
     """
     if board.data.get("manual_stills"):
         if not any(b["n"] == n for b in board.beats):
             raise StillsError(f"no such beat: {n}", status=404)
-        if board.carries_motion(board.beat(n)):
-            raise StillsError(
-                f"beat {n} opens on the previous clip's tail, so it has no still to refine.",
-            )
     else:
         wanted(board, [n])
     if not board.asset_path(n).is_file():

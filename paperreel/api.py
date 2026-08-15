@@ -882,10 +882,6 @@ async def upload_asset(slug: str, n: int, file: UploadFile = File(...),
     if source == board_mod.SOURCE_BRIDGE and board.upstream(n) is None:
         raise HTTPException(422, "the first beat has nothing to continue from, so its still "
                                  "can only be its opening frame")
-    if source == board_mod.SOURCE_REFERENCE and board.carries_motion(board.beat(n)):
-        raise HTTPException(422, "this scene opens on the tail of the clip before it, so a "
-                                 "still of its own would never be used. Turn off carrying "
-                                 "first, or upload this as a reference picture instead.")
     await store_upload(file, board.asset_path(n))
 
     # Supplying a still is a real story change -- either this beat now opens on it instead of

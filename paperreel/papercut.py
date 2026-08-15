@@ -3,7 +3,9 @@
 The transport, and only the transport. `stills.py` owns the judgement around it: which beats
 may get a still at all, and what happens to one that comes back looking like a different
 production. This module creates a scene, starts it, follows its event stream and puts the
-finished frames on disk as `beat<n>_asset.png`.
+finished frames on disk as `beat<n>_asset.png` -- and, on a reference beat, as
+the stop-motion poses `beat<n>_pose2.png` upward that fill H3's remaining image
+sockets.
 
 The seam is HTTP on loopback, not shared code. Papercut owns prompt composition, the render
 lock and the progress scraping; this side owns the board and the joins. Neither imports the
@@ -241,7 +243,9 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
                 seed: int | None = None, texts: list[str] | None = None,
                 aspect: str | None = None, consistency: str | None = None,
                 style: str | None = None, gemini_model: str | None = None,
-                gemini_image_size: str | None = None) -> dict:
+                gemini_image_size: str | None = None,
+                vary_seeds: bool | None = None,
+                duration: float | None = None) -> dict:
     """One Papercut scene describing a run of stills.
 
     Papercut composes `continuity clause (when conditioned) + frame beat + scene style`. The
@@ -249,9 +253,14 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
     across the reel lives in the style suffix, which is what keeps one board's stills reading as
     one production.
 
-    `duration` and the frame timings derived from it are Papercut's own unit of judgment and
-    mean nothing here -- these frames are opening compositions for separate shots, not a
-    sequence to play back. One second per beat keeps the numbers unremarkable.
+    `duration` and the frame timings derived from it are Papercut's own unit of judgment.
+    Opening stills of separate shots pass one second per beat, which keeps the numbers
+    unremarkable. A stop-motion sequence passes the beat's own length so the poses spread
+    across the action they will be interpolated through.
+
+    `vary_seeds` defaults on: independent shots, so an identical seed across them buys
+    nothing and costs variety. A stop-motion sequence holds the seed, which is the walk-cycle
+    case the comment below used to name as the exception.
 
     `seed` overrides the board's, and it exists for exactly one caller: a re-render asked for
     with the prompt unchanged. Papercut derives a frame's seed as `scene.seed + index`, so
@@ -273,7 +282,7 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
     body: dict = {
         "title": f"{board.data.get('title') or board.slug} · stills",
         "description": board.data.get("concept") or board.data.get("title") or board.slug,
-        "duration": float(len(beats)),
+        "duration": float(len(beats)) if duration is None else float(duration),
         "frameCount": len(beats),
         "style": style_for(board) if style is None else style,
         "negativePrompt": "",
@@ -282,17 +291,21 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
         "seed": int(board.data.get("seed") or 0) if seed is None else int(seed),
         # Independent shots, so an identical seed across them buys nothing and costs
         # variety -- unlike a walk cycle, where holding the seed is the point.
-        "varySeeds": True,
+        "varySeeds": True if vary_seeds is None else bool(vary_seeds),
         # "anchor": every still is conditioned on the pictures below, poses stay independent.
-        # Not "chain" -- these are hard cuts, and chaining each still off the previous one
-        # drifts by frame three and renders strictly in order for no gain. Chain would also
-        # throw the uploads away: Papercut conditions a chained frame on the frame before it
-        # alone.
+        # "chain": each frame is the next pose of one take, conditioned on the frame before.
+        # Not the default -- chaining independent opening stills drifts by frame three and
+        # throws the uploads away. A stop-motion sequence of ONE beat is the case that wants it.
+        # Honour an explicit mode even with no pictures: a defining beat's sequence has nothing
+        # to match yet, but frames 2..k still have to chain off frame 1.
         "consistency": (
-            consistency
-            or ("edit" if beats and any(path == board.asset_path(beats[0]) for path, _ in pictures)
-                else "anchor")
-        ) if pictures else "none",
+            consistency if consistency is not None
+            else (
+                ("edit" if beats and any(path == board.asset_path(beats[0]) for path, _ in pictures)
+                 else "anchor")
+                if pictures else "none"
+            )
+        ),
         "beats": texts if texts is not None else [_beat_text(board, n, pictures) for n in beats],
     }
     selected_model = gemini_model
@@ -363,6 +376,8 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
                   style: str | None = None,
                   gemini_model: str | None = None,
                   gemini_image_size: str | None = None,
+                  vary_seeds: bool | None = None,
+                  duration: float | None = None,
                   label: Callable[[int], str] | None = None) -> list[int]:
     """Create, render and collect one scene. Returns the beats whose frames landed.
 
@@ -377,7 +392,8 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
     name = label or (lambda n: f"beat {n}")
     created = client.post("/api/scenes", json=_scene_body(
         board, beats, pictures, seed, texts=texts, aspect=aspect, consistency=consistency,
-        style=style, gemini_model=gemini_model, gemini_image_size=gemini_image_size))
+        style=style, gemini_model=gemini_model, gemini_image_size=gemini_image_size,
+        vary_seeds=vary_seeds, duration=duration))
     created.raise_for_status()
     scene_id = created.json()["id"]
     # Explicit frame indices, because Papercut clamps a scene to a minimum of two frames --
@@ -427,6 +443,77 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
     return made
 
 
+def _pose_texts(board: board_mod.Board, n: int, count: int, pictures: Pictures) -> list[str]:
+    """One frame text per pose: the beat's still prompt, then where in the action this pose sits.
+
+    Papercut's own `beatHint` is a left-to-right walk, which is the wrong action for most
+    shots. The beat text already names the moment; `pose_phase` only says how far through it
+    this frame is, so pose 4 of 7 of "she raises the lantern" is the lantern partway up.
+    """
+    base = _beat_text(board, n, pictures)
+    action = (board.beat(n).get("action") or "").strip()
+    return [
+        f"{base} Stop-motion pose {index} of {count}: "
+        f"{config.pose_phase(index, count, action)}."
+        for index in range(1, count + 1)
+    ]
+
+
+def _clear_extra_poses(board: board_mod.Board, n: int, keep: int) -> None:
+    """Drop pose files past `keep`, so a shorter sequence cannot leave a gap-free longer one.
+
+    `pose_paths` stops at the first missing file, but a regenerate that drew 6 after a previous
+    9 would otherwise keep posing 7..9 on disk -- and `pictures_for` would hand H3 those stale
+    in-betweens ahead of the staging sheets they were meant to leave room for.
+    """
+    for index in range(max(1, keep) + 1, config.MAX_REF_IMAGES + 1):
+        board.pose_path(n, index).unlink(missing_ok=True)
+
+
+def _render_sequence(client: httpx.Client, board: board_mod.Board, n: int, *,
+                     cap: int, refs_cap: int, log: Callable[[str], None],
+                     progress: Callable[[int, float], None] | None,
+                     on_still: Callable[[int], None] | None,
+                     cancelled: Callable[[], bool] | None,
+                     seed: int | None,
+                     gemini_model: str | None,
+                     gemini_image_size: str | None) -> list[int]:
+    """One Papercut scene of chained poses for a single reference beat.
+
+    `consistency="chain"` is the point: each pose is the next increment of one take, conditioned
+    on the frame before it, which is how H3 then interpolates through them instead of treating
+    nine stills as nine cuts. `varySeeds` is held for the same reason a walk cycle holds it.
+    The first frame of a defining beat has nothing to match yet -- `_scene_body` honours chain
+    even with no pictures -- and frames 2..k still chain off it.
+
+    Capped at the image server's per-scene frame limit, because a chain that spanned two
+    scenes would lose the previous frame at the cut and the rest would be independent shots.
+    """
+    count = min(board.sequence_count(n), cap)
+    pictures = _still_sources(board, n, refs_cap, include_current=False)
+    out_paths = [board.pose_path(n, index) for index in range(1, count + 1)]
+    log(f"[stills] beat {n}: {count} stop-motion poses through Gemini"
+        + (f", drawn from {', '.join(path.name for path, _ in pictures)}"
+           if pictures else " (nothing to match yet -- this defines the look)"))
+    at = {"i": 0}
+
+    def label(_n: int) -> str:
+        at["i"] += 1
+        return f"beat {n} pose {at['i']}/{count}"
+
+    frames = _render_scene(
+        client, board, [n] * count, pictures, log=log, progress=progress,
+        on_still=on_still, cancelled=cancelled, seed=seed,
+        texts=_pose_texts(board, n, count, pictures), out_paths=out_paths,
+        consistency="chain", vary_seeds=False,
+        duration=board.seconds_for(board.beat(n)),
+        gemini_model=gemini_model, gemini_image_size=gemini_image_size, label=label,
+    )
+    keep = sum(1 for path in out_paths if path.is_file())
+    _clear_extra_poses(board, n, keep)
+    return [n] if frames or board.asset_path(n).is_file() else []
+
+
 def generate(board: board_mod.Board, beats: list[int], *,
              log: Callable[[str], None] = print,
              progress: Callable[[int, float], None] | None = None,
@@ -437,11 +524,15 @@ def generate(board: board_mod.Board, beats: list[int], *,
              gemini_model: str | None = None,
              gemini_image_size: str | None = None,
              include_current: bool = True) -> list[int]:
-    """Render the opening stills for these beats through Gemini. Returns the ones that landed.
+    """Render the opening stills (or a stop-motion sequence) for these beats. Returns the ones that landed.
 
-    Beats are rendered in the order given, in runs that share their conditioning images. A beat
-    with no cast reference yet is rendered on its own first, because its still becomes the
-    reference every later one is anchored to -- the same order `storyboard.py --assets` uses.
+    Beats that want more than one pose are rendered alone, as a chained scene: grouping them
+    with neighbours would make Papercut treat independent shots as one take. Beats that still
+    want a single opening still keep the old grouping -- runs that share their conditioning
+    images -- so a board that never grew sequences is byte-identical in what it asks for.
+
+    A beat with no cast reference yet is rendered on its own first, because its still becomes
+    the reference every later one is anchored to -- the same order `storyboard.py --assets` uses.
 
     `seed` replaces the board's for this run only; see `_scene_body` for the one case that
     needs it.
@@ -455,18 +546,45 @@ def generate(board: board_mod.Board, beats: list[int], *,
     cap = max_frames(reported)
     refs_cap = max_references(reported)
     made: list[int] = []
-    with httpx.Client(base_url=url or config.PAPERCUT_URL, timeout=30.0) as client:
-        for pictures, run in _runs(board, beats, cap, refs_cap, include_current):
+    singles: list[int] = []
+
+    def flush_singles() -> None:
+        nonlocal made, singles
+        if not singles:
+            return
+        if cancelled is not None and cancelled():
+            singles = []
+            return
+        for pictures, run in _runs(board, singles, cap, refs_cap, include_current):
             if cancelled is not None and cancelled():
                 break
             log(f"[stills] beats {run}: rendering through Gemini"
                 + (f", drawn from {', '.join(path.name for path, _note in pictures)}"
                    if pictures else " (nothing to match yet -- this defines the look)"))
-            made.extend(_render_scene(client, board, run, pictures, log=log,
-                                      progress=progress, on_still=on_still,
-                                      cancelled=cancelled, seed=seed,
-                                      gemini_model=gemini_model,
-                                      gemini_image_size=gemini_image_size))
+            landed = _render_scene(client, board, run, pictures, log=log,
+                                   progress=progress, on_still=on_still,
+                                   cancelled=cancelled, seed=seed,
+                                   gemini_model=gemini_model,
+                                   gemini_image_size=gemini_image_size)
+            for n in landed:
+                _clear_extra_poses(board, n, 1)
+            made.extend(landed)
+        singles = []
+
+    with httpx.Client(base_url=url or config.PAPERCUT_URL, timeout=30.0) as client:
+        for n in beats:
+            if cancelled is not None and cancelled():
+                break
+            if board.sequence_count(n) > 1:
+                flush_singles()
+                made.extend(_render_sequence(
+                    client, board, n, cap=cap, refs_cap=refs_cap, log=log,
+                    progress=progress, on_still=on_still, cancelled=cancelled,
+                    seed=seed, gemini_model=gemini_model,
+                    gemini_image_size=gemini_image_size))
+            else:
+                singles.append(n)
+        flush_singles()
     return made
 
 
