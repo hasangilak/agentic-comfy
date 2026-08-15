@@ -46,6 +46,30 @@ const CONTINUITY_CLAUSE_MULTI =
   'but compose the framing, shot scale and camera angle as the beat describes, and move ' +
   'the subject into a clearly different pose and position as described. Now:'
 
+// Sequence mode: the previous frame is the pose to increment from, the other references are
+// the anchors that must not drift. The chain clause is wrong here twice over -- it licenses
+// "compose the framing, shot scale and camera angle as the beat describes" (an invitation to
+// reframe a locked-off take) and "a clearly different pose and position" (an invitation to
+// move more than one stop-motion increment). This one locks everything except the subjects.
+const CONTINUITY_CLAUSE_SEQUENCE =
+  'This is the next stop-motion frame of the exact same take. The first reference image is ' +
+  'the previous frame: reproduce its set, background, framing, shot scale, camera angle and ' +
+  'lighting exactly. Any other reference images lock character design, materials and palette ' +
+  '-- keep every character matching them in every detail. Move ONLY the subjects, one small ' +
+  'increment further through the action described; everything else stays identical. Now:'
+
+// Sequence on lateral travel: same anchors, but the set pieces are licensed to translate.
+// Same reason CONTINUITY_CLAUSE_TRAVEL exists -- "reproduce the background exactly" against
+// a pull is how a walk becomes legs cycling on a glued-down garden.
+const CONTINUITY_CLAUSE_SEQUENCE_TRAVEL =
+  'This is the next stop-motion frame of the exact same take. The first reference image is ' +
+  'the previous frame: keep its shot scale, camera angle and lighting, and the same set ' +
+  'pieces (same architecture, same props) -- but the beat describes travel, so those pieces ' +
+  'MAY translate in the frame: a background pull, not a new location and not a new camera. ' +
+  'Any other reference images lock character design, materials and palette. Move the ' +
+  'subjects one small increment further through the action, holding their on-screen size ' +
+  'and roughly the same screen third. Now:'
+
 // Lateral travel: lock set IDENTITY, license set POSITION to change. The default clause
 // above is how a walk-cycle against a glued-down garden becomes fake walking -- Gemini
 // copies the previous frame's fence and only re-poses the legs.
@@ -186,10 +210,11 @@ function uploadedReferences(scene: Scene): string[] {
 
 /**
  * Picks the conditioning images for a frame:
- * - chain  -> the previously rendered frame, falling back to the uploaded references
- * - anchor -> the uploaded references, falling back to frame 1
- * - edit   -> the uploaded references, and nothing else
- * - none   -> nothing, pure text-to-image
+ * - chain    -> the previously rendered frame, falling back to the uploaded references
+ * - anchor   -> the uploaded references, falling back to frame 1
+ * - edit     -> the uploaded references, and nothing else
+ * - sequence -> the previously rendered frame FIRST, then the uploaded references
+ * - none     -> nothing, pure text-to-image
  */
 function referenceFor(scene: Scene, index: number): string[] | undefined {
   if (scene.consistency === 'none') return undefined
@@ -208,6 +233,18 @@ function referenceFor(scene: Scene, index: number): string[] | undefined {
     return undefined
   }
 
+  // Sequence keeps the previous frame first (the pose to increment from) and the uploads
+  // beside it (the anchors that must not drift). This is chain's fix for a long take: with
+  // the previous frame alone, small deviations compound and by frame five the set is a
+  // different place, because nothing ever pulled the look back to the identity sheets.
+  if (scene.consistency === 'sequence') {
+    for (let i = index - 1; i >= 0; i--) {
+      const prev = existingFramePath(scene.id, i)
+      if (fs.existsSync(prev)) return [prev, ...uploaded].slice(0, MAX_REFERENCES)
+    }
+    return uploaded.length ? uploaded : undefined
+  }
+
   // Chain conditions on the newest rendered frame ALONE, uploads included or not: the point of
   // the mode is that each frame continues the one before it, and a second picture beside it
   // pulls the look back towards something that is not where the motion had got to.
@@ -218,7 +255,13 @@ function referenceFor(scene: Scene, index: number): string[] | undefined {
   return uploaded.length ? uploaded : undefined
 }
 
-function composePrompt(scene: Scene, frame: Frame, references: number): string {
+function composePrompt(scene: Scene, frame: Frame, references: string[] | undefined): string {
+  const count = references?.length ?? 0
+  // Whether the first conditioning image is a frame of this very scene -- i.e. the previous
+  // pose of a sequence. Frame 1 of a sequence has only the uploads and must NOT be told "the
+  // first reference image is the previous frame": it composes the shot from the anchors, so
+  // it falls through to the same clauses an anchored frame gets.
+  const prevFirst = !!references?.[0]?.startsWith(sceneDir(scene.id))
   const parts: string[] = []
   // Edit is the one conditioned mode that omits the clause -- see ConsistencyMode. Checked
   // before the reference count rather than folded into it, because the mode is the reason and
@@ -226,10 +269,12 @@ function composePrompt(scene: Scene, frame: Frame, references: number): string {
   // land here too, and a reader should not have to work out which arm of the count it fell down.
   if (scene.consistency === 'edit') {
     // nothing prepended
-  } else if (scene.slideBackground && references > 0) {
+  } else if (scene.consistency === 'sequence' && prevFirst) {
+    parts.push(scene.slideBackground ? CONTINUITY_CLAUSE_SEQUENCE_TRAVEL : CONTINUITY_CLAUSE_SEQUENCE)
+  } else if (scene.slideBackground && count > 0) {
     parts.push(CONTINUITY_CLAUSE_TRAVEL)
-  } else if (references === 1) parts.push(CONTINUITY_CLAUSE)
-  else if (references > 1) parts.push(CONTINUITY_CLAUSE_MULTI)
+  } else if (count === 1) parts.push(CONTINUITY_CLAUSE)
+  else if (count > 1) parts.push(CONTINUITY_CLAUSE_MULTI)
   parts.push(frame.beat.trim())
   if (scene.style.trim()) parts.push(scene.style.trim())
   return parts.join(' ').replace(/\s+/g, ' ').trim()
@@ -238,7 +283,7 @@ function composePrompt(scene: Scene, frame: Frame, references: number): string {
 async function renderFrame(scene: Scene, index: number) {
   const frame = scene.frames[index]
   const references = referenceFor(scene, index)
-  const prompt = composePrompt(scene, frame, references?.length ?? 0)
+  const prompt = composePrompt(scene, frame, references)
   const outputPath = framePath(scene.id, index)
 
   frame.status = 'running'

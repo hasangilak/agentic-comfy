@@ -21,6 +21,17 @@ export type ConsistencyMode =
    * changes only what the beat names.
    */
   | 'edit'
+  /**
+   * The previous frame PLUS the uploaded references, every frame.
+   *
+   * `chain` conditions on the previous frame alone, which is the point of that mode -- and
+   * also its failure on a long take: small deviations compound, and by frame five the set is
+   * a different place because nothing ever pulled the look back to the anchors. `sequence`
+   * keeps the previous frame first (the pose to increment from) and rides the uploads beside
+   * it (the identity sheets and the set that lock what must not drift). Frame 1 has no
+   * previous frame and uses the uploads alone, like `anchor`.
+   */
+  | 'sequence'
   /** Pure text-to-image. Fastest, loosest continuity. */
   | 'none'
 
@@ -30,7 +41,7 @@ export type ConsistencyMode =
  * Declared here rather than in the server so the list cannot fall behind the union it is
  * advertising -- the annotation makes adding a mode without listing it a type error.
  */
-export const CONSISTENCY_MODES: ConsistencyMode[] = ['chain', 'anchor', 'edit', 'none']
+export const CONSISTENCY_MODES: ConsistencyMode[] = ['chain', 'anchor', 'edit', 'sequence', 'none']
 
 export interface AspectPreset {
   id: string
