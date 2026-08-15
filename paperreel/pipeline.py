@@ -79,6 +79,9 @@ class Shot:
     # Locked-off angle for this take. None means eye / straight-on, which is what
     # `build_prompt` already composed before this field existed.
     camera: str | None = None
+    # Lateral travel: a background pull. Carried so a board edit mid-batch cannot flip the
+    # craft clause under a prompt already queued.
+    travel: bool = False
 
 
 @dataclass
@@ -276,6 +279,7 @@ def render_beats(
                                                    blocking=shot.blocking,
                                                    medium_key=shot.medium_key,
                                                    camera=shot.camera,
+                                                   travel=shot.travel,
                                                    mentions=shot.mentions or None),
                         length=length, steps=steps, seed=seed + n,
                         temperature=temperature,
@@ -379,6 +383,7 @@ def render_reel(
             blocking=beat.get("blocking", ""),
             medium_key=view.medium(),
             camera=view.camera_for(beat),
+            travel=view.is_travel(beat),
         )
         for index, (beat, source) in enumerate(zip(beats, resolved))
     ]

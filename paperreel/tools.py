@@ -302,6 +302,7 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             hold_video=hold and not carry,
             mentions=board.mentions(n, pictures),
             camera=board.camera_for(beat),
+            travel=board.is_travel(beat),
         )
         lines = [
             f"beat {n} join={source}"
@@ -309,7 +310,8 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             + (f", holding previous clip as <Video 1> (identity)" if hold and not carry else "")
             + (f", {len(poses)} stop-motion poses" if len(poses) > 1 else "")
             + (f", opens on its own still as <Picture 1>" if opens_on else "")
-            + f", camera={board.camera_for(beat)}",
+            + f", camera={board.camera_for(beat)}"
+            + (", travel=pull" if board.is_travel(beat) else ""),
             "references:",
         ]
         if pictures:
@@ -925,8 +927,9 @@ def _coherence_tools(llm: llm_mod.LLM) -> list[Tool]:
         Tool(spec=llm.tool(
             "audit_coherence",
             "Read-only audit of fights between action, blocking, asset_prompt, style bible "
-            "and design notes that will make the video model walk in place, animate idle "
-            "doors, or otherwise invent motion. Returns findings only — fix them with "
+            "and design notes that will make the video model walk in place, freeze the "
+            "set on a chase, animate idle doors, or otherwise invent motion. Returns "
+            "findings only — fix them with "
             "set_beat / set_blocking / set_asset_prompt / describe_design / set_script, then "
             "re-audit. Costs nothing when deep is false (deterministic only).",
             {

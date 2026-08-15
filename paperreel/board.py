@@ -1266,6 +1266,19 @@ class Board:
         key = self.camera_for(beat)
         return "" if key == config.CAMERA_EYE else f"camera:{key}"
 
+    def is_travel(self, beat: dict) -> bool:
+        """Lateral travel on this beat: a background pull, not a locked-camera cross."""
+        return config.is_travel(beat.get("action") or "")
+
+    def travel_digest(self, beat: dict) -> str:
+        """Fingerprint part for a pull. Empty on every beat that is not lateral travel.
+
+        The scaffold is not hashed; the action is. A silent craft swap would leave paid
+        clips labelled rendered while H3 was now told to slide the set. Conditional so a
+        board with no walk keeps the hash it had.
+        """
+        return config.travel_digest(beat.get("action") or "")
+
     def take_of(self, n: int) -> list[dict]:
         """Every beat of the continuous shot n belongs to, in order.
 
@@ -1456,10 +1469,9 @@ class Board:
             return []
         found: list[tuple[Path, str]] = []
         total = len(poses)
+        travel = self.is_travel(self.beat(n))
         for index, path in enumerate(poses, start=1):
-            role = (config.REF_ROLE_OPENING if index == 1
-                    else config.REF_ROLE_POSE.format(i=index, k=total))
-            found.append((path, role))
+            found.append((path, config.pose_role(index, total, travel=travel)))
         if total == 1 and not self.still_identity_sheets(n):
             cast = self.reference_for(n)
             if cast is not None:
@@ -1713,6 +1725,13 @@ class Board:
         camera = self.camera_digest(beat)
         if camera:
             parts.append(camera)
+        # Last, after camera, in both fingerprints. Conditional for the same reason: a board
+        # that never asked anyone to walk keeps the hash it already had. A travel beat must
+        # go stale -- the scaffold now tells H3 to pull the set, and a rendered treadmill
+        # is not that clip.
+        travel = self.travel_digest(beat)
+        if travel:
+            parts.append(travel)
         # Deliberately absent: `panel` and the panel image. The sketch conditions the still, not
         # this clip; the still file is already hashed above. Putting it in here would mark every
         # paid render stale over a drawing H3 never sees. Same reasoning that keeps
@@ -1905,6 +1924,9 @@ class Board:
         camera = self.camera_digest(beat)
         if camera:
             parts.append(camera)
+        travel = self.travel_digest(beat)
+        if travel:
+            parts.append(travel)
         # Deliberately absent: `panel` and the panel image. The sketch conditions the still, not
         # this clip; the still file is already hashed above. Putting it in here would mark every
         # beat of every existing board `edited` at once and re-price a paid render over a drawing
@@ -2040,6 +2062,8 @@ class Board:
                 # absent on disk means eye, so the chips have something to highlight on a
                 # board that never named one. Unlike the panel, it reaches both renderers.
                 "camera": self.camera_for(beat),
+                # Lateral travel: a background pull. Derived from the action, not stored.
+                "travel": self.is_travel(beat),
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
                 "frame": self.media_url(self.frame_path(n)),

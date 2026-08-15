@@ -350,6 +350,13 @@ REF_ROLE_POSE = (
     "and set, the subject here at this moment of the action -- not a different camera, not "
     "a different character"
 )
+# Lateral travel: the set is the same pieces in a different place in the frame. Without this
+# H3 reads background shift as a new camera and either cuts or freezes the garden.
+REF_ROLE_POSE_TRAVEL = (
+    "stop-motion pose {i} of {k} of this shot: the same locked-off take and the same puppets, "
+    "the set pulled this far through the travel -- not a different camera, not a different "
+    "character, not a walk-cycle on a frozen set"
+)
 # "match" scales each reference down to the generation's pixel area; "max" uses the reference
 # pipeline's 2048px short edge for better identity fidelity. Reference tokens ride through
 # every sampling step, so "max" can be several times slower -- and slower here is money.
@@ -1176,6 +1183,20 @@ OPEN_REFERENCE_SEQUENCE = (
     "The puppets, the set, the lighting and the framing are the same in every one; only the "
     "moving subject changes. "
 )
+# Lateral travel on 9:16 cannot be a puppet crossing a locked wide -- they exit in a few
+# steps, and poses that only change gait against a glued-down set make H3 fake a walk.
+# Same sequence, but the set is allowed to translate. The rig still does not pan.
+OPEN_REFERENCE_SEQUENCE_TRAVEL = (
+    "{tags} are successive stop-motion poses of THIS shot, in order. {first} is where the "
+    "clip begins -- its framing, subject sizes and light are the ones this whole take "
+    "holds -- and each next picture is the next pose of the same locked-off take. "
+    "Interpolate the action through those poses, evenly, without cutting, without skipping "
+    "a pose, and without treating any of them as a different camera or a second puppet. "
+    "The puppets hold their on-screen size and roughly the same screen third in every one; "
+    "their gait advances AND the set layers translate opposite the walk, same pieces "
+    "shifting in the frame. That set shift is locomotion, not a new camera. Do not freeze "
+    "the background; do not animate a walk-cycle in place. "
+)
 # What a carried reference video is, and it has to be said in the same breath as "compose the
 # opening frame yourself" -- otherwise the two instructions fight and the model either ignores
 # the clip or treats it as footage to replay. This is the reference join's answer to
@@ -1266,6 +1287,123 @@ AUDIO_SUFFIX = (
     " Audio: soft paper rustling and quiet birdsong in a sunny forest, no music, no speech."
 )
 
+# ## Lateral travel: a background pull, not a walk-cycle on a treadmill
+#
+# 9:16 is too narrow for a chase to read as "puppet crosses a locked wide". Cutout
+# locomotion on a table is a background pull: the camera rig stays locked, you slide the
+# set layers the other way, the puppet holds its third and plants against moving ground.
+# The brief already allows a slow rail slide; the locked-hold tail of Medium.craft banned it,
+# and that is how H3 was told to fake walking.
+#
+# Detected from the action, not a stored field. Toward/away from camera is size change and
+# is not this. Climbing, dropping, raising stay on the locked-hold tail.
+#
+# The craft swap REPLACES the "Keep the set, …" tail rather than appending a contradiction.
+# H3 given both "background static" and "slide the set" interpolates a walk-cycle in place.
+# Every Medium.craft holds that mark; identity sentences before it stay.
+CRAFT_HOLD_MARK = "Keep the set,"
+TRAVEL_CRAFT_HOLD = (
+    "The camera rig stays locked -- no push-in, pull-back, pan, tilt, zoom, reframe, or "
+    "cut to a second angle. Locomotion is a background pull on the table: the set layers "
+    "translate opposite the walk, same pieces and architecture shifting in the frame, "
+    "new ground entering from the direction of travel. The puppets hold their on-screen "
+    "size and roughly the same screen third; their gait plants against the sliding ground. "
+    "This is real travel, not a walk-cycle in place -- do not freeze the background, do "
+    "not animate legs while the set stays planted. Nothing transforms, duplicates, or "
+    "changes design. No camera movement, no cuts, no new objects, no text, no watermarks. "
+    "Smooth temporal consistency and natural foot contact."
+)
+# What Gemini is told on a travel pose / opening still. The image server's chain clause
+# otherwise locks background position to the previous frame, which is the treadmill.
+TRAVEL_POSE_NOTE = (
+    "Locomotion is a background pull: keep the puppets in the same screen third and "
+    "on-screen size; translate the set layers opposite the walk (same pieces, same "
+    "architecture, shifted in the frame). This is real travel, not a walk-cycle on a "
+    "frozen set."
+)
+TRAVEL_STILL_NOTE = (
+    "This opening still is frame one of a background pull, not a locked-camera cross. "
+    "Park the subject in the screen third they will hold for the clip -- not at the "
+    "exit edge with the destination empty. The set will slide through later poses."
+)
+# Verb plus a lateral direction nearby, or an explicit left-to-right. "walk toward the
+# camera" has no left/right/across and does not match.
+_LATERAL_TRAVEL_RE = re.compile(
+    r"(?:"
+    r"(?:walk(?:s|ing)?|cross(?:es|ing)?|run(?:s|ning)?|chase(?:s|ing)?|"
+    r"slide(?:s|ing)?|leap(?:s|ing)?|bound(?:s|ing)?|dash(?:es|ing)?|"
+    r"move(?:s|ing)?|travel(?:s|ing)?|procession|keep walking)"
+    r".{0,48}?"
+    r"(?:left|right)"
+    r"|"
+    r"(?:left|right)[\s-]?to[\s-]?(?:right|left)"
+    r"|"
+    r"across the (?:path|frame|shot|street|road|garden)"
+    r")",
+    re.IGNORECASE,
+)
+# A real cross names both sides or names the path. "slides into frame from the upper
+# left" matches the verb+left arm and is an entrance, not locomotion that would exit 9:16.
+_LATERAL_SPAN_RE = re.compile(
+    r"(?:left|right)[\s-]?to[\s-]?(?:right|left)|"
+    r"from (?:the )?(?:far )?(?:right|left)\b.{0,24}\bto (?:the )?(?:far )?(?:left|right)|"
+    r"across the (?:path|frame|shot|street|road|garden)|"
+    r"\b(?:to the |towards? the )(?:left|right)\b",
+    re.IGNORECASE,
+)
+_FROM_EDGE_RE = re.compile(
+    r"\bfrom the (?:upper |lower |far )?(?:left|right)\b",
+    re.IGNORECASE,
+)
+_TRAVEL_RIGHT_RE = re.compile(
+    r"left[\s-]?to[\s-]?right|(?:to|towards?) the right|\brightward\b",
+    re.IGNORECASE,
+)
+
+
+def is_travel(action: str) -> bool:
+    """Lateral travel that would exit 9:16. Toward/away from camera is size, not a pull."""
+    text = " ".join(str(action or "").split())
+    if not text or not _LATERAL_TRAVEL_RE.search(text):
+        return False
+    if _FROM_EDGE_RE.search(text) and not _LATERAL_SPAN_RE.search(text):
+        return False
+    return True
+
+
+def travel_way(action: str) -> str:
+    """Which way the subject travels: 'left' or 'right'. The set pulls the other way."""
+    text = " ".join(str(action or "").split())
+    return "right" if _TRAVEL_RIGHT_RE.search(text) else "left"
+
+
+def travel_digest(action: str) -> str:
+    """Fingerprint part -- empty when the beat is not a pull, so locked boards keep their hash."""
+    return "travel:pull" if is_travel(action) else ""
+
+
+def craft_for(look: Medium, travel: bool = False) -> str:
+    """Medium.craft, with the locked-hold tail swapped on a pull.
+
+    Identity sentences stay. A missing mark (a future medium that rewords the tail) appends
+    rather than silently keeping the locked hold -- better a doubled instruction than a
+    travel beat that still says the garden is static.
+    """
+    if not travel:
+        return look.craft
+    mark = look.craft.find(CRAFT_HOLD_MARK)
+    if mark < 0:
+        return look.craft.rstrip() + " " + TRAVEL_CRAFT_HOLD
+    return look.craft[:mark] + TRAVEL_CRAFT_HOLD
+
+
+def pose_role(index: int, total: int, *, travel: bool = False) -> str:
+    """What `<Picture N>` is, when that picture is a stop-motion pose of this shot."""
+    if index <= 1:
+        return REF_ROLE_OPENING
+    template = REF_ROLE_POSE_TRAVEL if travel else REF_ROLE_POSE
+    return template.format(i=index, k=total)
+
 
 def frame_count(seconds: float) -> int:
     """Snap a duration up onto the model's 17k+5 frame grid."""
@@ -1305,8 +1443,13 @@ def pose_phase(index: int, total: int, action: str) -> str:
     Papercut's own `beatHint` is a left-to-right walk, which is the wrong action for most
     shots. This one names the beat's actual action and only the phase changes, so pose 4 of
     7 of "she raises the lantern" is the lantern partway up, not a step to the right.
+
+    Lateral travel names how far the WORLD has slid, not just the gait: poses that only
+    change limb silhouette against a glued-down set are how H3 fakes walking.
     """
     said = " ".join(str(action or "").split()) or "the action"
+    if is_travel(action):
+        return _travel_phase(index, total, said, travel_way(action))
     if total <= 1:
         return f"single opening pose, before {said}"
     p = index / (total - 1)
@@ -1319,6 +1462,41 @@ def pose_phase(index: int, total: int, action: str) -> str:
     if p < 1:
         return f"{said} is nearly complete, follow-through in the trailing limbs"
     return f"{said} has just completed, weight settled again"
+
+
+def _travel_phase(index: int, total: int, said: str, way: str) -> str:
+    """Pose phase for a background pull. `way` is which way the subject travels."""
+    pull = "right" if way == "left" else "left"
+    if total <= 1:
+        return (
+            f"single opening pose of a background pull: {said} has not started, "
+            f"subject holding their screen third, set not yet slid"
+        )
+    p = (index - 1) / (total - 1)
+    if p == 0:
+        return (
+            f"the opening of a background pull: {said} has not started, weight settled, "
+            f"subject in the screen third they will hold, set not yet pulled"
+        )
+    if p < 0.35:
+        return (
+            f"{said} has just begun: subject holds the same screen third, gait's first "
+            f"increment, set layers starting to slide {pull}"
+        )
+    if p < 0.65:
+        return (
+            f"the midpoint of {said}: subject still in the same screen third, stride at "
+            f"its widest, set pulled about halfway {pull}, new ground entering from the {way}"
+        )
+    if p < 1:
+        return (
+            f"{said} is nearly complete: subject still in the same third, follow-through "
+            f"in the trailing limbs, set almost fully pulled {pull}"
+        )
+    return (
+        f"{said} has just completed: subject still in the same third, weight settled, "
+        f"set pulled through the travel {pull}"
+    )
 
 
 def panel_phase(index: int, total: int) -> str:
@@ -1556,7 +1734,7 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
                  medium_key: str | None = None,
                  mentions: dict[str, tuple[int | None, str]] | None = None,
                  poses: int = 0, hold_video: bool = False,
-                 camera: str | None = None) -> str:
+                 camera: str | None = None, travel: bool | None = None) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -1613,6 +1791,12 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     fragment -- which is the whole point of the field, because the panel used to name an
     angle that never reached this function.
 
+    `travel` is a background pull: lateral travel that would exit 9:16. None means detect
+    from the (expanded) action, so a forgotten caller still gets the pull clause rather
+    than the locked-hold tail that makes H3 fake a walk. False keeps today's scaffold
+    even if the action mentions "left". True swaps OPEN_REFERENCE_SEQUENCE and the
+    craft hold; see `craft_for`.
+
     `mentions` resolves the @-tokens a director may have typed into any of the three texts.
     One keyword here rather than three expanded call sites, so every path into a render --
     studio, CLI, and whatever comes next -- gets it by construction rather than by remembering.
@@ -1624,6 +1808,8 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     scene = expand_mentions(scene, mentions)
     ref_notes = [expand_mentions(note, mentions) for note in (ref_notes or [])] or None
     poses = max(0, int(poses or 0))
+    if travel is None:
+        travel = is_travel(action)
     opening = look.shot + camera_clause(camera)
     if refs > 0 or ref_videos > 0:
         parts = [opening]
@@ -1631,7 +1817,9 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
             if poses > 1:
                 # The sequence is this shot, in order. Remaining pictures (sheets, uploads)
                 # still get the design-reference paragraph, which is what they always were.
-                parts.append(OPEN_REFERENCE_SEQUENCE.format(
+                sequence = (OPEN_REFERENCE_SEQUENCE_TRAVEL if travel
+                            else OPEN_REFERENCE_SEQUENCE)
+                parts.append(sequence.format(
                     tags=reference_tags(min(poses, refs)), first="<Picture 1>"))
                 rest = refs - min(poses, refs)
                 if rest > 0:
@@ -1689,7 +1877,7 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     action = action.strip().rstrip(".")
     if action:
         parts.append(action + ".")
-    parts.append(look.craft)
+    parts.append(craft_for(look, travel))
     if not mute:
         parts.append(look.audio)
     # Last, matching the fal H3 "limits" block: what must not appear, after what must.
