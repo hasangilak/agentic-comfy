@@ -35,8 +35,12 @@ class Shot:
 
     `opens_on` says the first of those pictures is this beat's own still, so the clip begins on a
     composition drawn for it rather than one the model invents from the scene line. That is what
-    a cut is on this checkpoint, and it is false on a beat carrying the previous clip -- there,
-    the tail answers where the shot opens and the two instructions must never both be given.
+    a cut is on this checkpoint. A carried clip used to make this false -- two answers to where
+    the shot opens. HOLD_VIDEO is a third job for the same socket, so the still (or the pose
+    sequence) still names the opening and the previous clip can sit next to it.
+
+    `carry` means wire that previous clip as <Video 1>. `hold_video` is the prompt half: identity
+    rather than continuation. The two are independent of `opens_on`.
     """
 
     n: int
@@ -57,8 +61,13 @@ class Shot:
     # `pictures` so a sheet is never both a numbered picture and a sentence about a second one.
     staging: str = ""
     # Reference beats only: send the tail of the previous clip as a reference video, which is
-    # how this join gets continuity without a keyframe.
+    # how this join gets continuity without a keyframe. True for the carry checkbox AND for a
+    # pose sequence, which holds the same clip as identity.
     carry: bool = False
+    # Prompt flag: the video is identity (HOLD_VIDEO), not the opening (CARRY_VIDEO).
+    hold_video: bool = False
+    # How many of `pictures` are this shot's own stop-motion poses, from <Picture 1>.
+    poses: int = 0
     # Where things stand in this frame, and which medium's words wrap the whole prompt. Carried
     # on the shot rather than read at render time for the reason `staging` and `mentions` are:
     # this dataclass is the whole description of what one beat was handed, and a board read
@@ -202,14 +211,23 @@ def render_beats(
                     pictures = [pair for pair in shot.pictures if pair[0].exists()]
                     frame = None
                     continues = False
-                    if shot.carry and result.beats:
-                        carry = media.tail_clip(result.beats[-1].video,
-                                                workdir / f"beat{n}_carry.mp4",
-                                                config.REF_VIDEO_SECONDS, mute=mute)
+                    if shot.carry:
+                        prev_video = result.beats[-1].video if result.beats else None
+                        if prev_video is None and index > 0:
+                            candidate = workdir / f"beat{shots[index - 1].n}.mp4"
+                            if candidate.is_file():
+                                prev_video = candidate
+                        if prev_video is not None:
+                            carry = media.tail_clip(prev_video,
+                                                    workdir / f"beat{n}_carry.mp4",
+                                                    config.REF_VIDEO_SECONDS, mute=mute)
                     log(f"[render] beat {n}: {len(pictures)} reference pictures"
+                        + (f", {shot.poses} poses" if shot.poses > 1 else "")
                         + (", opening on its own still" if shot.opens_on else "")
                         + (f" + the last {config.REF_VIDEO_SECONDS:.0f}s of beat "
-                           f"{shots[index - 1].n}" if carry else ""))
+                           f"{shots[index - 1].n}"
+                           + (" as identity" if shot.hold_video else "")
+                           if carry else ""))
                 elif continues:
                     media.last_frame(result.beats[-1].video, frame)
                     log(f"[render] beat {n}: continuing from beat {shots[index - 1].n}")
@@ -243,6 +261,8 @@ def render_beats(
                                                    opens_on=(shot.opens_on and bool(pictures)
                                                              and pictures[0][0] == shot.asset),
                                                    ref_videos=1 if carry else 0,
+                                                   poses=shot.poses,
+                                                   hold_video=shot.hold_video,
                                                    staging=shot.staging,
                                                    blocking=shot.blocking,
                                                    medium_key=shot.medium_key,
@@ -332,7 +352,18 @@ def render_reel(
             # Against the same list, for the same reason: a sheet already numbered as a picture
             # must not also arrive as prose about a second one of it.
             staging=view.staging_text(beat["n"], view.pictures_for(beat["n"])),
-            carry=(beat.get("ref_video") == board_mod.CARRY_UPSTREAM and index > 0),
+            carry=(
+                source == board_mod.SOURCE_REFERENCE
+                and index > 0
+                and (beat.get("ref_video") == board_mod.CARRY_UPSTREAM
+                     or len(view.pose_paths(beat["n"])) > 1)
+            ),
+            hold_video=(
+                source == board_mod.SOURCE_REFERENCE
+                and len(view.pose_paths(beat["n"])) > 1
+                and beat.get("ref_video") != board_mod.CARRY_UPSTREAM
+            ),
+            poses=len(view.pose_paths(beat["n"])),
             blocking=beat.get("blocking", ""),
             medium_key=view.medium(),
         )

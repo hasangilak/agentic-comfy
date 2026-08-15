@@ -71,7 +71,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
         # is text-to-video on the wrong weights, so it is worth the check before the container
         # is deployed rather than after it has been paid for.
         if (board_mod.uses_refs(source) and not board.pictures_for(n)
-                and not board.carries_motion(board.beat(n))):
+                and not board.holds_upstream(board.beat(n))):
             raise FileNotFoundError(
                 f"beat {n} is conditioned on references but has none; generate its opening "
                 f"still, upload a picture (up to {config.MAX_REF_IMAGES}), or have it carry "
@@ -144,12 +144,21 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                     # a still dropped on a later node mid-render cannot change what this beat was
                     # told about the pictures it was given.
                     opens_on = bool(pictures) and pictures[0][0] == board.asset_path(n)
+                    hold_video = bool(carry) and not board.carries_motion(board.beat(n))
+                    poses = len(board.pose_paths(n))
                     join = JOIN_LOG[sources[n]]
                     if pictures or carry:
                         detail = [f"{len(pictures)} of {config.MAX_REF_IMAGES} pictures"]
                         if opens_on:
                             detail.append("opening on its own still")
-                        if carry:
+                        if poses > 1:
+                            detail.append(f"{poses} stop-motion poses")
+                        if carry and hold_video:
+                            detail.append(
+                                f"holding the last {config.REF_VIDEO_SECONDS:.0f}s of beat "
+                                f"{board.upstream(n)['n']} as identity"
+                            )
+                        elif carry:
                             detail.append(
                                 f"carrying the last {config.REF_VIDEO_SECONDS:.0f}s of beat "
                                 f"{board.upstream(n)['n']}"
@@ -212,8 +221,11 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # and composes the byte-identical prompt it always did.
                                 medium_key=board.medium(),
                                 # Swaps "compose the opening frame yourself" for "open on the
-                                # moment <Video 1> ends and carry it on".
+                                # moment <Video 1> ends and carry it on" -- or HOLD_VIDEO, which
+                                # is the same socket doing identity rather than the opening.
                                 ref_videos=1 if carry else 0,
+                                poses=poses,
+                                hold_video=hold_video,
                                 # Resolved against the list this batch queued, for the same
                                 # reason `opens_on` is above: a picture added to the beat while
                                 # the render is in flight must not renumber a token in a prompt
@@ -290,9 +302,10 @@ def _frames(board: board_mod.Board, n: int, source: str):
                        still as the frame the clip has to arrive at
       * "reference" -- no keyframe at all: up to nine pictures which the ref2va checkpoint
                        conditions on for the whole clip. On the default cut those are the
-                       beat's own still and the reel's cast reference, plus any uploads; a beat
-                       carrying motion takes the tail of the previous clip as a reference VIDEO
-                       instead of wiring a still at all
+                       beat's own still (or its stop-motion sequence) plus staging and uploads;
+                       a beat that follows the previous clip also takes that clip's tail as
+                       <Video 1> -- as a continuation when carry is ticked, as identity when
+                       a pose sequence exists without it.
 
     `source` is passed in rather than read from the board, because uploading a still can flip
     a beat's join -- and a batch must render what was queued, not change shape halfway
@@ -316,9 +329,11 @@ def _frames(board: board_mod.Board, n: int, source: str):
         # which is why nothing is written to beat<n>_frame.png on this path -- it is already on
         # the generation grid, and it is a reference here rather than a keyframe.
         carry, upstream_hash = None, ""
-        if board.carries_motion(board.beat(n)):
+        if board.holds_upstream(board.beat(n)):
             # Only the tail. The whole clip would be paid for through every sampling step,
-            # for motion that stopped mattering seconds ago.
+            # for motion that stopped mattering seconds ago. holds_upstream, not only the
+            # carry checkbox: a pose sequence sends the same clip as identity so a transform
+            # cannot drop the puppet the last shot already established.
             source_video = board.video_path(board.upstream(n)["n"])
             carry = media.tail_clip(source_video, board.carry_path(n),
                                     config.REF_VIDEO_SECONDS,
@@ -328,9 +343,10 @@ def _frames(board: board_mod.Board, n: int, source: str):
             # A beat that used to carry and no longer does must not leave the old tail on
             # disk, where the canvas would still show it as this beat's input.
             board.carry_path(n).unlink(missing_ok=True)
-        # Read after the carry decision, not before: `pictures_for` asks `carries_motion` whether
-        # this beat's own still is wired at all, so taking the list first would be taking it
-        # against a different answer to that question than the render is about to use.
+        # Read after the hold decision, not before: `pictures_for` used to ask `carries_motion`
+        # whether this beat's own still was wired at all. It no longer does -- stills and the
+        # video sit together -- but the tail file is still created here, so the comment stays
+        # as a warning against taking the list first if that split ever returns.
         pictures = board.pictures_for(n)
         # The up-front pass already refused a beat with nothing to condition on, so reaching
         # this with an empty list means the board moved underneath the batch -- someone changed
