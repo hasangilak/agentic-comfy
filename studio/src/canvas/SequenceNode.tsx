@@ -6,6 +6,7 @@ import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, STATE_LOOK, inputClass } from "../ui";
 import { Panel } from "./Panel";
+import { Poses } from "./Poses";
 import { CameraChips } from "./CameraChips";
 
 /**
@@ -437,6 +438,10 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             </span>
             <span className="shrink-0 text-zinc-400">→</span>
           </button>
+
+        {/* Film-medium poses above graphite planning sketches: these reach H3, the panels
+            do not. Absent until there is more than the opening still. */}
+        <Poses beat={beat} />
 
         {/* The storyboard sketch of this shot, above the pictures it is NOT one of: a panel reaches
             no renderer, so it belongs next to what the shot is rather than next to what conditions

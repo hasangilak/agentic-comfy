@@ -498,7 +498,7 @@ def _clear_extra_poses(board: board_mod.Board, n: int, keep: int) -> None:
 
     `pose_paths` stops at the first missing file, but a regenerate that drew 6 after a previous
     9 would otherwise keep posing 7..9 on disk -- and `pictures_for` would hand H3 those stale
-    in-betweens ahead of the staging sheets they were meant to leave room for.
+    in-betweens.
     """
     for index in range(max(1, keep) + 1, config.MAX_REF_IMAGES + 1):
         board.pose_path(n, index).unlink(missing_ok=True)

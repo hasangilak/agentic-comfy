@@ -268,17 +268,17 @@ class Board:
     def sequence_count(self, n: int) -> int:
         """How many poses asset generation should draw for this beat.
 
-        Reference beats fill the nine image sockets the node actually has, less whatever
-        staging sheets and uploads already claim, so a quiet cut gets nine and a beat that
-        already binds three sheets gets six. Keyframe joins still get one -- extra poses
-        would reach no renderer there. Existing boards with a single still keep that count
-        until they are generated again.
+        Beats that actually reach H3 as pictures (`wires_refs`) fill the nine image sockets
+        the node has, less director uploads -- those have no words fallback. Staging sheets
+        do not reserve a socket: a pose sequence IS the cast in motion, and a sheet that
+        does not fit stays as `staging_text`. Chain and bridge still get one -- extra poses
+        would reach no renderer there. An asset cut that binds identity sheets is ref2va,
+        so it gets the stack too. Existing boards with a shorter sequence keep that count
+        on disk until they are generated again.
         """
-        if not uses_refs(self.source_for(self.beat(n))):
+        if not self.wires_refs(self.beat(n)):
             return 1
-        reserved = (len(self.staging_pictures(n, for_still=False))
-                    + len(self.ref_paths(n)))
-        return config.sequence_length(reserved)
+        return config.sequence_length(len(self.ref_paths(n)))
 
     def previous_last_pose(self, n: int) -> Path | None:
         """The last pose (or still) already on disk in this take, walking back if needed.
@@ -1440,10 +1440,11 @@ class Board:
         cast still is dropped so the nine sockets fill with the sequence rather than crowding
         it out. Together with `sequence_count` that is how a quiet cut uses all nine.
 
-        Poses on disk are capped to `sequence_count`, which already reserved room for bound
-        sheets. Without that, a nine-pose generate followed by binding two characters would
-        hand H3 the stale in-betweens and truncate the sheets they were meant to leave room
-        for.
+        Poses on disk are capped to `sequence_count`. Uploads reserved a slot at generate
+        time; sheets did not. Sheets ride after the poses in `pictures_for` and truncate,
+        becoming words. The cap is what stops a generate that used to leave room for sheets
+        from keeping stale in-betweens after a bind -- `_clear_extra_poses` deletes past
+        `keep`.
 
         `reference_for` returns None on the beat whose own still IS the reference, so beat 1
         never gets the same file twice even on the single-still path.

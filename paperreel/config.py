@@ -308,10 +308,11 @@ MAX_REF_FILES = 12
 # reel's locked cast reference only when this beat binds no character or prop sheet -- a
 # turnaround is the puppet, beat 1's composed wide is a camera, and sending both pulled
 # later clips back to that two-shot. On a beat whose asset pass drew a stop-motion sequence,
-# the poses themselves take those slots (they ARE the cast, in motion) and fill whatever is
-# left after staging sheets and uploads, so a quiet cut uses all nine. An asset cut that
-# binds identity sheets is the same list without the sequence: the still as Picture 1, then
-# the sheets, on ref2va, because fl2va has no socket for a turnaround.
+# the poses themselves take those slots (they ARE the cast, in motion) and fill the nine
+# sockets, less director uploads. Staging sheets ride after and truncate -- a sheet that
+# does not fit is told in words. An asset cut that binds identity sheets is the same list
+# on ref2va (still as Picture 1, then the rest of the sequence): fl2va has no socket for a
+# turnaround, and extra poses would otherwise reach no renderer.
 # `Board.pictures_for` is where the order is decided; the roles below are the words each
 # auto-wired slot is described to the model with.
 #
@@ -368,9 +369,9 @@ REF_IMAGE_SIZE = "match"
 # The node trims what it gets down onto the 17k+5 frame grid itself and needs at least 5
 # frames, so 3 s (72 frames at 24 fps) lands at 56 frames after its own trim.
 REF_VIDEO_SECONDS = 3.0
-# How many stop-motion poses asset generation draws per reference beat. Zero means fill
-# whatever of the nine image sockets staging sheets and uploads have not already claimed,
-# so a quiet beat gets nine poses and a beat that already binds three sheets gets six.
+# How many stop-motion poses asset generation draws per beat that wires pictures. Zero
+# means fill the nine image sockets less director uploads. Staging sheets do not claim a
+# socket -- the poses ARE the cast in motion; a sheet that does not fit is told in words.
 # Pin a number to explore; nine is the node's own cap (Papercut's too).
 STILL_SEQUENCE = int(os.environ.get("PAPERREEL_STILL_SEQUENCE", "0"))
 # Graphite sketches per beat: opening, midpoint, landing of the action. They condition the
@@ -1288,9 +1289,10 @@ def snap_seconds(value: float | int | str) -> float:
 def sequence_length(reserved: int) -> int:
     """How many stop-motion poses a beat should draw, given slots already spoken for.
 
-    `reserved` is staging sheets plus director uploads -- the pictures that are not the
-    sequence. Zero `STILL_SEQUENCE` fills whatever of the nine is left, so the video model
-    is handed a full set rather than one still and eight empty sockets.
+    `reserved` is director uploads -- pictures with no words fallback. Staging sheets are
+    not reserved: they ride after the poses in `pictures_for` and truncate, becoming
+    `staging_text`. Zero `STILL_SEQUENCE` fills whatever of the nine is left, so the video
+    model is handed a full set rather than one still and eight empty sockets.
     """
     room = max(1, MAX_REF_IMAGES - max(0, reserved))
     wanted = STILL_SEQUENCE or MAX_REF_IMAGES
