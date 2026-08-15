@@ -60,11 +60,12 @@ export const MAX_FRAMES = 9
 /**
  * How many conditioning images one frame may be rendered from.
  *
- * Gemini image models accept multiple inline reference images. Four stays conservative across
- * the supported Nano Banana models and leaves room for the prompt without creating oversized
- * API payloads. Raise it only after comparing consistency and request latency.
+ * Matches MiniMax-H3's nine image sockets and Papercut's per-scene frame cap, so a still can
+ * be drawn from the same identity sheets, storyboard panels and previous pose the clip will
+ * interpolate through. The image server reports this on `/api/health`; paperreel floors
+ * against it.
  */
-export const MAX_REFERENCES = 4
+export const MAX_REFERENCES = 9
 
 export const GEMINI_IMAGE_MODELS = [
   { id: 'gemini-3-pro-image', label: 'Nano Banana Pro', blurb: 'Highest quality and creative control.' },

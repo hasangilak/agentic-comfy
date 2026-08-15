@@ -92,7 +92,7 @@ unconditioned — that image becomes the reference the rest are anchored to.
 
 **And the beat's own reference pictures, if it has any.** The pictures dropped on a scene's
 reference tray go to the still renderer as well as to the video model — the first
-`config.MAX_STILL_REFS` of them (4, the cast reference counting as one), because the Gemini
+`config.MAX_STILL_REFS` of them (9, the cast reference counting as one), because the still
 request should stay bounded. The image server
 reports its own cap in `limits.maxReferences` and the smaller number wins.
 The reason to send them at all is that the still is what the clip's first sampling steps are

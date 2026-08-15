@@ -163,7 +163,7 @@ export function deleteScene(id: string) {
  * or by an older caller, conditioned on exactly the image it uploaded.
  *
  * Missing files are dropped rather than raised on: a reel next door can delete the still a
- * scene pointed at between two renders, and losing one picture of four is a better render
+ * scene pointed at between two renders, and losing one picture of nine is a better render
  * than none.
  */
 function uploadedReferences(scene: Scene): string[] {

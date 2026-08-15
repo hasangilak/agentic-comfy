@@ -60,8 +60,8 @@ export const KIND_LOOK: Record<StageKind, { label: string; icon: string; hint: s
     label: "set",
     icon: "🌲",
     hint: "a place, drawn empty of characters and in the reel's own vertical frame. It reaches "
-      + "the clip as a picture and the still as words: four slots do not hold a cast and a set, "
-      + "and what a still must not get wrong is the cast",
+      + "the clip as a picture and the still as words when nine slots are already spent on " +
+      "identity and panels: what a still must not get wrong is the cast",
   },
   prop: {
     label: "prop",

@@ -313,15 +313,14 @@ nine-section reference that would shrink the figure below a lock. Small labels a
 a lore paragraph is forbidden because lettering leaks into the clip.
 
 **The one measured constraint is the still's cap**, and everything else falls out of it. The
-video model takes `MAX_REF_IMAGES` (9); the still takes `MAX_STILL_REFS` (4). Three characters
-and a set do not fit, so the set is dropped and `Board.staging_text` picks it up — **whatever
-a render is not handed as a picture, it is told in words**, one rule applied by
+video model takes `MAX_REF_IMAGES` (9); the still takes `MAX_STILL_REFS` (9, matching it).
+Identity sheets still win over extra graphite. A set that does not fit after those is dropped
+and `Board.staging_text` picks it up — **whatever a render is not handed as a picture, it is
+told in words**, one rule applied by
 `config.build_prompt(staging=...)` and `papercut._beat_text`, each computing it against *the very
 list it is conditioning on* so a sheet is never both `<Picture 2>` and a sentence about a second
 one of it. A set that **does** fit is a picture: dropping it unconditionally invented a new
 web in every shot.
-list it is conditioning on* so a sheet is never both `<Picture 2>` and a sentence about a second
-one of it. It is also what makes a written-but-undrawn entry useful.
 
 Bound sheets sit between `auto_pictures` and the uploads in `pictures_for`, which renumbers the
 uploads — safe by construction rather than by luck, because that method returns (path, role)
@@ -354,7 +353,8 @@ one scene body serve a still, a reference picture and a design sheet.
 
 ### Storyboard panels
 
-A storyboard in the film sense is a sheet of rough panels — one drawing per shot, showing framing,
+A storyboard in the film sense is a sheet of rough panels — several drawings per shot (opening,
+midpoint, landing), showing framing,
 angle, and with arrows on the panel how the subject and camera move. `panels.py` is that pass.
 Written by Gemini into a per-beat `panel` field (free, one turn for the whole reel), drawn by
 `gemini-3.1-flash-lite-image` at 1K, and stitched into `reels/<slug>/storyboard_sheet.png`.
@@ -420,7 +420,7 @@ reasons, any one sufficient:
 
 1. The same stored string is read by two prompt builders with incompatible orderings. The video
    model gets `pictures_for` tagged `<Picture N>`; the still model gets `still_pictures`, which is
-   identity sheets (or the cast still) then the storyboard panel, capped at four, with no tags at all. One literal cannot be
+   identity sheets (or the cast still) then the storyboard panels, capped at nine, with no tags at all. One literal cannot be
    right in both, so `expand_mentions` takes a `prose=` flag and each consumer passes its own list.
 2. `ref_offset` moves when beat 1's still lands, when a `character.png` is pinned, when carry is
    ticked, and when the join is cycled — four events that touch no text and would silently

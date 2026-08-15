@@ -29,7 +29,7 @@ import { stillsAllowed } from "../route";
  * Stage three: the still every shot opens on, and what each one is drawn from.
  *
  * The hard part of this stage was invisible before it existed. `Board.still_pictures` is
- * identity-sheets first (or the cast still when those are missing), capped at four, and a set
+ * identity-sheets first (or the cast still when those are missing), capped at nine, and a set
  * that fits the cap is a picture — and the only thing that showed any of it was the @-mention
  * menu. `beat.ts`'s `stillPictures` already mirrors that method line for line, so the
  * conditioning strip below is a reading of what the model is actually handed rather than a
@@ -278,8 +278,9 @@ export function Assets() {
 /**
  * What the whole reel's stills are conditioned on, said once at reel level.
  *
- * The `MAX_STILL_REFS` consequence belongs here rather than repeated on every card: four
- * slots, identity first, a set that fits is a picture and one that does not is told in words.
+ * The `MAX_STILL_REFS` consequence belongs here rather than repeated on every card: nine
+ * slots, identity first, then storyboard panels, then a previous pose, then a set that fits
+ * is a picture and one that does not is told in words.
  * That is `Board.still_pictures`, and it is the one asymmetry a director has to know.
  */
 function Conditioning({ board }: { board: Board }) {

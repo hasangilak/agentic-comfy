@@ -328,13 +328,18 @@ REF_ROLE_CAST = (
     "this reel's locked cast reference -- it fixes what the characters and the materials look "
     "like everywhere in the film, and it is NOT this shot's setting or framing"
 )
-# Still-only. The panel is a composition reference for Gemini, never an H3 picture -- a graphite
-# sketch in a video slot is how the clip becomes a drawing. `Board.still_pictures` reserves a
-# slot for it; `Board.pictures_for` does not mention it.
+# Still-only. Panels are composition references for Gemini, never H3 pictures -- a graphite
+# sketch in a video slot is how the clip becomes a drawing. `Board.still_pictures` takes every
+# panel PNG that fits after identity; `Board.pictures_for` does not mention them.
 REF_ROLE_PANEL = (
     "this beat's storyboard panel -- a graphite sketch of this shot's framing, angle, and "
     "who stands where. Match that composition. Do not copy the pencil medium; the film is "
     "made of the materials in the style"
+)
+REF_ROLE_PANEL_FRAME = (
+    "storyboard panel {i} of {k} ({phase}): a graphite sketch of this shot at that moment "
+    "of the action -- framing, angle, who stands where. Match this composition in sequence. "
+    "Do not copy the pencil medium; the film is made of the materials in the style"
 )
 # Poses 2..k of a stop-motion sequence. Pose 1 keeps REF_ROLE_OPENING, because that is still
 # where the clip begins; these are the in-betweens the video model interpolates through so a
@@ -368,6 +373,13 @@ REF_VIDEO_SECONDS = 3.0
 # so a quiet beat gets nine poses and a beat that already binds three sheets gets six.
 # Pin a number to explore; nine is the node's own cap (Papercut's too).
 STILL_SEQUENCE = int(os.environ.get("PAPERREEL_STILL_SEQUENCE", "0"))
+# Graphite sketches per beat: opening, midpoint, landing of the action. They condition the
+# still (so Nano Banana can lock a pose sequence to a composition that moves), never H3.
+# One was a single camera; three is a stop-motion board. Cap at the node's nine.
+PANEL_SEQUENCE = max(1, min(
+    int(os.environ.get("PAPERREEL_PANEL_SEQUENCE", "3")),
+    MAX_REF_IMAGES,
+))
 # The clip's own soundtrack, paired to the video as `ref_video_audio_N`. Off by default:
 # H3 generates each beat's audio anyway, and an audio reference is one more thing for the
 # model to reproduce literally. Turn it on if ambience drifts between beats.
@@ -494,16 +506,14 @@ PAPERCUT_ASPECT = "9:16-reel"
 # Kept in the transport contract for older scene documents; Gemini controls its own inference
 # steps and does not use this value.
 PAPERCUT_STEPS = int(os.environ.get("PAPERREEL_PAPERCUT_STEPS", "4"))
-# How many pictures a still may be drawn FROM. The first is the reel's locked cast reference,
-# which is what a still has always been conditioned on; the rest are the director's own uploads
-# on that beat -- the same pictures the video model is shown, so the puppet in the clip and the
-# puppet in the frame it opens on are being held to one set of images rather than two.
-#
-# Four is a conservative request-size and consistency cap across the supported Gemini models.
+# How many pictures a still may be drawn FROM. Identity sheets first, then this beat's
+# storyboard panels, then the previous shot's last pose, then a set that fits, then uploads.
+# Nine matches H3's image sockets and the image server's MAX_REFERENCES, so Nano Banana can
+# see the same stack the clip interpolates through rather than a truncated four.
 #
 # The image server reports its own cap in `limits.maxReferences` and the smaller of the two wins,
 # exactly as the frame cap already works.
-MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "4"))
+MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "9"))
 
 # Local compositor: stacked RGBA cutouts instead of asking H3 to invent puppetry from a
 # photograph of a puppet. Width and baseline are what `media.compose` has always used for
@@ -1309,6 +1319,31 @@ def pose_phase(index: int, total: int, action: str) -> str:
     return f"{said} has just completed, weight settled again"
 
 
+def panel_phase(index: int, total: int) -> str:
+    """Where in the beat this graphite frame sits: opening, midpoint, or landing.
+
+    Three is the stop-motion board (first / middle / last of the action). A single panel is
+    still the opening. In between those, only the ends are named and the rest are counted,
+    so a four-panel board does not invent a second midpoint.
+    """
+    if index <= 1:
+        return "opening"
+    if total <= 1 or index >= total:
+        return "landing"
+    if total == 3:
+        return "midpoint"
+    return f"pose {index} of {total}"
+
+
+def panel_role(index: int, total: int) -> str:
+    """What `<the Nth reference image>` is, when that image is a storyboard panel."""
+    if total <= 1:
+        return REF_ROLE_PANEL
+    return REF_ROLE_PANEL_FRAME.format(
+        i=index, k=total, phase=panel_phase(index, total),
+    )
+
+
 def reference_tags(count: int, *, start: int = 1) -> str:
     """The prompt's name for the supplied references: "<Picture 1>, <Picture 2> and <Picture 3>".
 
@@ -1343,8 +1378,8 @@ def reference_roles(notes: list[str]) -> str:
 # stored string is read by two prompt builders with two incompatible orderings -- the video
 # model gets `pictures_for` (own still, identity sheets or the cast still, uploads) tagged
 # `<Picture N>`, the still model
-# gets `still_pictures` (identity sheets or the cast still, then the storyboard panel, then
-# uploads on a reference join, capped at four) with no tags at all -- so one literal
+# gets `still_pictures` (identity sheets or the cast still, then the storyboard panels, then
+# uploads on a reference join, capped at nine) with no tags at all -- so one literal
 # expansion cannot be correct in both places, and a number typed into prose is persisted
 # derived state, which is the thing `board.py` exists to not have. `ref_offset` alone moves
 # when beat 1's still lands, when a character.png is uploaded, when carry is ticked, and when
