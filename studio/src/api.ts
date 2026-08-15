@@ -105,6 +105,16 @@ export const api = {
   patchBeat: (slug: string, n: number, body: Record<string, unknown>) =>
     patch<{ board: Board }>(`/api/reels/${slug}/beats/${n}`, body).then((r) => r.board),
 
+  /**
+   * Set one camera on a batch of takes. Omit `beats` to write every take. The server expands
+   * each number to the continuous shot it belongs to, so the client does not N-save.
+   */
+  patchCamera: (slug: string, camera: string, beats?: number[]) =>
+    patch<{ board: Board }>(`/api/reels/${slug}/camera`, {
+      camera,
+      ...(beats && beats.length ? { beats } : {}),
+    }).then((r) => r.board),
+
   addBeat: (slug: string, body: Record<string, unknown>) =>
     post<{ board: Board }>(`/api/reels/${slug}/beats`, body).then((r) => r.board),
 

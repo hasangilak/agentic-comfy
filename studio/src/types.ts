@@ -68,6 +68,12 @@ export interface Beat {
    * marks the beat stale.
    */
   blocking: string;
+  /**
+   * Locked-off camera angle for this take. Always one of the five the board publishes in
+   * `cameras` — absent on disk means `eye`, so the chips have something to highlight on a
+   * board that never named one. Reaches stills and video, unlike `panel`.
+   */
+  camera: string;
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
   frame: string | null;
   /** And, on a bridge, the frame it was told to arrive at. Null on every other join. */
@@ -268,6 +274,8 @@ export interface Board {
   mute: boolean;
   /** The only lengths a beat may have. One button per entry on the node. */
   lengths: number[];
+  /** The only camera angles a take may have. One chip per entry on the node. */
+  cameras: { id: string; chip: string; label: string }[];
   /** Aspect the model renders at; stills far from this get cropped. */
   gen_aspect: number;
   /** The stills are the user's own work: no generate affordance, and the API refuses to run one. */

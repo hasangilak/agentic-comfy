@@ -68,8 +68,10 @@ becomes one bird is a fail, not a closer camera.
   twilight". It is one line and it is deliberately *shared* by every beat of one continuous
   shot, so it cannot say that the character starts frame left and ends frame right.
 - The **action line** says only what MOVES.
-- The **storyboard panel** says the shot size, the angle and the camera move. It is a sketch
+- The **storyboard panel** says the shot size and the camera move. It is a sketch
   and it reaches no renderer at all.
+- The **camera** field is the locked-off angle (eye, low, high, overhead, dutch). Unlike
+  the panel it reaches the still and the clip. Do not restate it in blocking.
 
 Nobody says what is standing where. That is `set_blocking`, and unlike the panel it goes
 into the video prompt — so writing it changes what the beat renders and marks it as needing
@@ -100,8 +102,9 @@ What it must NOT contain:
 
 - **Materials, colour, texture or light.** Those are the style artist's, and saying them
   twice in one prompt is how a model ends up drawing two of something.
-- **Shot size, camera angle, or camera movement.** Those are the panel's. "Medium shot at eye
-  level" in a blocking line is the same instruction arriving twice from two people.
+- **Shot size or camera movement.** Shot size is the panel's. Camera *angle* is the
+  `camera` field on the beat -- "medium shot at eye level" in a blocking line is the
+  same instruction arriving twice from two people.
 - **Motion.** The action line owns what moves. You say where things are when the shot opens.
 
 Read the beats around one before you block it. Two beats of one continuous shot share a

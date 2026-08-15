@@ -274,13 +274,15 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             poses=len(poses),
             hold_video=hold and not carry,
             mentions=board.mentions(n, pictures),
+            camera=board.camera_for(beat),
         )
         lines = [
             f"beat {n} join={source}"
             + (f", carrying upstream motion as <Video 1>" if carry else "")
             + (f", holding previous clip as <Video 1> (identity)" if hold and not carry else "")
             + (f", {len(poses)} stop-motion poses" if len(poses) > 1 else "")
-            + (f", opens on its own still as <Picture 1>" if opens_on else ""),
+            + (f", opens on its own still as <Picture 1>" if opens_on else "")
+            + f", camera={board.camera_for(beat)}",
             "references:",
         ]
         if pictures:
@@ -772,7 +774,7 @@ def _style_tools(llm: llm_mod.LLM) -> list[Tool]:
         look = context.need_board().look()
         return ("\n".join([
             f"medium: {look.key} ({look.name})",
-            f"every video prompt opens: {look.shot.strip()}",
+            f"every video prompt opens: {(look.shot + config.camera_clause()).strip()}",
             f"every video prompt ends: {look.craft.strip()}",
             f"every still is asked for as: {look.still}",
             f"every design sheet is asked for as: {look.sheet}",
@@ -830,7 +832,8 @@ def _blocking_tools(llm: llm_mod.LLM) -> list[Tool]:
             "each thing sits in, which way it faces, how much room is above it, what is in the "
             "foreground and the background. This reaches the video prompt, so rewriting it "
             "marks the beat as needing a re-render. It is not the shot size or the camera "
-            "angle -- those are the storyboard panel's job.",
+            "angle -- shot size is the storyboard panel's job, and camera angle is the "
+            "camera field on the beat (set_beat), which reaches both renderers.",
             {
                 "n": {"type": "integer", "description": "which beat, 1-based"},
                 "blocking": {

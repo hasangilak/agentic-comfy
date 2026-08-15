@@ -698,12 +698,21 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
         raise HTTPException(422, "Nano Banana 2 Lite only supports 1K output")
     if "seconds" in body:
         beat["seconds"] = config.snap_seconds(body["seconds"])
+    if "camera" in body:
+        # Take-wide: chain/bridge share one camera with the cut they continue. Eye deletes
+        # the key, so a take set back to straight-on keeps the fingerprint it had.
+        try:
+            board.set_camera(n, config.parse_camera(body["camera"]))
+        except ValueError as error:
+            raise HTTPException(422, str(error))
     if "source" in body:
         if body["source"] not in board_mod.SOURCES:
             raise HTTPException(422, f"source must be one of {', '.join(board_mod.SOURCES)}")
         if board_mod.chains(body["source"]) and board.upstream(n) is None:
             raise HTTPException(422, "the first beat has nothing to continue from")
         beat["source"] = body["source"]
+        opening = board.take_of(n)[0]
+        board.set_camera(n, opening.get("camera"))
     if "carry" in body:
         # The reference join's answer to continuity: the tail of the previous clip goes in as
         # a reference VIDEO, since ref2va has no keyframe slot to hand a frame to.
@@ -719,6 +728,41 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
             beat["ref_video"] = board_mod.CARRY_UPSTREAM
         else:
             beat.pop("ref_video", None)
+    board.save()
+    runner.publish_board(slug)
+    return {"board": board_json(board)}
+
+
+@app.patch("/api/reels/{slug}/camera")
+def patch_camera(slug: str, body: dict = Body(...)) -> dict:
+    """Set one camera on a batch of takes -- selected beats, or the whole reel.
+
+    Per-beat PATCH already expands to the take. This exists so the canvas toolbar does not
+    N-save when applying Eye/Low/High/Top/Dutch to a selection.
+    """
+    board = load(slug)
+    if "camera" not in body:
+        raise HTTPException(422, "camera is required")
+    try:
+        key = config.parse_camera(body["camera"])
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    beats = body.get("beats")
+    numbers: list[int] | None
+    if beats is None:
+        numbers = None
+    elif not isinstance(beats, list):
+        raise HTTPException(422, "beats must be a list of beat numbers")
+    else:
+        try:
+            numbers = [int(n) for n in beats]
+        except (TypeError, ValueError):
+            raise HTTPException(422, "beats must be a list of beat numbers")
+        known = {beat["n"] for beat in board.beats}
+        unknown = [n for n in numbers if n not in known]
+        if unknown:
+            raise HTTPException(404, f"beat {unknown[0]} not in {slug}")
+    board.set_cameras(key, numbers)
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}

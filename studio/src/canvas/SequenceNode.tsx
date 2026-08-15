@@ -6,6 +6,7 @@ import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, STATE_LOOK, inputClass } from "../ui";
 import { Panel } from "./Panel";
+import { CameraChips } from "./CameraChips";
 
 /**
  * The four joins, in the order the button walks them: the free continuation, the one that also
@@ -561,6 +562,19 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             </>
           )}
         </button>
+
+        {/* Five angles, not a text field. The panel used to name these in free text that
+            never reached a renderer; these chips write a field that does. Take-wide: a
+            chain/bridge shares the cut's camera, so clicking Low here sets the whole shot. */}
+        <div className="flex items-center justify-between border-t border-edge pt-2">
+          <CameraChips
+            board={board}
+            value={beat.camera}
+            onChange={(camera) =>
+              void studio.guard(() => api.patchBeat(board.slug, beat.n, { camera }))
+            }
+          />
+        </div>
 
         {/* Two lengths, no stepper. 10s is 243 frames -- exactly the longest render that
             has ever completed on this card -- so there is nothing above it worth offering. */}

@@ -38,7 +38,7 @@ from . import config, gemini, papercut, planner, script, stills as stills_mod
 # for its own add/remove endpoints, so a change in behaviour cannot land in only one path.
 OPS = [
     "set_script",    # title / style_bible
-    "set_beat",      # scene / action / asset_prompt / seconds on beat n
+    "set_beat",      # scene / action / asset_prompt / seconds / camera on beat n
     "add_beat",      # insert a beat at position n
     "remove_beat",   # delete beat n
     "set_source",    # n + source: "reference" | "chain" | "bridge" | "asset" -- see SYSTEM below
@@ -99,6 +99,16 @@ TOOLS = [
             "seconds": {
                 "type": "number", "enum": [5, 10],
                 "description": "how long the beat runs; only 5 or 10 exist",
+            },
+            "camera": {
+                "type": "string",
+                "enum": list(config.CAMERA_ANGLES),
+                "description": (
+                    "locked-off camera angle for this take: eye (straight-on, the default), "
+                    "low (below looking up), high (above looking down), overhead, or dutch "
+                    "(horizon off-level). A chain or bridge beat MUST copy the angle of the "
+                    "shot it continues. This reaches the still and the clip, unlike the panel."
+                ),
             },
         },
         ["n"],
@@ -332,6 +342,8 @@ def board_digest(board: board_mod.Board) -> str:
             # whose beats have no blocking composes the digest it always did.
             + (f'\n  in frame: {beat["blocking"]}' if str(beat.get("blocking") or "").strip()
                else "")
+            + (f'\n  camera: {config.camera_label(board.camera_for(beat))}'
+               if str(beat.get("camera") or "").strip() else "")
         )
     if board.data.get("caption"):
         lines.append(f'CAPTION: {board.data["caption"]}')
@@ -543,6 +555,9 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
         if op.get("seconds"):
             beat["seconds"] = config.snap_seconds(op["seconds"])
             changed.append("seconds")
+        if "camera" in op:
+            board.set_camera(int(op["n"]), op["camera"])
+            changed.append("camera")
         return f'beat {op["n"]}: {", ".join(changed)}' if changed else None
 
     if kind == "add_beat":
@@ -580,6 +595,13 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
                 else board_mod.SOURCE_CHAIN
             ),
         })
+        new = board.beat(position)
+        if board_mod.chains(board.source_for(new)):
+            # A continuation has no camera of its own -- it is the same take.
+            opening = board.take_of(position)[0]
+            config.write_camera(new, opening.get("camera"))
+        if op.get("camera"):
+            board.set_camera(position, op["camera"])
         reset_sequence_layout(board)
         return f"added beat {position}"
 
@@ -596,6 +618,11 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
         if source not in board_mod.SOURCES:
             raise ValueError(f"bad source {source!r}")
         board.beat(int(op["n"]))["source"] = source
+        # A beat that just joined a take inherits that take's camera; otherwise two chips
+        # on one continuous shot would disagree, and the prompt would too.
+        n = int(op["n"])
+        opening = board.take_of(n)[0]
+        board.set_camera(n, opening.get("camera"))
         return f'beat {op["n"]}: frames from {source}'
 
     if kind == "set_caption":

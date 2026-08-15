@@ -86,6 +86,87 @@ PROVEN_MAX_FRAMES = 243
 # construction rather than by warning.
 BEAT_LENGTHS = (5.0, 10.0)
 
+# Camera angle for one locked-off take. The panel used to own this in free text, and that
+# text reaches no renderer -- so stills and H3 independently invented a camera, usually
+# fighting Medium.shot's hardcoded "straight-on". One enum, one clause, both prompts.
+#
+# Absent means the default, stored by being absent, like medium: a board that never named
+# an angle and a board set back to eye level are the same board, and every reel written
+# before this keeps the fingerprint it had.
+CAMERA_EYE = "eye"
+CAMERA_ANGLES = ("eye", "low", "high", "overhead", "dutch")
+# Completes Medium.shot. The default concatenation MUST stay byte-identical to the old
+# "style, shot straight-on. " opening, or every existing prompt changes.
+CAMERA_CLAUSE = {
+    "eye": "shot straight-on. ",
+    "low": "shot from a low angle, camera below the subject looking up so it looms. ",
+    "high": "shot from a high angle, camera above the subject looking down. ",
+    "overhead": "shot from directly overhead, camera looking straight down. ",
+    "dutch": "shot at a dutch tilt, the horizon off-level. ",
+}
+CAMERA_LABEL = {
+    "eye": "eye level",
+    "low": "low angle",
+    "high": "high angle",
+    "overhead": "overhead",
+    "dutch": "dutch tilt",
+}
+# Short chip on the canvas. "Top" rather than "Overhead" because five chips share a 240 px card.
+CAMERA_CHIP = {
+    "eye": "Eye",
+    "low": "Low",
+    "high": "High",
+    "overhead": "Top",
+    "dutch": "Dutch",
+}
+# What a still is told. The video clause is a fragment that completes Medium.shot; Gemini
+# stills never see that sentence, so they need a full instruction of their own.
+CAMERA_STILL = {
+    "eye": "Camera: eye level, looking straight at the subject. ",
+    "low": "Camera: low angle, below the subject looking up so it looms. ",
+    "high": "Camera: high angle, above the subject looking down. ",
+    "overhead": "Camera: overhead, looking straight down on the scene. ",
+    "dutch": "Camera: dutch tilt, the horizon off-level. ",
+}
+
+
+def snap_camera(value) -> str:
+    """Force an angle onto one of the five. Unknown or empty is the default (eye)."""
+    key = str(value or "").strip().lower()
+    return key if key in CAMERA_ANGLES else CAMERA_EYE
+
+
+def parse_camera(value) -> str:
+    """Raise ValueError on a name we do not ship. Empty is the default."""
+    if value is None or str(value).strip() == "":
+        return CAMERA_EYE
+    key = str(value).strip().lower()
+    if key not in CAMERA_ANGLES:
+        raise ValueError(f"camera must be one of {', '.join(CAMERA_ANGLES)}")
+    return key
+
+
+def write_camera(beat: dict, value) -> None:
+    """Persist a camera the way fingerprints expect: absent means eye."""
+    key = snap_camera(value)
+    if key == CAMERA_EYE:
+        beat.pop("camera", None)
+    else:
+        beat["camera"] = key
+
+
+def camera_clause(key: str | None = None) -> str:
+    return CAMERA_CLAUSE[snap_camera(key)]
+
+
+def camera_still(key: str | None = None) -> str:
+    return CAMERA_STILL[snap_camera(key)]
+
+
+def camera_label(key: str | None = None) -> str:
+    return CAMERA_LABEL[snap_camera(key)]
+
+
 DEFAULT_STEPS = 8       # 20 steps costs ~70% more; 8 was judged good on paper art
 DRAFT_STEPS = 8
 DRAFT_SECONDS = 5.0
@@ -443,7 +524,9 @@ class Medium:
     # What the prompts call it, e.g. "paper-cutout stop-motion". Spliced into six system
     # prompts, which is why it is a phrase rather than a sentence.
     name: str
-    # The first clause of every video prompt, before anything about the join.
+    # The first clause of every video prompt, before anything about the join. Ends at the
+    # comma after "style" -- `build_prompt` appends CAMERA_CLAUSE so the angle is one field
+    # rather than a hardcoded "straight-on" fighting a panel that never reached the renderer.
     shot: str
     # The material words inside OPEN_REFERENCE's list of what a design reference fixes.
     surface: str
@@ -512,7 +595,7 @@ PAPER_CUTOUT = Medium(
     key="paper-cutout",
     name="paper-cutout stop-motion",
     shot=("Single continuous locked-off shot in handcrafted layered paper-cutout stop-motion "
-          "style, shot straight-on. "),
+          "style, "),
     surface="paper texture, cut edges",
     craft=(
         " Animate it as real paper puppetry: crisp cut edges, visible paper grain, layered "
@@ -596,7 +679,7 @@ PAPER_CRAFT = Medium(
     key="paper-craft",
     name="papercraft stop-motion",
     shot=("Single continuous locked-off shot in handcrafted folded papercraft stop-motion "
-          "style, shot straight-on. "),
+          "style, "),
     surface="scored creases, folded edges, paper thickness",
     craft=(
         " Animate it as real folded papercraft: scored crease lines catching the light, "
@@ -682,7 +765,7 @@ CLAYMATION = Medium(
     key="claymation",
     name="clay stop-motion",
     shot=("Single continuous locked-off shot in handcrafted plasticine clay stop-motion "
-          "style, shot straight-on. "),
+          "style, "),
     surface="clay surface, thumbprints and tool marks",
     craft=(
         " Animate it as real clay puppetry: matte plasticine over a wire armature, visible "
@@ -989,7 +1072,7 @@ PANEL_STYLE_SUFFIX = panel_style()
 # amount of frame-handoff accuracy fixes it.
 MEDIUM = (
     "Single continuous locked-off shot in handcrafted layered paper-cutout stop-motion "
-    "style, shot straight-on. "
+    "style, " + CAMERA_CLAUSE[CAMERA_EYE]
 )
 OPEN_CUT = (
     "The provided first frame is the opening frame of a new shot: begin from it exactly, "
@@ -1397,7 +1480,8 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
                  opens_on: bool = False, staging: str = "", blocking: str = "",
                  medium_key: str | None = None,
                  mentions: dict[str, tuple[int | None, str]] | None = None,
-                 poses: int = 0, hold_video: bool = False) -> str:
+                 poses: int = 0, hold_video: bool = False,
+                 camera: str | None = None) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -1448,6 +1532,12 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     which is what every board written before the bundle existed resolves to and is why their
     prompts are byte-identical to what they were.
 
+    `camera` is the locked-off angle for this take. None or `eye` appends the same
+    "shot straight-on. " Medium.shot used to end with, so a board that never named an
+    angle composes the byte-identical prompt it always did. Any other key replaces that
+    fragment -- which is the whole point of the field, because the panel used to name an
+    angle that never reached this function.
+
     `mentions` resolves the @-tokens a director may have typed into any of the three texts.
     One keyword here rather than three expanded call sites, so every path into a render --
     studio, CLI, and whatever comes next -- gets it by construction rather than by remembering.
@@ -1459,8 +1549,9 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     scene = expand_mentions(scene, mentions)
     ref_notes = [expand_mentions(note, mentions) for note in (ref_notes or [])] or None
     poses = max(0, int(poses or 0))
+    opening = look.shot + camera_clause(camera)
     if refs > 0 or ref_videos > 0:
-        parts = [look.shot]
+        parts = [opening]
         if refs > 0:
             if poses > 1:
                 # The sequence is this shot, in order. Remaining pictures (sheets, uploads)
@@ -1496,7 +1587,7 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
         elif refs > 0 and poses <= 1:
             parts.append(COMPOSE_OPENING)
     else:
-        parts = [look.shot, OPEN_CONTINUATION if continues else OPEN_CUT]
+        parts = [opening, OPEN_CONTINUATION if continues else OPEN_CUT]
         if lands:
             parts.append(ARRIVE_ON_LAST)
     identity = " ".join(identity.split())

@@ -97,6 +97,19 @@ def normalise(data: dict) -> dict:
                 else board_mod.SOURCE_CHAIN
             ),
         })
+        # Locked-off angle for this take. Eye is stored by being absent, so a script that
+        # never named one and a script that said "eye" are the same board.
+        config.write_camera(beats[-1], raw.get("camera"))
+
+    # A chain or bridge continues the same camera. The opening beat of each take wins when
+    # they disagree -- same rule `Board.set_camera` applies on the canvas, so an imported
+    # script cannot arrive with two angles on one continuous shot.
+    opening = None
+    for beat in beats:
+        if board_mod.chains(beat["source"]) and opening is not None:
+            config.write_camera(beat, opening)
+        else:
+            opening = config.snap_camera(beat.get("camera"))
 
     title = str(data.get("title") or "").strip()
     concept = str(data.get("concept") or "").strip()

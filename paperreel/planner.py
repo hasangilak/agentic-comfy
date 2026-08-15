@@ -116,6 +116,18 @@ PLAN_SCHEMA = {
                             "three pure chains without a bridge or cut."
                         ),
                     },
+                    "camera": {
+                        "type": "string",
+                        "enum": list(config.CAMERA_ANGLES),
+                        "description": (
+                            "Locked-off camera angle for this take: eye (straight-on, the "
+                            "default), low (camera below looking up so the subject looms), "
+                            "high (camera above looking down), overhead (looking straight "
+                            "down), dutch (horizon off-level). A chain or bridge beat MUST "
+                            "copy the camera of the shot it continues. This reaches the still "
+                            "and the clip -- do not bury the angle in scene or action instead."
+                        ),
+                    },
                 },
             },
         },

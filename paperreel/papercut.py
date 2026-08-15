@@ -209,6 +209,10 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
     prompt = config.expand_mentions(
         (beat.get("asset_prompt") or beat.get("action") or "").strip(), mentions, prose=True
     )
+    # The angle used to live only in the panel, which reaches no renderer -- so this still
+    # invented a camera, usually fighting H3's hardcoded straight-on. First in the paragraph
+    # so "the camera angle described above" later in this function has something to describe.
+    prompt = (config.camera_still(board.camera_for(beat)) + prompt).strip()
     notes = [
         " ".join(config.expand_mentions(note, mentions, prose=True).split()).rstrip(".")
         for _path, note in pictures if note.strip()

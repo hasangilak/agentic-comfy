@@ -55,7 +55,7 @@ PANEL_SCHEMA = {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["n", "panel"],
+                "required": ["n", "panel", "camera"],
                 "properties": {
                     "n": {
                         "type": "integer",
@@ -69,6 +69,18 @@ PANEL_SCHEMA = {
                             "and which way it faces, what the arrows on the panel point at, and "
                             "the camera move if there is one. Written to be DRAWN, not read as "
                             "notes."
+                        ),
+                    },
+                    "camera": {
+                        "type": "string",
+                        "enum": list(config.CAMERA_ANGLES),
+                        "description": (
+                            "The locked-off camera angle for this beat. eye = eye level / "
+                            "straight-on; low = camera below looking up; high = camera above "
+                            "looking down; overhead = looking straight down; dutch = horizon "
+                            "off-level. A chain/bridge beat MUST copy the angle of the shot it "
+                            "continues. If ANGLE IS ALREADY CHOSEN is on the beat line, return "
+                            "that key unchanged."
                         ),
                     },
                 },
@@ -163,6 +175,7 @@ def _digest(board: board_mod.Board, beats: list[int]) -> str:
             continue
         source = board.source_for(beat)
         names = [board.stage_name(entry) for entry in board.bound_staging(n)]
+        chosen = str(beat.get("camera") or "").strip()
         lines.append(
             f'beat {n} -- {board.seconds_for(beat):g}s, join: {source}'
             + (" (the same shot as the beat before it, continuing)"
@@ -170,6 +183,9 @@ def _digest(board: board_mod.Board, beats: list[int]) -> str:
             + (f'\n  in shot: {", ".join(names)}'
                + " — say how many of each are in the sketch"
                if names else "")
+            + (f'\n  ANGLE IS ALREADY CHOSEN: {config.camera_label(chosen)} '
+               f'({config.snap_camera(chosen)}) -- use this key, do not pick another'
+               if chosen else "")
             + f'\n  scene: {beat.get("scene") or "(nothing written)"}'
             + f'\n  action: {beat.get("action") or "(nothing written)"}'
         )
@@ -189,7 +205,9 @@ def _messages(board: board_mod.Board, beats: list[int]) -> list[dict]:
         f"THE SCRIPT, {len(beats)} beat{'' if len(beats) == 1 else 's'} of it:\n\n"
         + _digest(board, beats),
         "Answer with one entry per beat in `panels`, using the beat numbers exactly as they are "
-        "above. Each entry's `panel` is what the sketch of that beat shows.",
+        "above. Each entry's `panel` is what the sketch of that beat shows. Each entry's "
+        "`camera` is the locked-off angle -- copy ANGLE IS ALREADY CHOSEN when it is on the "
+        "beat line, and copy the previous beat's camera on a chain or bridge.",
     ]
     return [
         {"role": "system", "content": SYSTEM},
@@ -224,6 +242,7 @@ def write(board: board_mod.Board, beats: list[int] | None = None, *,
         temperature=0.4,
     )
     written: list[int] = []
+    picked: dict[int, str] = {}
     for entry in verdict.get("panels") or []:
         try:
             n = int(entry.get("n"))
@@ -239,6 +258,7 @@ def write(board: board_mod.Board, beats: list[int] | None = None, *,
             continue
         board.beat(n)["panel"] = text
         written.append(n)
+        picked[n] = str(entry.get("camera") or "").strip()
         log(f"[panel] beat {n}: {text}")
     if not written:
         raise PanelsError(f"{config.TEXT_MODEL} wrote no usable panels")
@@ -248,6 +268,14 @@ def write(board: board_mod.Board, beats: list[int] | None = None, *,
         # still blank. Said out loud because a silently short pass reads as a model that refused.
         log(f"[panel] no panel written for beat{'s' if len(missed) > 1 else ''} "
             f"{', '.join(map(str, missed))} -- ask again, or write them by hand")
+    # Fill empty cameras in beat order so a cut's pick lands on the take before a chain beat
+    # in the same pass is considered. A director pick (a stored key) is never overwritten.
+    for n in sorted(picked):
+        if str(board.beat(n).get("camera") or "").strip():
+            continue
+        if picked[n]:
+            board.set_camera(n, picked[n])
+            log(f"[panel] beat {n}: camera {config.snap_camera(picked[n])}")
     board.save()
     if announce is not None:
         announce()

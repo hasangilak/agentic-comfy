@@ -223,6 +223,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # board written before the bundle, which resolves to paper cutout
                                 # and composes the byte-identical prompt it always did.
                                 medium_key=board.medium(),
+                                camera=board.camera_for(beat),
                                 # Swaps "compose the opening frame yourself" for "open on the
                                 # moment <Video 1> ends and carry it on" -- or HOLD_VIDEO, which
                                 # is the same socket doing identity rather than the opening.

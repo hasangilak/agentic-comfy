@@ -20,6 +20,7 @@ import { NewPicture, PicturePanel } from "./PicturePanel";
 import { ReviseField } from "./ReviseField";
 import { StagingBind } from "./StagingBind";
 import { StillChat } from "./StillChat";
+import { CameraChips } from "./CameraChips";
 
 /**
  * One scene, full screen.
@@ -318,6 +319,13 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     : "cut · opens on its still"}
           </span>
           <div className="ml-auto flex items-center gap-1">
+            <CameraChips
+              board={board}
+              value={beat.camera}
+              onChange={(camera) =>
+                void studio.guard(() => api.patchBeat(board.slug, beat.n, { camera }))
+              }
+            />
             {board.lengths.map((option) => {
               const active = Math.round(beat.seconds) === Math.round(option);
               return (

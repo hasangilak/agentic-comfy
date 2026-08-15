@@ -1118,6 +1118,71 @@ class Board:
             beat.get("seconds") or self.data.get("seconds") or config.BEAT_LENGTHS[-1]
         )
 
+    def camera_for(self, beat: dict) -> str:
+        """One of the five angles, always. Absent means eye -- stored by being absent.
+
+        Snapped on read so a hand-edited storyboard with a typo still lines up with the
+        chips on the node, the same way `seconds_for` snaps a length.
+        """
+        return config.snap_camera(beat.get("camera"))
+
+    def camera_digest(self, beat: dict) -> str:
+        """The angle, for the fingerprints -- empty on every beat that never named one.
+
+        The `staging_digest` rule: an unconditional part would rehash every beat of every reel
+        at once and re-price a paid render over a chip nobody had clicked. Empty at eye,
+        whether the beat says so or says nothing.
+        """
+        key = self.camera_for(beat)
+        return "" if key == config.CAMERA_EYE else f"camera:{key}"
+
+    def take_of(self, n: int) -> list[dict]:
+        """Every beat of the continuous shot n belongs to, in order.
+
+        Walks back through chain/bridge to the cut that opened the take, then forward until
+        the next cut. One camera, one setup -- the brief's 'one beat = one camera' applied
+        to the join graph rather than hoped for in prose.
+        """
+        ordered = self.ordered_beats()
+        index = next((i for i, beat in enumerate(ordered) if beat["n"] == n), None)
+        if index is None:
+            raise KeyError(f"beat {n} not in {self.slug}")
+        start = index
+        while start > 0 and chains(self.source_for(ordered[start])):
+            start -= 1
+        end = index + 1
+        while end < len(ordered) and chains(self.source_for(ordered[end])):
+            end += 1
+        return ordered[start:end]
+
+    def set_camera(self, n: int, value) -> list[int]:
+        """Write a camera onto every beat of the take. Returns the beat numbers touched.
+
+        Eye is stored by deleting the key, so a take set back to eye level is the take
+        that never named one -- which is what keeps a click of Eye from marking every
+        existing clip stale.
+        """
+        touched = []
+        for beat in self.take_of(n):
+            config.write_camera(beat, value)
+            touched.append(beat["n"])
+        return touched
+
+    def set_cameras(self, value, beats: list[int] | None = None) -> list[int]:
+        """Write a camera onto each named take, or every take. Dedupes overlapping chains."""
+        wanted = ({b["n"] for b in self.ordered_beats()} if beats is None
+                  else set(int(n) for n in beats))
+        seen: set[int] = set()
+        touched: list[int] = []
+        for beat in self.ordered_beats():
+            if beat["n"] not in wanted or beat["n"] in seen:
+                continue
+            for number in self.set_camera(beat["n"], value):
+                seen.add(number)
+                if number not in touched:
+                    touched.append(number)
+        return touched
+
     def source_for(self, beat: dict) -> str:
         """Default a beat that opens a shot to the reference join; later beats inherit unless told.
 
@@ -1481,6 +1546,13 @@ class Board:
         temp = self.temperature_digest()
         if temp:
             parts.append(temp)
+        # Last, after temperature, in both fingerprints. Conditional for the same reason: a
+        # board that never named a camera keeps the hash it already had. Eye is stored by
+        # being absent, so a take set back to straight-on is indistinguishable from one
+        # that never clicked the chip.
+        camera = self.camera_digest(beat)
+        if camera:
+            parts.append(camera)
         return fingerprint(*parts)
 
     def medium(self) -> str:
@@ -1661,6 +1733,11 @@ class Board:
         temp = self.temperature_digest()
         if temp:
             parts.append(temp)
+        # Last, after temperature, in both fingerprints. Conditional for the same reason: a
+        # board that never named a camera keeps the hash it already had.
+        camera = self.camera_digest(beat)
+        if camera:
+            parts.append(camera)
         # Deliberately absent: `panel` and the panel image. A storyboard panel is a sketch of the
         # shot that reaches no renderer, so nothing about the render changes when one is redrawn --
         # and putting it in here would mark every beat of every existing board `edited` at once and
@@ -1780,6 +1857,10 @@ class Board:
                 # the shot is framed and this says what is standing in it. Unlike the panel, it
                 # reaches the render and is in both fingerprints, conditionally.
                 "blocking": beat.get("blocking", ""),
+                # The locked-off angle for this take. Always one of the five, resolved --
+                # absent on disk means eye, so the chips have something to highlight on a
+                # board that never named one. Unlike the panel, it reaches both renderers.
+                "camera": self.camera_for(beat),
                 # The frame this beat actually opened on. A chained beat has no still of
                 # its own, so this is the only thumbnail it can show.
                 "frame": self.media_url(self.frame_path(n)),
@@ -1898,6 +1979,13 @@ class Board:
             "temperature_range": [config.MIN_TEMPERATURE, config.MAX_TEMPERATURE],
             # The only lengths a beat may have; the node renders one button per entry.
             "lengths": list(config.BEAT_LENGTHS),
+            # The only camera angles a take may have; the node renders one chip per entry.
+            # `id` is what PATCH takes; `chip` is the label on a 240 px card; `label` is
+            # the title text. One catalogue so the canvas cannot invent a sixth angle.
+            "cameras": [
+                {"id": key, "chip": config.CAMERA_CHIP[key], "label": config.CAMERA_LABEL[key]}
+                for key in config.CAMERA_ANGLES
+            ],
             "gen_aspect": round(config.GEN_WIDTH / config.GEN_HEIGHT, 3),
             "mute": bool(self.data.get("mute")),
             # Set when the stills are the user's own work: nothing on this board may spend

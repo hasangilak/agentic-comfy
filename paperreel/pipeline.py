@@ -76,6 +76,9 @@ class Shot:
     # halfway through a batch could answer differently than the one the batch was planned from.
     blocking: str = ""
     medium_key: str | None = None
+    # Locked-off angle for this take. None means eye / straight-on, which is what
+    # `build_prompt` already composed before this field existed.
+    camera: str | None = None
 
 
 @dataclass
@@ -272,6 +275,7 @@ def render_beats(
                                                    staging=shot.staging,
                                                    blocking=shot.blocking,
                                                    medium_key=shot.medium_key,
+                                                   camera=shot.camera,
                                                    mentions=shot.mentions or None),
                         length=length, steps=steps, seed=seed + n,
                         temperature=temperature,
@@ -374,6 +378,7 @@ def render_reel(
             poses=len(view.pose_paths(beat["n"])[:view.sequence_count(beat["n"])]),
             blocking=beat.get("blocking", ""),
             medium_key=view.medium(),
+            camera=view.camera_for(beat),
         )
         for index, (beat, source) in enumerate(zip(beats, resolved))
     ]

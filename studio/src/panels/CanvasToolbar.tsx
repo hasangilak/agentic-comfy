@@ -5,6 +5,7 @@ import { useStudio } from "../useStudio";
 import { Button } from "../ui";
 import { H3Settings } from "./H3Settings";
 import { JobStrip } from "./JobStrip";
+import { CameraChips } from "../canvas/CameraChips";
 
 /**
  * The money bar, floating over the work.
@@ -73,6 +74,15 @@ export function CanvasToolbar() {
     ? selectedEstimate?.predicted_seconds
     : board.pending_cost.predicted_seconds;
   const canRender = renderCount > 0 && !busy;
+
+  const cameraTargets = selected.length
+    ? board.beats.filter((beat) => selected.includes(beat.n))
+    : board.beats;
+  const sharedCamera =
+    cameraTargets.length > 0 &&
+    cameraTargets.every((beat) => beat.camera === cameraTargets[0].camera)
+      ? cameraTargets[0].camera
+      : "";
 
   const spend = (draft: boolean) => {
     setPendingDraft(null);
@@ -170,6 +180,23 @@ export function CanvasToolbar() {
             {job.cancelling ? "cancelling…" : "cancel"}
           </Button>
         ) : null}
+      </div>
+      <div
+        className="lift pointer-events-auto flex max-w-[calc(100%-2rem)] items-center gap-2
+          rounded-full border border-edge bg-panel/95 px-2 py-1 backdrop-blur"
+      >
+        <span className="px-2 text-[10px] uppercase tracking-wide text-zinc-400">
+          camera {selected.length ? `on ${selected.length}` : "all"}
+        </span>
+        <CameraChips
+          board={board}
+          value={sharedCamera}
+          onChange={(camera) =>
+            void studio.guard(() =>
+              api.patchCamera(board.slug, camera, selected.length ? selected : undefined),
+            )
+          }
+        />
       </div>
       {pendingDraft !== null ? (
         <div

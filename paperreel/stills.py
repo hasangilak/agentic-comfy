@@ -85,8 +85,9 @@ JUDGEMENT = (
     "- the frame: tall vertical 9:16, the subject fully inside it, no text, no watermark, "
     "no signature, no border or picture-frame drawn around the picture that the style bible "
     "did not ask for.\n"
-    "- shot size and camera against THIS STILL WAS ASKED FOR / THIS BEAT'S SCENE: a medium "
-    "must not be a wide two-shot; a macro of one leg tip must not show the whole puppet. The "
+    "- shot size and camera against THIS STILL WAS ASKED FOR / THIS BEAT'S SCENE / THIS BEAT'S "
+    "CAMERA: a medium must not be a wide two-shot; a macro of one leg tip must not show the "
+    "whole puppet; a still asked for at a low angle must not be eye level. The "
     "identity images lock who is in the film and what they are made of, not the camera.\n"
     "- set geometry, only when a set sheet is among the images: the still must be the same "
     "place (same architecture, same web, same branches), not a new reading of the note.\n"
@@ -469,6 +470,7 @@ def review(board: board_mod.Board, n: int) -> dict:
     parts.append(f"REQUIRED OF EVERY STILL: {board.look().still}")
     if beat.get("scene"):
         parts.append(f"THIS BEAT'S SCENE (shot size and place): {beat['scene']}")
+    parts.append(f"THIS BEAT'S CAMERA: {config.camera_label(board.camera_for(beat))}")
     if beat.get("blocking"):
         parts.append(f"IN FRAME: {beat['blocking']}")
     if action:
@@ -766,6 +768,7 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
     parts.append(f"REQUIRED OF EVERY STILL: {board.look().still}")
     if beat.get("scene"):
         parts.append(f"THE SHOT THIS STILL BELONGS TO: {beat['scene']}")
+    parts.append(f"THIS BEAT'S CAMERA: {config.camera_label(board.camera_for(beat))}")
     if beat.get("action"):
         parts.append(f"WHAT MOVES ONCE THE CLIP STARTS: {beat['action']}")
     # A bridge's still is where the clip ENDS, so a note about "the opening frame" would be
