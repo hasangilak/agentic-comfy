@@ -649,8 +649,10 @@ is what makes a disagreement observable in one command; it agrees on all nine bo
 `pipeline`, `comfy` or `modal`; there is no tool that could reach them; `runtime.build`
 validates every `tools:` name in a `SKILL.md` at load, so a skill file — which is data a user
 can edit — cannot name one either. `crew.py` has no `--render` and no `--all`, and its PEP-723
-block is `["pillow", "httpx"]`: the first entry point in this repo that cannot reach ffmpeg, and
-the dependency list is where that is visible. The invariant is one grep, written into
+block is `["pillow", "httpx", "numpy", "scipy"]`: numpy/scipy key a sheet for the local
+still compositor, and there is still no `imageio-ffmpeg`, so this remains the first entry
+point that cannot reach the video pipeline. The dependency list is where that is visible.
+The invariant is one grep, written into
 `tools.py`'s docstring so it survives.
 
 The one guard this layer *adds* rather than inherits is `config.CREW_STILL_BUDGET` (24), counted

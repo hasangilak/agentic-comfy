@@ -151,6 +151,17 @@ def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
+def pixel_digest(image) -> str:
+    """Identity of the RGB pixels, independent of PNG vs JPEG wrapping.
+
+    `file_hash` of an upload never matches the sheet it was copied from: `store_upload`
+    re-encodes as RGB PNG. Comparing pixels is what lets `matching_sheet` refuse a second
+    copy of a design the beat already binds.
+    """
+    rgb = image.convert("RGB")
+    return hashlib.sha256(rgb.tobytes() + f"{rgb.width}x{rgb.height}".encode()).hexdigest()[:16]
+
+
 @dataclass(frozen=True)
 class FrameIds:
     """Content hashes of the images one beat is conditioned on, at one moment in time.
@@ -213,6 +224,15 @@ class Board:
 
     def asset_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}_asset.png"
+
+    def assemble_path(self, n: int) -> Path:
+        """Local stop-motion for this beat, assembled from sheets rather than sampled by H3.
+
+        Directly in the reel directory because `api.media_file` serves only that parent.
+        Not in either fingerprint: it is a free preview, and hashing it would mark a paid
+        render stale over a wobble nobody asked the GPU for.
+        """
+        return self.workdir / f"beat{n}_assemble.mp4"
 
     def pose_path(self, n: int, index: int) -> Path:
         """One stop-motion pose of this beat, 1-based.
@@ -686,7 +706,7 @@ class Board:
         # wrong panel is a still of the wrong shot. Poses 2..9 are here for the same reason:
         # left out, beat 2 would inherit beat 1's in-betweens.
         return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path,
-                self.carry_path, self.panel_path, *refs, *poses)
+                self.carry_path, self.assemble_path, self.panel_path, *refs, *poses)
 
     def reference_path(self) -> Path | None:
         """The still that fixes what the characters look like, for generating a new scene.
@@ -897,6 +917,77 @@ class Board:
             if self.stage_path(str(entry.get("id"))) not in seen
         ]
         return "; ".join(line.rstrip(".") for line in lines if line)
+
+    def still_overflow(self, n: int) -> list[dict]:
+        """Bound designs this beat's still was NOT handed as pictures.
+
+        `staging_still_text` is the prose the model is told; this is the structured list the
+        canvas names. A set that fitted the cap is absent. An undrawn sheet is present -- it
+        was never a picture. Not persisted: derived from the same two methods the still uses.
+        """
+        shown = {path for path, _ in self.still_pictures(n)}
+        overflow = []
+        for entry in self.bound_staging(n):
+            path = self.stage_path(str(entry.get("id")))
+            if path in shown:
+                continue
+            overflow.append({
+                "id": str(entry.get("id")),
+                "name": self.stage_name(entry),
+                "kind": self.stage_kind(entry),
+            })
+        return overflow
+
+    def matching_sheet(self, raw: bytes):
+        """The staging entry whose sheet is the same picture as `raw`, or None.
+
+        Pixel identity, not file hash: uploads are re-encoded on the way in. Used to refuse
+        storing a per-beat copy of a design the reel already has -- bind it instead.
+        """
+        from PIL import Image
+        import io
+
+        try:
+            with Image.open(io.BytesIO(raw)) as incoming:
+                digest = pixel_digest(incoming)
+        except Exception:  # noqa: BLE001 -- unreadable bytes are a 422 later, not a match
+            return None
+        for entry in self.staging:
+            path = self.stage_path(str(entry.get("id")))
+            if not path.is_file():
+                continue
+            try:
+                with Image.open(path) as sheet:
+                    if pixel_digest(sheet) == digest:
+                        return entry
+            except Exception:  # noqa: BLE001 -- a corrupt sheet is not a match
+                continue
+        return None
+
+    def place_for(self, n: int, entry_id: str) -> dict:
+        """Where a bound sheet sits in this beat's locally composed still.
+
+        Absent on disk means the historical compose defaults (centred, 0.62 of the width,
+        baseline 0.88). Stored only when someone sets it, so boards that never composed
+        keep the JSON they had.
+        """
+        stored = {}
+        try:
+            stored = (self.beat(n).get("place") or {}).get(str(entry_id)) or {}
+        except KeyError:
+            stored = {}
+        if not isinstance(stored, dict):
+            stored = {}
+        def _num(key: str, default: float) -> float:
+            try:
+                return float(stored.get(key, default))
+            except (TypeError, ValueError):
+                return default
+        return {
+            "x": _num("x", 0.5),
+            "y": _num("y", config.COMPOSE_BASELINE),
+            "scale": _num("scale", config.COMPOSE_WIDTH_FRACTION),
+        }
 
     def staging_digest(self, n: int) -> str:
         """One hash of everything beat `n`'s staging contributes, or "" when it binds nothing.
@@ -1580,6 +1671,9 @@ class Board:
         # this clip; the still file is already hashed above. Putting it in here would mark every
         # paid render stale over a drawing H3 never sees. Same reasoning that keeps
         # `staging_digest` conditional, one step stronger: this part is never added at all.
+        #
+        # Also absent: `place`, `move`, `cadence`. Same reason `own_fingerprint` gives: the
+        # composed PNG is hashed; the spec that produced it is not.
         return fingerprint(*parts)
 
     def medium(self) -> str:
@@ -1770,6 +1864,12 @@ class Board:
         # beat of every existing board `edited` at once and re-price a paid render over a drawing
         # H3 never sees. Same reasoning that keeps `staging_digest` conditional, one step
         # stronger: this part is never added at all.
+        #
+        # Also absent: `place`, `move`, `cadence`. They only matter once someone presses
+        # compose, which writes `beatN_asset.png`, which is already hashed above. Fingerprinting
+        # the spec as well as the PNG would mark a beat stale -- and re-price a paid render --
+        # over a placement nobody has assembled. The assemble clip is a preview and is out for
+        # the same reason the panel is.
         return fingerprint(*parts)
 
     def pending(self, *, rendering: set[int] | None = None) -> list[int]:
@@ -1954,6 +2054,14 @@ class Board:
                 # reach the still" reads as a bug.
                 "staging_text": self.staging_text(n, self.pictures_for(n)),
                 "staging_still_text": self.staging_text(n, still),
+                # Bound designs the still was not handed as pictures, named rather than as
+                # the prose above. Empty when everything fitted. Derived; not a fingerprint.
+                "still_overflow": self.still_overflow(n),
+                "place": {
+                    str(entry.get("id")): self.place_for(n, str(entry.get("id")))
+                    for entry in self.bound_staging(n)
+                },
+                "assemble": self.media_url(self.assemble_path(n)),
                 # How far the director's pictures are pushed down the numbering by the automatic
                 # slots AND the bound sheets. The prompt calls upload i <Picture ref_offset + i>,
                 # and the node has to show the same number the model is told or the notes

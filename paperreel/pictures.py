@@ -350,29 +350,25 @@ def converse(board: board_mod.Board, n: int, index: int, message: str, *,
         temperature=0.4,
         model=config.VISION_MODEL,
     )
-    corrected = " ".join(str(verdict.get("ref_draw") or "").split()).strip()
+    proposed = " ".join(str(verdict.get("ref_draw") or "").split()).strip()
     reply = " ".join(str(verdict.get("reply") or "").split()).strip()
     regenerate = bool(verdict.get("regenerate"))
-    changed = bool(corrected) and corrected != before
-
-    lost = config.lost_mentions(before, corrected) if changed else []
+    kept, lost = config.guarded_text(before, proposed)
+    changed = kept != before
     if lost:
-        # Cannot be repaired -- only the model knows where in the new sentence it meant them --
-        # but a token silently dropped is a picture the render stops being told about, so it
-        # goes in the transcript the director already reads to find out why a picture changed.
-        log(f"[picture] beat {n} picture {index}: the rewrite dropped {', '.join(lost)}")
-
+        log(f"[picture] beat {n} picture {index}: the rewrite dropped {', '.join(lost)}; "
+            "prompt left as it was")
     if changed:
-        board.set_ref_draw(n, index, corrected)
-        log(f"[picture] beat {n} picture {index}: prompt rewritten -> {corrected}")
+        board.set_ref_draw(n, index, kept)
+        log(f"[picture] beat {n} picture {index}: prompt rewritten -> {kept}")
 
     remember(board, n, index, "user", message)
     spoken = remember(
         board, n, index, "gemini",
         reply or ("Rewrote the prompt." if changed else "Nothing to change."),
-        prompt=corrected if changed else None,
+        prompt=kept if changed else None,
         regenerated=regenerate or None,
-        error=(f"this rewrite dropped {', '.join(lost)} -- put it back if it mattered"
+        error=(f"this rewrite dropped {', '.join(lost)} -- the prompt was left as it was"
                if lost else None),
     )
     # Saved and published before the draw starts, not after: the rewritten prompt is what the
@@ -381,10 +377,10 @@ def converse(board: board_mod.Board, n: int, index: int, message: str, *,
     if announce is not None:
         announce()
     if not regenerate:
-        return {"reply": spoken["text"], "ref_draw": corrected or before, "regenerated": False}
+        return {"reply": spoken["text"], "ref_draw": kept or before, "regenerated": False}
 
     try:
-        draw(board, n, index, prompt=corrected if changed else None,
+        draw(board, n, index, prompt=kept if changed else None,
              log=log, progress=progress, announce=announce, cancelled=cancelled)
     except (PicturesError, papercut.PapercutError) as failed:
         # The prompt is already saved, and that is most of the value of the turn. Failing the
@@ -396,13 +392,13 @@ def converse(board: board_mod.Board, n: int, index: int, message: str, *,
         board.save()
         if announce is not None:
             announce()
-        return {"reply": spoken["text"], "ref_draw": corrected or before,
+        return {"reply": spoken["text"], "ref_draw": kept or before,
                 "regenerated": False, "error": str(failed)}
     spoken["regenerated"] = True
     board.save()
     if announce is not None:
         announce()
-    return {"reply": spoken["text"], "ref_draw": corrected or before, "regenerated": True}
+    return {"reply": spoken["text"], "ref_draw": kept or before, "regenerated": True}
 
 
 def _history(board: board_mod.Board, n: int, index: int) -> str:

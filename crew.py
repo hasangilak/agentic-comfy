@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["pillow", "httpx"]
+# dependencies = ["pillow", "httpx", "numpy", "scipy"]
 # ///
 """A crew that walks a reel from a concept to stills on disk, and stops there.
 
@@ -22,8 +22,10 @@ it made through three different lenses. `paperreel/crew.py` is the order and the
     uv run crew.py --name <slug> --dry-run            # every prompt of the next phase, unsent
 
 This CLI cannot start a paid render, and the dependency list above is where that is visible:
-no `imageio-ffmpeg`, so nothing here can even reach the video pipeline. `storyboard.py` keeps
---render and --all; the GPU stays a flag on that script and a button in the studio.
+no `imageio-ffmpeg`, so nothing here can even reach the video pipeline. numpy/scipy are for
+the local still compositor (`compose_still` keys a sheet); they cannot spend the GPU.
+`storyboard.py` keeps --render and --all; the GPU stays a flag on that script and a button
+in the studio.
 """
 
 from __future__ import annotations

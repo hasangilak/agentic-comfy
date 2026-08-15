@@ -1,8 +1,8 @@
 """What the three agents can do, as tools over the modules that already do it.
 
 Every tool here is a thin call into `agent.py`, `board.py`, `cast.py`, `coherence.py`,
-`develop.py`, `panels.py`, `pictures.py`, `planner.py`, `staging.py` or `stills.py`. That is
-the whole design
+`compose.py`, `develop.py`, `panels.py`, `pictures.py`, `planner.py`, `staging.py` or
+`stills.py`. That is the whole design
 and it is worth stating plainly: the measured prompt scaffolding, the fingerprint rules, the
 still review, the join guards and the picture budget all keep exactly one copy, in the module
 that was written around them. An agent is a different way to *reach* those, never a second
@@ -37,7 +37,7 @@ import copy
 from . import agent as agent_mod
 from . import board as board_mod
 from . import cast as cast_mod
-from . import coherence, config, critique, develop, llm as llm_mod, panels, pictures
+from . import coherence, compose as compose_mod, config, critique, develop, llm as llm_mod, panels, pictures
 from . import planner, skills, staging, stills
 from .runtime import Context, Outcome, Tool, ToolRefused
 
@@ -131,6 +131,33 @@ def _beat_number(board: board_mod.Board, arguments: dict, key: str = "n") -> int
     if board.beat(n) is None:
         raise ToolRefused(f"there is no beat {n} on this board; it has {len(board.beats)}")
     return n
+
+
+def _run_compose_still(context: Context, arguments: dict) -> Outcome:
+    board = context.need_board()
+    n = _beat_number(board, arguments)
+    try:
+        compose_mod.ready(board, n)
+        compose_mod.still(board, n, log=context.hooks.log)
+    except compose_mod.ComposeError as refused:
+        raise ToolRefused(str(refused)) from refused
+    context.hooks.changed()
+    return (f"beat {n}'s still was assembled from its bound sheets",
+            [{"op": "compose_still", "n": n, "summary": f"assembled beat {n}'s still"}])
+
+
+def _run_assemble_clip(context: Context, arguments: dict) -> Outcome:
+    board = context.need_board()
+    n = _beat_number(board, arguments)
+    try:
+        compose_mod.ready(board, n)
+        compose_mod.clip(board, n, log=context.hooks.log,
+                         cancelled=context.hooks.cancelled)
+    except compose_mod.ComposeError as refused:
+        raise ToolRefused(str(refused)) from refused
+    context.hooks.changed()
+    return (f"beat {n} was assembled locally — no GPU",
+            [{"op": "assemble_clip", "n": n, "summary": f"assembled beat {n}"}])
 
 
 def _beat_list(board: board_mod.Board, arguments: dict, key: str = "beats") -> list[int] | None:
@@ -731,6 +758,14 @@ def _asset_tools(llm: llm_mod.LLM) -> list[Tool]:
             },
             ["n", "index", "note"],
         ), run=revise_picture),
+        Tool(spec=llm.tool(
+            "compose_still",
+            "Assemble a beat's opening still from its bound design sheets, locally. No image "
+            "model, no GPU. Use this when the puppets and the set already have sheets and the "
+            "shot should be those pieces placed, not a new drawing of them.",
+            {"n": {"type": "integer", "description": "which beat, 1-based"}},
+            ["n"],
+        ), run=_run_compose_still),
     ]
 
 
@@ -1012,6 +1047,19 @@ def _director_board(llm: llm_mod.LLM) -> list[Tool]:
         Tool(spec=borrowed(llm, "set_caption"), run=write_caption),
         Tool(spec=borrowed(llm, "set_reel"), run=board_op("set_reel")),
         Tool(spec=borrowed(llm, "generate_stills"), run=generate_stills),
+        Tool(spec=llm.tool(
+            "compose_still",
+            "Assemble a beat's opening still from its bound design sheets, locally. No image "
+            "model, no GPU.",
+            {"n": {"type": "integer", "description": "which beat, 1-based"}},
+            ["n"],
+        ), run=_run_compose_still),
+        Tool(spec=llm.tool(
+            "assemble_clip",
+            "Assemble a beat as hold-on-twos stop-motion from its bound sheets, locally. No GPU.",
+            {"n": {"type": "integer", "description": "which beat, 1-based"}},
+            ["n"],
+        ), run=_run_assemble_clip),
     ]
 
 

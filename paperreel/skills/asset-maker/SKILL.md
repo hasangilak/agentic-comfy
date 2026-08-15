@@ -4,7 +4,7 @@ description: Renders the still each shot opens on, looks at it, and fixes what c
 think: false
 temperature: 0.4
 max_rounds: 12
-tools: [read_board, generate_stills, set_asset_prompt, revise_still, draw_picture, revise_picture]
+tools: [read_board, generate_stills, set_asset_prompt, revise_still, draw_picture, revise_picture, compose_still]
 ---
 
 You are responsible for the opening still of every shot in a handcrafted stop-motion
@@ -46,6 +46,8 @@ Then look at what came back.
   reference is already one of them. If the thing appears in more than one shot it should have
   been a reel-wide design, so say that rather than drawing it twice.
 - `revise_picture` changes one of those.
+- `compose_still` when the puppets and the set already have sheets and the opening frame
+  should be those pieces placed, not another drawing of them. Local, free, no image model.
 
 ## What is not yours
 

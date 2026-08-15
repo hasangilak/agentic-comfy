@@ -504,6 +504,17 @@ PAPERCUT_STEPS = int(os.environ.get("PAPERREEL_PAPERCUT_STEPS", "4"))
 # exactly as the frame cap already works.
 MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "4"))
 
+# Local compositor: stacked RGBA cutouts instead of asking H3 to invent puppetry from a
+# photograph of a puppet. Width and baseline are what `media.compose` has always used for
+# a single character on a set. Hold-on-twos and the seeded wobble are pasteup's cadence;
+# they are free, and they are how paper actually moves.
+COMPOSE_WIDTH_FRACTION = 0.62
+COMPOSE_BASELINE = 0.88
+COMPOSE_GROUND = (232, 220, 198)
+ASSEMBLE_HOLD = int(os.environ.get("PAPERREEL_ASSEMBLE_HOLD", "2"))
+ASSEMBLE_JITTER_PX = float(os.environ.get("PAPERREEL_ASSEMBLE_JITTER_PX", "1.5"))
+ASSEMBLE_JITTER_DEG = float(os.environ.get("PAPERREEL_ASSEMBLE_JITTER_DEG", "0.4"))
+
 # ## The medium
 #
 # Everything below this comment used to be a global string that said "paper". Nine of them
@@ -1402,6 +1413,23 @@ def lost_mentions(before: str, after: str) -> list[str]:
         else:
             lost.append(mention_token(body))
     return lost
+
+
+def guarded_text(before: str, after: str) -> tuple[str, list[str]]:
+    """Keep `after` only when it retained every @-token `before` had.
+
+    A rewrite that drops a token would render a shot no longer told about a picture it is
+    still conditioned on. Unrepairable -- only the model knows where it meant them -- so
+    the stored string stays put and the caller logs `lost`.
+    """
+    before = " ".join(str(before or "").split()).strip()
+    after = " ".join(str(after or "").split()).strip()
+    if not after or after == before:
+        return before, []
+    lost = lost_mentions(before, after)
+    if lost:
+        return before, lost
+    return after, []
 
 
 def expand_mentions(text: str, mentions: dict[str, tuple[int | None, str]] | None,

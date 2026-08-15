@@ -723,9 +723,9 @@ hourly rate. Kept for reference; the pipeline above does not use it.
   legible enough to judge framing by, and that a sketch is a useful read of a shot that will be
   made of paper. Whether the model varies its shot sizes across a reel rather than writing
   five medium shots in a row is the fourth, and the contact sheet is exactly where that shows.
-- **Nothing arbitrates between a design and a beat's own picture.** Bind a wolf and upload a
-  picture of the same wolf to one scene and the render is handed both, described twice. The slot
-  budget notices; nothing else does.
+- **A different photo of the same design still goes through.** Pixel-identical uploads of a
+  bound sheet are refused — bind it, don't copy it. A second drawing of the wolf is still two
+  pictures of one puppet; only the bytes were compared.
 - **Cross-scene consistency is improved but not measured.** Independent scenes no longer
   rely on the `style_bible` text alone — every still is generated conditioned on the cast
   reference image, the bible is in the video prompt too, and the model now looks at each

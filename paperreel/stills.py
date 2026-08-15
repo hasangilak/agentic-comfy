@@ -378,21 +378,31 @@ def _rejected(board: board_mod.Board, beats: list[int], *,
                      verdict="pass")
             continue
         problems = [str(p).strip() for p in verdict.get("problems") or [] if str(p).strip()]
-        corrected = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
+        proposed = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
         for problem in problems:
             log(f"[stills] beat {n}: {problem}")
-        # No corrected prompt means there is nothing to render differently, so rendering again
-        # would just spend wall clock on the same generation with a new seed.
-        if not corrected or corrected == (board.beat(n).get("asset_prompt") or "").strip():
+        before = (board.beat(n).get("asset_prompt") or "").strip()
+        kept, lost = config.guarded_text(before, proposed)
+        # No usable different prompt means there is nothing to render differently, so
+        # rendering again would just spend wall clock on the same generation with a new seed.
+        # A rewrite that dropped @-tokens is the same: the stored prompt stays, so a retry
+        # would be the same picture.
+        if lost:
+            log(f"[stills] beat {n}: rewrite dropped {', '.join(lost)}; prompt left as it was")
+            remember(board, n, "gemini", "Kept: " + ("; ".join(problems) or "nothing to change")
+                     + f" — the rewrite dropped {', '.join(lost)}, so the prompt was left as it was.",
+                     verdict="kept")
+            continue
+        if not kept or kept == before:
             log(f"[stills] beat {n}: kept, the review had no different prompt to offer")
             remember(board, n, "gemini", "Kept: " + ("; ".join(problems) or "nothing to change")
                      + ", but no different prompt to render from.", verdict="kept")
             continue
-        board.beat(n)["asset_prompt"] = corrected
+        board.beat(n)["asset_prompt"] = kept
         failed.append(n)
-        log(f"[stills] beat {n}: prompt rewritten -> {corrected}")
+        log(f"[stills] beat {n}: prompt rewritten -> {kept}")
         remember(board, n, "gemini",
-                 "; ".join(problems) or "This did not match the reel.", prompt=corrected,
+                 "; ".join(problems) or "This did not match the reel.", prompt=kept,
                  regenerated=True, verdict="rewritten")
     if failed or touched:
         board.save()
@@ -623,29 +633,28 @@ def converse(board: board_mod.Board, n: int, message: str, *,
         temperature=0.4,
         model=config.VISION_MODEL,
     )
-    corrected = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
+    proposed = " ".join(str(verdict.get("asset_prompt") or "").split()).strip()
     reply = " ".join(str(verdict.get("reply") or "").split()).strip()
     # A picture arriving with the note is not the model's call: the conditioning changed, so
     # what is on screen was drawn from something the beat no longer says.
     regenerate = bool(verdict.get("regenerate")) or attached > 0
-    changed = bool(corrected) and corrected != before
-    # A rewrite that drops an @ref: token does not fail -- it renders a still no longer told
-    # about a picture it is still conditioned on. Unrepairable here (only the model knows where
-    # it meant them), so it goes in the transcript the director already reads.
-    lost = config.lost_mentions(before, corrected) if changed else []
+    kept, lost = config.guarded_text(before, proposed)
+    changed = kept != before
+    # A rewrite that drops an @-token is not stored: the next render must still be told
+    # about the picture it is conditioned on. Logged, and filed on the transcript.
     if lost:
-        log(f"[stills] beat {n}: the rewrite dropped {', '.join(lost)}")
+        log(f"[stills] beat {n}: the rewrite dropped {', '.join(lost)}; prompt left as it was")
     if changed:
-        board.beat(n)["asset_prompt"] = corrected
-        log(f"[stills] beat {n}: prompt rewritten -> {corrected}")
+        board.beat(n)["asset_prompt"] = kept
+        log(f"[stills] beat {n}: prompt rewritten -> {kept}")
 
     remember(board, n, "user", message)
     spoken = remember(
         board, n, "gemini",
         reply or ("Rewrote the prompt." if changed else "Nothing to change."),
-        prompt=corrected if changed else None,
+        prompt=kept if changed else None,
         regenerated=regenerate or None,
-        error=(f"this rewrite dropped {', '.join(lost)} -- put it back if it mattered"
+        error=(f"this rewrite dropped {', '.join(lost)} -- the prompt was left as it was"
                if lost else None),
     )
     # Saved and published before the render starts, not after: the rewritten prompt is what the
@@ -654,7 +663,7 @@ def converse(board: board_mod.Board, n: int, message: str, *,
     if announce is not None:
         announce()
     if not regenerate:
-        return {"reply": spoken["text"], "asset_prompt": corrected or before, "regenerated": False}
+        return {"reply": spoken["text"], "asset_prompt": kept or before, "regenerated": False}
 
     if board.reference_for(n) is None:
         # Not a refusal -- redrawing the reference has to stay possible or the first image a
@@ -680,13 +689,13 @@ def converse(board: board_mod.Board, n: int, message: str, *,
         board.save()
         if announce is not None:
             announce()
-        return {"reply": spoken["text"], "asset_prompt": corrected or before,
+        return {"reply": spoken["text"], "asset_prompt": kept or before,
                 "regenerated": False, "error": str(unavailable)}
     spoken["regenerated"] = bool(made)
     board.save()
     if announce is not None:
         announce()
-    return {"reply": spoken["text"], "asset_prompt": corrected or before,
+    return {"reply": spoken["text"], "asset_prompt": kept or before,
             "regenerated": bool(made)}
 
 

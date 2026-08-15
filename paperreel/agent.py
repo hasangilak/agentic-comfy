@@ -733,27 +733,25 @@ def revise(board: board_mod.Board, n: int, field: str, message: str, *,
         # the same note with the same words, which reads as not having listened.
         temperature=0.4,
     )
-    text = " ".join(str(verdict.get("text") or "").split()).strip()
+    proposed = " ".join(str(verdict.get("text") or "").split()).strip()
     reply = " ".join(str(verdict.get("reply") or "").split()).strip()
-    changed = bool(text) and text != before
-    # An @ref: token rewritten away does not fail: the beat renders conditioned on a picture the
-    # prompt has stopped naming. Unrepairable from here, so it is said out loud in the reply --
-    # which is the line the director reads to find out what this rewrite did.
-    lost = config.lost_mentions(before, text) if changed else []
-    ops = apply_ops(board, [{"op": "set_beat", "n": n, field: text}]) if changed else []
+    kept, lost = config.guarded_text(before, proposed)
+    changed = kept != before
+    ops = apply_ops(board, [{"op": "set_beat", "n": n, field: kept}]) if changed else []
     if changed:
-        log(f"[gemini] beat {n} {field} -> {text}")
+        log(f"[gemini] beat {n} {field} -> {kept}")
     if lost:
-        log(f"[gemini] beat {n} {field}: the rewrite dropped {', '.join(lost)}")
+        log(f"[gemini] beat {n} {field}: the rewrite dropped {', '.join(lost)}; "
+            "line left as it was")
     if not reply:
         reply = f"Rewrote the {field}." if changed else "Nothing to change."
     if lost:
-        reply += f" (This dropped {', '.join(lost)} -- put it back if it mattered.)"
+        reply += f" (This dropped {', '.join(lost)} -- the line was left as it was.)"
     chat = board.data.setdefault("chat", [])
     chat.append({"role": "user", "text": f"({field} of beat {n}) {message}", "selection": [n]})
     chat.append({"role": "gemini", "text": reply, "ops": ops})
     board.save()
-    return {"field": field, "beat": n, "text": text or before, "reply": reply,
+    return {"field": field, "beat": n, "text": kept or before, "reply": reply,
             "changed": changed, "ops": ops}
 
 

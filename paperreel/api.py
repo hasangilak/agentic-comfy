@@ -22,8 +22,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (agent, board as board_mod, comfy, config, crew, critique, develop, gemini,
-               panels,
+from . import (agent, board as board_mod, compose as compose_mod, comfy, config, crew, critique,
+               develop, gemini, panels,
                papercut, pictures, planner, render, runtime, script, skills,
                staging as staging_mod, stills as stills_mod)
 from .jobs import Job, Runner, runner
@@ -116,29 +116,39 @@ def board_json(board: board_mod.Board) -> dict:
     return board.to_json(rendering=rendering_now(board.slug))
 
 
+async def read_upload(file: UploadFile) -> bytes:
+    """The uploaded bytes, or why they cannot be used. Does not write."""
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"image is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+    return raw
+
+
+def write_image(raw: bytes, dest: Path, *, filename: str = "") -> None:
+    """Decode image bytes and write RGB to `dest`, or answer why they cannot be used."""
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(raw)) as probe:
+            probe.verify()
+        with Image.open(io.BytesIO(raw)) as image:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            image.convert("RGB").save(dest)
+    except Exception:  # noqa: BLE001 - any decode failure is the same answer to the user
+        raise HTTPException(
+            422,
+            f"{filename or 'that file'} is not a readable image. PNG, JPEG and WebP "
+            "work; HEIC from an iPhone does not.",
+        )
+
+
 async def store_upload(file: UploadFile, dest: Path) -> None:
     """Decode an uploaded image and write it to `dest`, or answer why it cannot be used.
 
     Stored at its original size: geometry is settled at render time by media.fit_frame,
     which cover-crops onto the generation grid.
     """
-    from PIL import Image
-
-    raw = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, f"image is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
-    try:
-        # verify() consumes the file object, so the decode needs a second open.
-        with Image.open(io.BytesIO(raw)) as probe:
-            probe.verify()
-        with Image.open(io.BytesIO(raw)) as image:
-            image.convert("RGB").save(dest)
-    except Exception:  # noqa: BLE001 - any decode failure is the same answer to the user
-        raise HTTPException(
-            422,
-            f"{file.filename or 'that file'} is not a readable image. PNG, JPEG and WebP "
-            "work; HEIC from an iPhone does not.",
-        )
+    write_image(await read_upload(file), dest, filename=file.filename or "")
 
 
 # ## Job handlers
@@ -398,6 +408,40 @@ def handle_revise(job: Job, run: Runner) -> dict:
     return result
 
 
+def handle_compose(job: Job, run: Runner) -> dict:
+    """Assemble beat n's still from bound sheets. Local, free, no Gemini."""
+    board = load(job.slug)
+    n = int(job.detail["beat"])
+    run.update(job, phase=f"compose beat {n}", beat=n)
+    path = compose_mod.still(board, n, log=lambda line: run.log(job, line))
+    run.publish_board(board.slug)
+    return {"beat": n, "asset": path.name}
+
+
+def handle_assemble(job: Job, run: Runner) -> dict:
+    """Hold-on-twos stop-motion from the same sheets. Local, free, no GPU."""
+    board = load(job.slug)
+    beats = job.detail.get("beats")
+    wanted = None if beats is None else [int(n) for n in beats]
+    if wanted is not None and len(wanted) == 1:
+        n = wanted[0]
+        run.update(job, phase=f"assemble beat {n}", beat=n)
+        path = compose_mod.clip(
+            board, n,
+            log=lambda line: run.log(job, line),
+            cancelled=lambda: job.cancelling,
+        )
+        run.publish_board(board.slug)
+        return {"beat": n, "assemble": path.name}
+    path = compose_mod.reel(
+        board, wanted,
+        log=lambda line: run.log(job, line),
+        cancelled=lambda: job.cancelling,
+    )
+    run.publish_board(board.slug)
+    return {"assemble": path.name, "beats": wanted}
+
+
 def handle_caption(job: Job, run: Runner) -> dict:
     board = load(job.slug)
     run.log(job, "[gemini] writing the caption")
@@ -473,6 +517,7 @@ for kind, handler in (
     ("ref_draw", handle_ref_draw), ("ref_chat", handle_ref_chat),
     ("stage_draw", handle_stage_draw), ("stage_chat", handle_stage_chat),
     ("panel_write", handle_panel_write), ("panel_draw", handle_panel_draw),
+    ("compose", handle_compose), ("assemble", handle_assemble),
     ("caption", handle_caption), ("render", handle_render),
     ("crew", handle_crew), ("agent", handle_agent),
 ):
@@ -729,6 +774,93 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
             beat["ref_video"] = board_mod.CARRY_UPSTREAM
         else:
             beat.pop("ref_video", None)
+    if "place" in body:
+        incoming = body["place"]
+        if incoming is not None and not isinstance(incoming, dict):
+            raise HTTPException(422, "place is {id: {x, y, scale}} for bound designs")
+        bound = {str(entry.get("id")) for entry in board.bound_staging(n)}
+        current = dict(beat.get("place") or {}) if isinstance(beat.get("place"), dict) else {}
+        for entry_id, spec in (incoming or {}).items():
+            entry_id = str(entry_id)
+            if entry_id not in bound:
+                continue
+            if spec is None:
+                current.pop(entry_id, None)
+                continue
+            if not isinstance(spec, dict):
+                raise HTTPException(422, "each place entry is {x, y, scale}")
+            slot = dict(current.get(entry_id) or {})
+            for key in ("x", "y", "scale"):
+                if key not in spec:
+                    continue
+                try:
+                    slot[key] = float(spec[key])
+                except (TypeError, ValueError):
+                    raise HTTPException(422, f"place.{key} has to be a number") from None
+            if slot:
+                current[entry_id] = slot
+        if current:
+            beat["place"] = current
+        else:
+            beat.pop("place", None)
+    if "move" in body:
+        incoming = body["move"]
+        if incoming is not None and not isinstance(incoming, dict):
+            raise HTTPException(422, "move is {id: {dx, dy}} in frame fractions across the beat")
+        bound = {str(entry.get("id")) for entry in board.bound_staging(n)}
+        current = dict(beat.get("move") or {}) if isinstance(beat.get("move"), dict) else {}
+        for entry_id, spec in (incoming or {}).items():
+            entry_id = str(entry_id)
+            if entry_id not in bound:
+                continue
+            if spec is None:
+                current.pop(entry_id, None)
+                continue
+            if not isinstance(spec, dict):
+                raise HTTPException(422, "each move entry is {dx, dy}")
+            slot = dict(current.get(entry_id) or {})
+            for key in ("dx", "dy"):
+                if key not in spec:
+                    continue
+                try:
+                    slot[key] = float(spec[key])
+                except (TypeError, ValueError):
+                    raise HTTPException(422, f"move.{key} has to be a number") from None
+            if slot:
+                current[entry_id] = slot
+        if current:
+            beat["move"] = current
+        else:
+            beat.pop("move", None)
+    if "cadence" in body:
+        incoming = body["cadence"]
+        if incoming is None:
+            beat.pop("cadence", None)
+        elif not isinstance(incoming, dict):
+            raise HTTPException(422, "cadence is {hold_frames, jitter_px, jitter_deg, seed}")
+        else:
+            slot = dict(beat.get("cadence") or {}) if isinstance(beat.get("cadence"), dict) else {}
+            if "hold_frames" in incoming:
+                try:
+                    slot["hold_frames"] = max(1, int(incoming["hold_frames"]))
+                except (TypeError, ValueError):
+                    raise HTTPException(422, "hold_frames has to be an integer") from None
+            for key in ("jitter_px", "jitter_deg"):
+                if key not in incoming:
+                    continue
+                try:
+                    slot[key] = max(0.0, float(incoming[key]))
+                except (TypeError, ValueError):
+                    raise HTTPException(422, f"{key} has to be a number") from None
+            if "seed" in incoming:
+                try:
+                    slot["seed"] = int(incoming["seed"])
+                except (TypeError, ValueError):
+                    raise HTTPException(422, "seed has to be an integer") from None
+            if slot:
+                beat["cadence"] = slot
+            else:
+                beat.pop("cadence", None)
     board.save()
     runner.publish_board(slug)
     return {"board": board_json(board)}
@@ -1026,6 +1158,22 @@ async def store_refs(board: board_mod.Board, n: int, files: list[UploadFile]) ->
 
     stored = 0
     for file in files:
+        raw = await read_upload(file)
+        twin = board.matching_sheet(raw)
+        if twin is not None:
+            name = board.stage_name(twin)
+            bound = {str(entry.get("id")) for entry in board.bound_staging(n)}
+            if str(twin.get("id")) in bound:
+                raise HTTPException(
+                    409,
+                    f"this scene already binds {name}; uploading the same sheet as a picture "
+                    "would describe it twice. Bind it, don't copy it.",
+                )
+            raise HTTPException(
+                409,
+                f"that's already the design sheet for {name}; bind it to this scene rather "
+                "than uploading a second copy.",
+            )
         index = board.next_ref_index(n)
         if index is None:
             board.save()
@@ -1039,7 +1187,7 @@ async def store_refs(board: board_mod.Board, n: int, files: list[UploadFile]) ->
                    "reference" if automatic else "")
                 + f". {stored} of this upload were stored; remove one to add another.",
             )
-        await store_upload(file, board.ref_path(n, index))
+        write_image(raw, board.ref_path(n, index), filename=file.filename or "")
         stored += 1
 
     board.save()
@@ -1230,12 +1378,41 @@ def stage_id(entry_id: str) -> str:
     return entry_id
 
 
-def stage_busy(slug: str, entry_id: str) -> None:
+def _job_bound_ids(job: Job, board: board_mod.Board) -> set[str]:
+    """Which design sheets a compose/assemble job will read. Empty for any other kind."""
+    if job.kind == "compose":
+        try:
+            beats = [int(job.detail["beat"])]
+        except (KeyError, TypeError, ValueError):
+            return set()
+    elif job.kind == "assemble":
+        raw = job.detail.get("beats")
+        if raw:
+            try:
+                beats = [int(n) for n in raw]
+            except (TypeError, ValueError):
+                return set()
+        else:
+            beats = [beat["n"] for beat in board.ordered_beats()]
+    else:
+        return set()
+    ids: set[str] = set()
+    for n in beats:
+        ids.update(str(entry.get("id")) for entry in board.bound_staging(n))
+    return ids
+
+
+def stage_busy(slug: str, entry_id: str, *, assembling: bool = True) -> None:
     """Refuse while a job for this sheet is queued or running.
 
     Narrowed to this one design rather than reusing `require_structure_idle`, which blocks on
     anything at all: removing a design while an unrelated scene renders is fine. What is not fine
     is deleting the file a queued draw is about to write into, or redrawing one twice at once.
+
+    `assembling` is the extra arm for mutating a sheet: a compose that has already captured
+    this id will read the file, so deleting it underneath is the same bug. Starting a second
+    compose does not pass this arm -- the worker is serial, so two compose jobs queue, the
+    same as two stills.
     """
     busy = next(
         (
@@ -1249,6 +1426,23 @@ def stage_busy(slug: str, entry_id: str) -> None:
     if busy:
         raise HTTPException(
             409, f"that design is already being {'drawn' if busy.kind == 'stage_draw' else 'discussed'}. Wait for the job to finish.",
+        )
+    if not assembling:
+        return
+    board = load(slug)
+    using = next(
+        (
+            job for job in runner.jobs.values()
+            if job.slug == slug and job.kind in ("compose", "assemble")
+            and job.state in ("queued", "running")
+            and entry_id in _job_bound_ids(job, board)
+        ),
+        None,
+    )
+    if using:
+        raise HTTPException(
+            409,
+            "a local assemble is using that sheet. Wait for the job to finish.",
         )
 
 
@@ -1487,6 +1681,69 @@ def draw_panel(slug: str, n: int, body: dict = Body(default={})) -> dict:
     except panels.PanelsError as refused:
         raise HTTPException(refused.status, str(refused))
     job = runner.submit("panel_draw", safe_slug(slug), {"beats": [n]})
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/compose")
+def compose_still(slug: str, n: int) -> dict:
+    """Assemble this beat's still from bound design sheets. Local, free, no Gemini.
+
+    Writes the same `beatN_asset.png` the rest of the pipeline already hashes, so a later
+    H3 render (or a skip of H3) sees the puppets rather than a regenerated photograph of them.
+    """
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    try:
+        compose_mod.ready(board, n)
+    except compose_mod.ComposeError as refused:
+        raise HTTPException(refused.status, str(refused)) from refused
+    for entry in board.bound_staging(n):
+        stage_busy(slug, str(entry.get("id")), assembling=False)
+    job = runner.submit("compose", safe_slug(slug), {"beat": n})
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/assemble")
+def assemble_beat(slug: str, n: int) -> dict:
+    """Hold-on-twos stop-motion for this beat, from the same sheets. Free, no GPU."""
+    board = load(slug)
+    if not any(b["n"] == n for b in board.beats):
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    try:
+        compose_mod.ready(board, n)
+    except compose_mod.ComposeError as refused:
+        raise HTTPException(refused.status, str(refused)) from refused
+    for entry in board.bound_staging(n):
+        stage_busy(slug, str(entry.get("id")), assembling=False)
+    job = runner.submit("assemble", safe_slug(slug), {"beats": [n]})
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/assemble")
+def assemble_reel(slug: str, body: dict = Body(default={})) -> dict:
+    """Assemble the named beats (or every beat that can) and stitch them. Free, no GPU."""
+    board = load(slug)
+    beats = body.get("beats")
+    if beats is not None and not isinstance(beats, list):
+        raise HTTPException(422, "send the scenes to assemble as `beats`")
+    wanted = [beat["n"] for beat in board.ordered_beats()] if beats is None else [int(n) for n in beats]
+    ready: list[int] = []
+    for n in wanted:
+        try:
+            compose_mod.ready(board, n)
+        except compose_mod.ComposeError:
+            continue
+        ready.append(n)
+    if not ready:
+        raise HTTPException(
+            422,
+            "no scene can be assembled yet — bind a drawn design to at least one.",
+        )
+    for n in ready:
+        for entry in board.bound_staging(n):
+            stage_busy(slug, str(entry.get("id")), assembling=False)
+    job = runner.submit("assemble", safe_slug(slug), {"beats": ready})
     return {"job": job.to_json()}
 
 

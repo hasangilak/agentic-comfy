@@ -24,19 +24,30 @@ def run_ffmpeg(args: list[str]) -> None:
         raise RuntimeError(f"ffmpeg failed:\n{result.stderr[-2000:]}")
 
 
-def cutout(path: Path):
+def cutout(source: Path | object, *, keep_largest: bool = True):
     """Key a subject off its flat paper backdrop, returning a tight RGBA crop.
 
     Keys on chromaticity rather than RGB distance. Source art carries a soft drop
     shadow measuring as backdrop x 0.94 -- same hue, lower luminance -- so a plain
     distance threshold either keeps the shadow as a halo or eats the pale paper.
     Normalising out brightness collapses shadow onto backdrop and separates cleanly.
+
+    `source` is a path or an already-open PIL image. `keep_largest` is the historical
+    behaviour -- a prop sheet's dust specks drop away. A character model sheet has four
+    labelled views; passing False keeps every blob above the erosion, which is still the
+    whole contact sheet rather than the FRONT cell. Callers that want one puppet crop
+    the FRONT cell first.
     """
     import numpy as np
     from PIL import Image, ImageFilter
     from scipy import ndimage
 
-    image = Image.open(path).convert("RGBA")
+    if isinstance(source, Path):
+        image = Image.open(source).convert("RGBA")
+        label = source.name
+    else:
+        image = source.convert("RGBA")
+        label = getattr(source, "filename", None) or "image"
     pixels = np.asarray(image).astype(np.float32)[:, :, :3]
 
     patch = 24
@@ -51,7 +62,7 @@ def cutout(path: Path):
     mask = ndimage.binary_fill_holes(np.linalg.norm(chroma - reference, axis=2) > 0.033)
 
     labels, count = ndimage.label(mask)
-    if count > 1:
+    if keep_largest and count > 1:
         sizes = ndimage.sum(mask, labels, range(1, count + 1))
         mask = labels == (int(np.argmax(sizes)) + 1)
     mask = ndimage.binary_erosion(mask, iterations=2, border_value=0)
@@ -62,41 +73,80 @@ def cutout(path: Path):
     image.putalpha(alpha)
     bbox = alpha.point(lambda v: 255 if v > 8 else 0).getbbox()
     if bbox is None:
-        raise ValueError(f"{path.name}: could not separate a subject from the backdrop")
+        raise ValueError(f"{label}: could not separate a subject from the backdrop")
     return image.crop(bbox)
+
+
+def cover_frame(source: Path | None):
+    """Cover-crop a picture (or a paper ground) onto the 768x1344 generation grid."""
+    from PIL import Image
+
+    if source is None:
+        return Image.new("RGBA", (config.GEN_WIDTH, config.GEN_HEIGHT),
+                         (*config.COMPOSE_GROUND, 255))
+    with Image.open(source) as image:
+        image = image.convert("RGB")
+        ratio = config.GEN_WIDTH / config.GEN_HEIGHT
+        if image.width / image.height > ratio:
+            width = round(image.height * ratio)
+            box = ((image.width - width) // 2, 0, (image.width + width) // 2, image.height)
+        else:
+            height = round(image.width / ratio)
+            box = (0, (image.height - height) // 2, image.width, (image.height + height) // 2)
+        return image.crop(box).resize(
+            (config.GEN_WIDTH, config.GEN_HEIGHT), Image.LANCZOS
+        ).convert("RGBA")
+
+
+def _place(frame, subject, *, x: float, y: float, scale: float, rotation: float = 0.0):
+    """Paste one RGBA cutout onto `frame`. x is centre, y is baseline, both 0..1 of the frame."""
+    from PIL import Image, ImageFilter
+
+    width = max(1, round(config.GEN_WIDTH * scale))
+    height = max(1, round(subject.height * width / max(subject.width, 1)))
+    subject = subject.resize((width, height), Image.LANCZOS)
+    if rotation:
+        subject = subject.rotate(rotation, expand=True, resample=Image.BICUBIC)
+        width, height = subject.size
+    left = int(round(config.GEN_WIDTH * x - width / 2))
+    top = int(round(config.GEN_HEIGHT * y - height))
+    shadow = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    shadow.paste((0, 0, 0, 90), (left + 7, top + 12), subject.split()[3])
+    composed = Image.alpha_composite(frame, shadow.filter(ImageFilter.GaussianBlur(9)))
+    composed.alpha_composite(subject, (left, top))
+    return composed
+
+
+def compose_layers(background: Path | None, layers: list[dict], out_path: Path) -> Path:
+    """Stack cutouts onto a set (or a paper ground) at 768x1344.
+
+    Each layer is `{image, x, y, scale, rotation?}`. `image` is a PIL RGBA already keyed.
+    x is the subject's horizontal centre as a fraction of the frame; y is the baseline
+    (the bottom of the cutout); scale is width as a fraction of the frame. Same numbers
+    `compose` has always used for a single character: x=0.5, y=0.88, scale=0.62.
+    """
+    frame = cover_frame(background)
+    for layer in layers:
+        frame = _place(
+            frame, layer["image"],
+            x=float(layer.get("x", 0.5)),
+            y=float(layer.get("y", config.COMPOSE_BASELINE)),
+            scale=float(layer.get("scale", config.COMPOSE_WIDTH_FRACTION)),
+            rotation=float(layer.get("rotation", 0.0)),
+        )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    frame.convert("RGB").save(out_path)
+    return out_path
 
 
 def compose(background: Path, character: Path, out_path: Path,
             *, width_fraction: float = 0.62, baseline: float = 0.88) -> Path:
     """Build a vertical frame from a separate background and character."""
-    from PIL import Image, ImageFilter
-
-    source = Image.open(background).convert("RGB")
-    ratio = config.GEN_WIDTH / config.GEN_HEIGHT
-    crop_w = min(source.width, round(source.height * ratio))
-    crop_h = round(crop_w / ratio)
-    left, top = (source.width - crop_w) // 2, (source.height - crop_h) // 2
-    frame = (
-        source.crop((left, top, left + crop_w, top + crop_h))
-        .resize((config.GEN_WIDTH, config.GEN_HEIGHT), Image.LANCZOS)
-        .convert("RGBA")
+    return compose_layers(
+        background,
+        [{"image": cutout(character), "x": 0.5, "y": baseline, "scale": width_fraction}],
+        out_path,
     )
-
-    subject = cutout(character)
-    width = round(config.GEN_WIDTH * width_fraction)
-    height = round(subject.height * width / subject.width)
-    subject = subject.resize((width, height), Image.LANCZOS)
-    x = (config.GEN_WIDTH - width) // 2
-    y = round(config.GEN_HEIGHT * baseline) - height
-
-    shadow = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-    shadow.paste((0, 0, 0, 90), (x + 7, y + 12), subject.split()[3])
-    frame = Image.alpha_composite(frame, shadow.filter(ImageFilter.GaussianBlur(9)))
-    frame.alpha_composite(subject, (x, y))
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    frame.convert("RGB").save(out_path)
-    return out_path
 
 
 def fit_frame(source: Path, out_path: Path) -> Path:
@@ -189,4 +239,22 @@ def stitch(clips: list[Path], out_path: Path, *, mute: bool = False) -> Path:
     run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(listing),
                 "-vf", _delivery_filter(), *_encode_args(mute), str(out_path)])
     listing.unlink(missing_ok=True)
+    return out_path
+
+
+def encode_frames(frame_dir: Path, out_path: Path, *, fps: int | None = None,
+                  pattern: str = "frame_%04d.png") -> Path:
+    """Turn a numbered PNG sequence into an H.264 clip at generation size.
+
+    Mute: there is no performance. Frame rate is the reel's, so a later stitch does not
+    have to guess. Not cover-cropped -- the frames are already 768x1344.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    rate = str(fps or config.FPS)
+    run_ffmpeg([
+        "-framerate", rate, "-i", str(frame_dir / pattern),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-r", rate, "-an",
+        str(out_path),
+    ])
     return out_path
