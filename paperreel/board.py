@@ -1187,13 +1187,15 @@ class Board:
         sheet on disk: those sheets are the identity lock, fl2va has no socket for them, and
         sending the still as a keyframe instead is how H3 never saw the turnaround. The cut
         stays `asset` on the board -- cascade, the canvas, continuity -- and renders as
-        ref2va with the still as <Picture 1>. Chain and bridge keep a keyframe latent and
-        cannot mix, so their sheets stay words.
+        ref2va with the still as <Picture 1>. Bridge is the other `uses_asset` join and MUST
+        NOT land here: it keeps a last-frame latent and cannot mix. Chain the same.
         """
         source = self.source_for(beat)
         if uses_refs(source):
             return True
-        return uses_asset(source) and bool(self.still_identity_sheets(beat["n"]))
+        # `uses_asset` is also true of bridge, which keeps a last-frame latent and cannot mix.
+        return (source == SOURCE_ASSET
+                and bool(self.still_identity_sheets(beat["n"])))
 
     def opens_on_still(self, beat: dict) -> bool:
         """Does this beat open on a still drawn for it, as <Picture 1> on ref2va?
@@ -1620,8 +1622,9 @@ class Board:
             parts.append(staging)
         # The beat's blocking is in the video prompt, so rewriting where things stand really does
         # change what it would render as -- and it is the beat's own line, not something inherited,
-        # so it reads as `edited`. The medium is board-wide like the style bible above. Both
-        # conditional, both last, in the same order as `render_fingerprint`.
+        # so it reads as `edited`. The medium is board-wide like the style bible above. Temperature
+        # is board-wide too. All three conditional, all last, in the same order as
+        # `render_fingerprint`.
         blocking = " ".join(str(beat.get("blocking") or "").split())
         if blocking:
             parts.append(blocking)

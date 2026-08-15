@@ -256,7 +256,7 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
         hold = board.holds_upstream(beat)
         carry = board.carries_motion(beat)
         opens_on = board.opens_on_still(beat)
-        poses = board.pose_paths(n)
+        poses = board.pose_paths(n)[:board.sequence_count(n)]
         prompt = config.build_prompt(
             beat.get("action", ""),
             scene=beat.get("scene", ""),

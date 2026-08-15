@@ -112,12 +112,14 @@ def drawable(board: board_mod.Board, n: int, index: int | None = None,
     image must not be generated are properties of the board rather than of the request -- and
     there are two ways in, the canvas and (eventually) the agent.
 
-    The join guard is the one that is specific to a picture. `pictures_for` is gated on
-    `uses_refs`, and `still_pictures` only includes uploads on a reference join, so a picture
-    on a chained or keyframe beat conditions neither render: drawing into one is work nobody
-    will ever see. It refuses rather than silently moving the join, because moving a join
-    underneath a redraw is a different act from the one the director asked for. Adding a
-    picture is where the join legitimately moves, and the route that does it says so first.
+    The join guard is the one that is specific to a picture. Director uploads only reach
+    `pictures_for` on the reference join, and `still_pictures` only includes uploads there too,
+    so a picture on a chained or keyframe beat conditions neither render: drawing into one is
+    work nobody will ever see. (Bound character sheets are a different path -- they ride an
+    asset cut on ref2va without moving the join.) It refuses rather than silently moving the
+    join, because moving a join underneath a redraw is a different act from the one the
+    director asked for. Adding a picture is where the join legitimately moves, and the route
+    that does it says so first.
     """
     if board.data.get("manual_stills") and index is None:
         raise PicturesError(

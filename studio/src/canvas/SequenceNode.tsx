@@ -77,11 +77,11 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   // knows that order. `index` is the number the API addresses an upload by, and it is null on
   // an automatic slot -- those follow the still and the cast reference and cannot be edited here.
   const pictures = videoPictures(beat, board.staging ?? []);
-  // `videoPictures` is empty off the reference join, mirroring the server -- so a beat whose join
+  // `videoPictures` is empty on chain and bridge, mirroring the server -- so a beat whose join
   // was cycled away afterwards would show none of the pictures it still has on disk, and offer no
   // way to remove them. They reach no renderer there, which is worth SAYING rather than hiding:
   // silently dropping them from the canvas is how a director ends up believing a scene is
-  // conditioned on something it is not.
+  // conditioned on something it is not. An asset cut that binds character sheets is not empty.
   const stranded = isReference
     ? []
     : refs.map((url, i) => ({
