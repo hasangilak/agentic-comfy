@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, clock, money } from "../api";
-import { slotsLeft, stillPictures } from "../beat";
+import { panelUrls, slotsLeft, stillPictures } from "../beat";
 import {
   DEFAULT_GEMINI_IMAGE_MODEL,
   DEFAULT_GEMINI_IMAGE_SIZE,
@@ -713,7 +713,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                   }
                   className="ml-auto"
                 >
-                  {drawingPanel ? "drawing…" : beat.panel_url ? "✦ redraw panel" : "✦ draw panel"}
+                  {drawingPanel ? "drawing…" : beat.panel_url ? "✦ redraw panels" : "✦ draw panels"}
                 </Button>
               </div>
               <div className="flex gap-3">
@@ -724,14 +724,24 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                   placeholder="medium shot, low angle, the fox at frame left, arrow right"
                   className={`${inputClass} h-24 flex-1`}
                 />
-                {beat.panel_url ? (
-                  <img
-                    src={beat.panel_url}
-                    alt=""
-                    className="h-24 rounded border border-edge bg-ink object-contain"
-                  />
+                {panelUrls(beat).length ? (
+                  <div className="flex h-24 gap-1">
+                    {panelUrls(beat).map((url) => (
+                      <img
+                        key={url}
+                        src={url}
+                        alt=""
+                        className="h-24 rounded border border-edge bg-ink object-contain"
+                      />
+                    ))}
+                  </div>
                 ) : null}
               </div>
+              {(beat.panel_frames ?? []).filter((line) => line.trim()).map((line) => (
+                <p key={line} className="text-[10px] leading-snug text-zinc-400" title={line}>
+                  {line}
+                </p>
+              ))}
             </div>
 
             {beat.render && beat.state === "rendered" ? (

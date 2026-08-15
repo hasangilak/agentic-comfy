@@ -145,16 +145,10 @@ def _still_sources(board: board_mod.Board, n: int, refs_cap: int,
     if not include_current or not current.is_file():
         return pictures
     rest = [picture for picture in pictures if picture[0] != current]
-    # The current still takes slot 0 so this is an edit. Keep the storyboard panel in what
-    # remains: dropping it here would redraw from identity alone and ignore the composition
-    # the first draw was held to. Same reserved-slot rule as `still_pictures`, one slot
-    # already spent.
-    panel = board.panel_path(n)
-    held = [picture for picture in rest if picture[0] == panel]
-    others = [picture for picture in rest if picture[0] != panel]
-    if held and refs_cap >= 2:
-        return [(current, "")] + held + others[:max(0, refs_cap - 2)]
-    return [(current, "")] + rest[:max(0, refs_cap - 1)]
+    # The current still takes slot 0 so this is an edit. Identity then panels then the rest
+    # already sit in `still_pictures` in that order, so a tail-truncate drops an upload or a
+    # set, never a character sheet, and never the first panel while identity still fits.
+    return ([(current, "")] + rest)[:refs_cap]
 
 
 def _runs(board: board_mod.Board, beats: list[int], cap: int,
@@ -235,25 +229,33 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
     # the beat text above, and in the storyboard panel when one is among the pictures; the other
     # images only lock who is in the film and what they are made of.
     if pictures:
-        panel = board.panel_path(n)
-        if any(path == panel for path, _ in pictures):
-            prompt = (
-                f"{prompt} Match the storyboard panel's composition -- shot size, camera angle "
-                f"and who stands where. Do not copy the pencil medium. Any other reference "
-                f"images lock character design, materials and palette only; do not copy their "
-                f"framing."
-            ).strip()
+        shown_panels = [path for path, _ in pictures if path in set(board.panel_paths(n))]
+        if shown_panels:
+            if len(shown_panels) == 1:
+                prompt = (
+                    f"{prompt} Match the storyboard panel's composition -- shot size, camera "
+                    f"angle and who stands where. Do not copy the pencil medium. Any other "
+                    f"reference images lock character design, materials and palette only; do "
+                    f"not copy their framing."
+                ).strip()
+            else:
+                prompt = (
+                    f"{prompt} Match the storyboard panels' composition in sequence -- opening, "
+                    f"then through the action, then the landing -- shot size, camera angle and "
+                    f"who stands where. Do not copy the pencil medium. Any other reference "
+                    f"images lock character design, materials and palette only; do not copy "
+                    f"their framing."
+                ).strip()
         else:
             prompt = (
                 f"{prompt} The reference images lock character design, materials and palette "
                 f"only -- compose this frame at the shot scale and camera angle described above; "
                 f"do not copy a reference's framing."
             ).strip()
-    # And the bound design sheets this still was NOT handed, as words. Four slots do not hold
-    # three characters and a clearing, so `still_pictures` spends them on identity and a set
-    # that does not fit arrives as a sentence. Computed against the very list being conditioned
-    # on, so a sheet is never both an unnamed reference image and a description of a second one
-    # of it.
+    # And the bound design sheets this still was NOT handed, as words. Nine slots now hold a
+    # cast, several graphite panels and a previous pose; a set that still does not fit arrives
+    # as a sentence. Computed against the very list being conditioned on, so a sheet is never
+    # both an unnamed reference image and a description of a second one of it.
     staged = " ".join(config.expand_mentions(
         board.staging_text(n, pictures), mentions, prose=True
     ).split()).strip().rstrip(".")
@@ -708,3 +710,64 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
             label=lambda _n: named,
         )
     return bool(made)
+
+
+def draw_frames(board: board_mod.Board, n: int, *, pictures: Pictures,
+                texts: list[str], out_paths: list[Path],
+                editing: bool,
+                log: Callable[[str], None] = print,
+                progress: Callable[[int, float], None] | None = None,
+                cancelled: Callable[[], bool] | None = None,
+                seed: int | None = None, url: str | None = None,
+                gemini_model: str | None = None,
+                gemini_image_size: str | None = None,
+                style: str | None = None,
+                aspect: str | None = None,
+                label: str | None = None,
+                negative: str | None = None) -> bool:
+    """Render several pictures of one beat as a chained scene, into `out_paths`.
+
+    Storyboard panels are the caller: three graphite frames of one shot, unconditioned on the
+    film (`pictures=[]` so the first frame is `none` and the rest chain off it). `editing` is
+    accepted so the keyword bag `panels.draw` shares with `draw` still type-checks; it is
+    ignored, because a panel is never an edit of an existing still.
+
+    Same Lite/style/aspect contract as `draw`. `vary_seeds` is held so the three sketches read
+    as one take rather than three independent doodles.
+    """
+    del editing  # panels.draw passes the same bag as draw(); a chain is not an edit.
+    if not texts or not out_paths or len(texts) != len(out_paths):
+        return False
+    reported = health(url)
+    if reported is None:
+        raise PapercutError(
+            f"no image server at {url or config.PAPERCUT_URL}. Start it with `make images` "
+            "(or `make run`, which starts all three), or upload the picture by hand."
+        )
+    refs = pictures[:max_references(reported)]
+    named = label or f"beat {n}"
+    log(f"[picture] {named}: drawing {len(out_paths)} frames"
+        + (f", from {', '.join(path.name for path, _note in refs)}" if refs
+           else " (from the words alone)"))
+    beat_model, beat_size = _gemini_settings(board, n)
+    at = {"i": 0}
+
+    def frame_label(_n: int) -> str:
+        at["i"] += 1
+        return f"{named} {at['i']}/{len(out_paths)}"
+
+    with httpx.Client(base_url=url or config.PAPERCUT_URL, timeout=30.0) as client:
+        made = _render_scene(
+            client, board, [n] * len(out_paths), refs, log=log, progress=progress,
+            on_still=None, cancelled=cancelled, seed=seed, texts=texts,
+            out_paths=out_paths,
+            aspect=aspect or config.PAPERCUT_REF_ASPECT,
+            consistency="chain", vary_seeds=False,
+            duration=float(max(len(out_paths), 2)),
+            gemini_model=gemini_model or beat_model,
+            gemini_image_size=gemini_image_size or beat_size,
+            style=style or board.look().sheet,
+            negative=negative,
+            label=frame_label,
+        )
+    return bool(made) or out_paths[0].is_file()

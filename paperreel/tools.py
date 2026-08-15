@@ -632,16 +632,18 @@ def _storyboard_tools(llm: llm_mod.LLM) -> list[Tool]:
             "write_panels",
             "Write the shot grammar -- size, angle, camera move, where the subject sits, what "
             "the arrows point at -- for these beats, or for the whole reel when no beats are "
-            "given. One call covers them all on purpose: shot sizes have to vary ACROSS the "
-            "film, which a model shown one beat at a time cannot do.",
+            f"given. Each beat gets {config.PANEL_SEQUENCE} sketches (opening, midpoint, "
+            "landing of the action). One call covers them all on purpose: shot sizes have to "
+            "vary ACROSS the film, which a model shown one beat at a time cannot do.",
             {"beats": {"type": "array", "items": {"type": "integer"},
                        "description": "which beats, 1-based; omit for all of them"}},
         ), run=write_panels),
         Tool(spec=llm.tool(
             "draw_panels",
-            "Draw the storyboard sketches for these beats, or for every beat that has a panel "
-            "line and no sketch yet. Metered image calls, one per beat, so write the lines "
-            "first and look at them before drawing.",
+            "Draw the storyboard sketches for these beats, or for every beat that has panel "
+            f"lines and is missing a PNG. Metered image calls, {config.PANEL_SEQUENCE} graphite "
+            "frames chained per beat on the cheapest model, so write the lines first and look "
+            "at them before drawing.",
             {"beats": {"type": "array", "items": {"type": "integer"},
                        "description": "which beats, 1-based; omit for the ones still missing"}},
         ), run=draw_panels),

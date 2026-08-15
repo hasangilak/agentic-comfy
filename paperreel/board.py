@@ -317,8 +317,13 @@ class Board:
     def video_path(self, n: int) -> Path:
         return self.workdir / f"beat{n}.mp4"
 
-    def panel_path(self, n: int) -> Path:
-        """This beat's storyboard panel -- a graphite sketch of the shot's framing.
+    def panel_path(self, n: int, index: int = 1) -> Path:
+        """One graphite sketch of this beat, 1-based.
+
+        Pose 1 is `beat<n>_panel.png` -- the file every existing board and every caller that
+        still thinks there is one panel already uses. Pose 2 is `beat<n>_panel2.png`. Same
+        aliasing as `pose_path`, so a sequence of one is indistinguishable from the board that
+        never grew extra frames.
 
         Conditions the still (`still_pictures`) as a composition reference, and is handed to
         H3 never (`pictures_for`). It is in no fingerprint: the still file is what the clip
@@ -329,7 +334,24 @@ class Board:
         serves only files whose parent IS that directory -- a panel in a subfolder would render
         and then never be visible.
         """
-        return self.workdir / f"beat{n}_panel.png"
+        if index <= 1:
+            return self.workdir / f"beat{n}_panel.png"
+        return self.workdir / f"beat{n}_panel{index}.png"
+
+    def panel_paths(self, n: int) -> list[Path]:
+        """Every panel PNG on disk for this beat, consecutive from 1.
+
+        Stops at the first missing file, so a hole does not silently skip a frame. Capped at
+        `PANEL_SEQUENCE`. Extra files past that (an env that used to be higher) stay on disk
+        until `panels.draw` clears them; they are not in this list and do not reach Gemini.
+        """
+        found = []
+        for index in range(1, config.PANEL_SEQUENCE + 1):
+            path = self.panel_path(n, index)
+            if not path.is_file():
+                break
+            found.append(path)
+        return found
 
     def sheet_path(self) -> Path:
         """The whole reel's panels stitched into one numbered contact sheet.
@@ -639,7 +661,7 @@ class Board:
 
         Positions are found by matching PATHS against the list handed in, never by counting the
         automatic slots. That is what lets one method serve `pictures_for` (own still, cast,
-        uploads), `still_pictures` (identity sheets or the cast still, capped at four) and a
+        uploads), `still_pictures` (identity sheets or the cast still, capped at nine) and a
         picture redraw (itself, then the cast) without any of them having to declare how they
         are ordered -- and it is what makes a truncated list answer None for the pictures that
         fell off the end, which is the signal the expander needs to stop naming a position the
@@ -710,13 +732,18 @@ class Board:
             (lambda n, index=index: self.pose_path(n, index))
             for index in range(2, config.MAX_REF_IMAGES + 1)
         )
+        extra_panels = tuple(
+            (lambda n, index=index: self.panel_path(n, index))
+            for index in range(2, config.PANEL_SEQUENCE + 1)
+        )
         # The panel is in here even though it is not a video input, and for exactly the reason
         # the docstring gives: `renumber` renames through this tuple, so a panel left out would
         # hand beat 2 the sketch of the beat that used to be there -- and a still drawn from the
-        # wrong panel is a still of the wrong shot. Poses 2..9 are here for the same reason:
-        # left out, beat 2 would inherit beat 1's in-betweens.
+        # wrong panel is a still of the wrong shot. Poses 2..9 and extra panels 2..k are here
+        # for the same reason: left out, beat 2 would inherit beat 1's in-betweens.
         return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path,
-                self.carry_path, self.assemble_path, self.panel_path, *refs, *poses)
+                self.carry_path, self.assemble_path, self.panel_path, *extra_panels,
+                *refs, *poses)
 
     def reference_path(self) -> Path | None:
         """The still that fixes what the characters look like, for generating a new scene.
@@ -1504,13 +1531,14 @@ class Board:
 
           1. the identity lock -- character and prop sheets, or beat 1's still when those are
              missing. First on purpose: an older image server reads only `referencePath[0]`,
-             and a graphite sketch in that slot would be the whole still;
-          2. this beat's storyboard panel, when the PNG exists and the cap is at least two.
-             Reserved rather than appended: three character sheets already fill four slots, so
-             a tail-truncate would drop the sketch on the shots that need the composition most.
-             Omitted on a cap-1 server -- identity wins;
-          3. the bound set sheet, the previous shot's last pose, then director uploads on a
-             reference join. `uses_refs` still gates the uploads, because a picture on a
+             and a graphite sketch in that slot would be the whole still. Identity is never
+             dropped to make room for extra panels;
+          2. this beat's storyboard panels, consecutive from 1, that still fit. Cap 1 is the
+             older single-reference image server: sending a panel there would replace the
+             identity lock with a pencil drawing;
+          3. the previous shot's last pose, then the bound set sheet, then director uploads on
+             a reference join. Pose before set so a continuation still can hold the puppet
+             when the cap is tight. `uses_refs` still gates the uploads, because a picture on a
              keyframe beat reaches the clip never, and must not quietly steer the still either.
 
         Sheets are join-agnostic -- an asset or bridge still still has to match the puppets.
@@ -1530,35 +1558,42 @@ class Board:
         else:
             identity.extend(sheets)
         identity_paths = {path for path, _ in identity}
-        rest: list[tuple[Path, str]] = [
+        sets: list[tuple[Path, str]] = [
             (path, role) for path, role in self.staging_pictures(n, for_still=True)
             if path not in identity_paths
         ]
-        # Continuity, not a lock: a set that already filled the remaining room must not be
-        # pushed out by it. Deduped against the cast still, which on beat 2 with no sequence
+        # Continuity of the puppet, not a lock on the place: previous pose before the set so
+        # a landing still can still see the last real pose when the cap is tight among what
+        # identity left. Deduped against the cast still, which on beat 2 with no sequence
         # IS the previous shot's only picture.
+        rest: list[tuple[Path, str]] = []
         prev = self.previous_last_pose(n)
-        if prev is not None and prev not in identity_paths and prev not in {path for path, _ in rest}:
+        if prev is not None and prev not in identity_paths:
             rest.append((
                 prev,
                 "the last pose of the previous shot -- same puppets and materials, not "
                 "this shot's camera",
             ))
+        rest.extend(sets)
         if uses_refs(self.source_for(self.beat(n))):
             rest += list(zip(self.ref_paths(n), self.ref_prompts(n)))
         cap = config.MAX_STILL_REFS if limit is None else min(limit, config.MAX_STILL_REFS)
         cap = max(0, cap)
-        panel = self.panel_path(n)
-        held = [(panel, config.REF_ROLE_PANEL)] if panel.is_file() else []
-        # Reserve one slot when the sketch can actually be sent. Cap 1 is the older
-        # single-reference image server: sending the panel there would replace the identity
-        # lock with a pencil drawing.
-        if held and cap >= 2:
-            room = cap - 1
-            identity_kept = identity[:room]
-            rest_kept = rest[:max(0, room - len(identity_kept))]
-            return identity_kept + held + rest_kept
-        return (identity + rest)[:cap]
+        drawn = self.panel_paths(n)
+        total = len(drawn)
+        held = [
+            (path, config.panel_role(index, total))
+            for index, path in enumerate(drawn, start=1)
+        ]
+        # Identity first, always. Cap 1 is the older single-reference image server: a panel
+        # there would replace the lock with a pencil drawing. Extra graphite never evicts a
+        # character sheet.
+        identity_kept = identity[:cap]
+        room = cap - len(identity_kept)
+        panels_kept = held[:room] if cap >= 2 else []
+        room -= len(panels_kept)
+        rest_kept = rest[:max(0, room)]
+        return identity_kept + panels_kept + rest_kept
 
     def ref_budget(self, n: int) -> int:
         """How many pictures the director may upload to this beat, after everything automatic.
@@ -1990,6 +2025,12 @@ class Board:
                 # than the clip, so no join can make one unreachable.
                 "panel": beat.get("panel", ""),
                 "panel_url": self.media_url(self.panel_path(n)),
+                "panel_urls": [self.media_url(path) for path in self.panel_paths(n)],
+                "panel_frames": [
+                    " ".join(str(item).split()).strip()
+                    for item in (beat.get("panel_frames") or [])
+                    if " ".join(str(item).split()).strip()
+                ],
                 # Beside the panel because they answer next to each other -- the panel says how
                 # the shot is framed and this says what is standing in it. Unlike the panel, it
                 # reaches the video prompt and is in both fingerprints, conditionally.
@@ -2050,18 +2091,21 @@ class Board:
                 # sheets are the identity lock -- the canvas must not draw a cast slot Gemini
                 # is never handed.
                 "still_cast": bool(cast) and any(path == cast for path, _ in still),
-                # Whether this beat's storyboard panel reached the still renderer. False when
+                # How many of this beat's storyboard panels reached the still renderer. 0 when
                 # there is no PNG, or when the cap is 1 and identity took the only slot. The
                 # canvas uses this rather than re-deriving the reserved-slot rule.
-                "still_panel": any(path == self.panel_path(n) for path, _ in still),
+                "still_panel": sum(
+                    1 for path, _ in still
+                    if path in {self.panel_path(n, i) for i in range(1, config.PANEL_SEQUENCE + 1)}
+                ),
                 # What the sheets this render was not handed say instead, exactly as the model
                 # will be told it. Published rather than recomputed on the canvas so there is
                 # one answer to "does binding this set actually do anything here".
                 #
                 # Two of them, because the two renders answer differently: the clip has nine
-                # picture slots, the still has four, and a set that does not fit the still's cap
-                # arrives as prose. One field showing the clip's empty answer beside "1 of 2
-                # reach the still" reads as a bug.
+                # picture slots, the still has nine too now, and a set that does not fit the
+                # still's cap arrives as prose. One field showing the clip's empty answer beside
+                # "1 of 2 reach the still" reads as a bug.
                 "staging_text": self.staging_text(n, self.pictures_for(n)),
                 "staging_still_text": self.staging_text(n, still),
                 # Bound designs the still was not handed as pictures, named rather than as
@@ -2221,6 +2265,7 @@ class Board:
             # pictures reach the still as well as the clip. The image server may report a lower
             # one, which `papercut.max_references` honours -- this is the ceiling, not a promise.
             "max_still_refs": config.MAX_STILL_REFS,
+            "panel_sequence": config.PANEL_SEQUENCE,
         }
 
     def script_notes(self) -> list[str]:

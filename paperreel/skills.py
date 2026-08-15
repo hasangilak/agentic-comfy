@@ -84,6 +84,7 @@ def _placeholders() -> dict[str, Callable[[], str]]:
         "BEAT_LENGTHS": lambda: " or ".join(f"{n:g}" for n in config.BEAT_LENGTHS),
         "MAX_REF_IMAGES": lambda: str(config.MAX_REF_IMAGES),
         "MAX_STILL_REFS": lambda: str(config.MAX_STILL_REFS),
+        "PANEL_SEQUENCE": lambda: str(config.PANEL_SEQUENCE),
         "MAX_STAGE_SHEETS": lambda: str(config.MAX_STAGE_SHEETS),
         "CHAR_SHEET": lambda: config.CHAR_SHEET_LAYOUT,
     }

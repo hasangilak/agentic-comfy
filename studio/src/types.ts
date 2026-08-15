@@ -61,8 +61,12 @@ export interface Beat {
    * difference between a panel and `blocking`, which reaches the video prompt.
    */
   panel: string;
-  /** The panel itself: a rough grey sketch of the shot, drawn on the cheapest model. */
+  /** The opening panel itself: a rough grey sketch of the shot, drawn on the cheapest model. */
   panel_url: string | null;
+  /** Every graphite frame of this beat on disk, opening first. `panel_url` is urls[0]. */
+  panel_urls: string[];
+  /** Extra panel lines after the opening (`beat.panel`). Written by the storyboard pass. */
+  panel_frames: string[];
   /**
    * What stands where in the frame. Reaches the video prompt (unlike `panel`), so editing it
    * marks the beat stale.
@@ -131,11 +135,11 @@ export interface Beat {
    */
   still_cast: boolean;
   /**
-   * Whether this scene's storyboard panel reached the still renderer. False when there is no
+   * How many of this scene's storyboard panels reached the still renderer. 0 when there is no
    * PNG, or when the cap is 1 and identity took the only slot. The canvas uses this rather
    * than re-deriving the reserved-slot rule.
    */
-  still_panel: boolean;
+  still_panel: number;
   /**
    * Which of the reel's designs this scene contains, in the order they are numbered. Ids into
    * `Board.staging`, not copies: the designs themselves are reel-level, and a second copy per
@@ -146,18 +150,18 @@ export interface Beat {
    * How many of those actually reach the clip, and the still, as PICTURES. They sit between
    * `auto_refs` and `refs` in the numbering, which is why `ref_offset` counts them.
    *
-   * The two differ on purpose: the still renderer takes four pictures where the video model
-   * takes nine, so a set that does not fit the still's cap reaches it as prose instead. A
-   * node that showed the binding without showing that would be claiming something untrue.
+   * The two differ on purpose: the still renderer takes as many pictures as the video model
+   * (`max_still_refs`, nine) so a set that does not fit the still's cap reaches it as prose
+   * instead. A node that showed the binding without showing that would be claiming something
+   * untrue.
    */
   staging_refs: number;
   staging_still_refs: number;
   /**
    * What the designs this render was NOT handed as pictures say instead, as the model gets it.
    *
-   * Two, because the two renders answer differently: the clip has nine picture slots and
-   * usually needs no prose at all, while the still has four and hands a set that does not
-   * fit as words.
+   * Two, because the two renders can still answer differently: a set that does not fit the
+   * still's remaining slots after identity and panels arrives as words.
    */
   staging_text: string;
   staging_still_text: string;
@@ -349,6 +353,8 @@ export interface Board {
    * as well as into its clip. The image server may report a lower one.
    */
   max_still_refs: number;
+  /** Graphite sketches written per beat: opening, midpoint, landing. */
+  panel_sequence: number;
 }
 
 export interface ReelSummary {

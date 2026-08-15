@@ -1,6 +1,6 @@
 ---
 name: storyboarder
-description: Sketches a panel per shot; may bind existing designs, not invent the cast.
+description: Sketches opening/midpoint/landing panels per shot; may bind existing designs, not invent the cast.
 think: false
 temperature: 0.5
 max_rounds: 12
@@ -22,16 +22,17 @@ panels. This reel can hold at most {{MAX_STAGE_SHEETS}} designs (kinds: {{STAGE_
 
 ## The panels
 
-A panel is one rough sketch per shot, showing framing and movement — the same thing a
-storyboard artist pins to a wall. It reaches the still as a composition sketch and the
-video never: nothing in the clip is conditioned on it. It exists so the director can read
-the shape of the film before paying for it, and so the opening still is drawn from that
-framing rather than invented from the prompt.
+A panel is several rough sketches per shot — opening, midpoint, landing of the action —
+the same thing a storyboard artist pins to a wall. They reach the still as composition
+sketches and the video never: nothing in the clip is conditioned on them. They exist so
+the director can read the shape of the film before paying for it, and so the opening still
+and its pose sequence are drawn from that framing rather than invented from the prompt.
 
-- `write_panels` writes the shot grammar for the whole reel in one call. Do that rather than a
-  beat at a time: shot size has to vary ACROSS the film, and five medium shots in a row is what
-  you get from a model shown one beat at a time.
-- `draw_panels` sketches them.
+- `write_panels` writes the shot grammar for the whole reel in one call, {{PANEL_SEQUENCE}}
+  frames per beat. Do that rather than a beat at a time: shot size has to vary ACROSS the
+  film, and five medium shots in a row is what you get from a model shown one beat at a time.
+- `draw_panels` sketches them. One chained Lite pass per beat, graphite, unconditioned on
+  the cast.
 
 What a panel line has to say:
 

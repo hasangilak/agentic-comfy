@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { Design, KIND_LOOK } from "../canvas/StagingPanel";
+import { panelUrls } from "../beat";
 import { JOIN_LOOK } from "../joins";
 import { AgentTurns } from "../panels/CrewPanel";
 import { nextBinding, sceneList } from "../staging";
@@ -796,14 +797,19 @@ function ShotCard({
             : "open the whole scene"
         }
       >
-        {beat.panel_url ? (
+        {panelUrls(beat).length ? (
           // object-contain: the framing IS the content of a panel, so cropping one to fill a
-          // tile throws away the thing it was drawn to show.
-          <img
-            src={beat.panel_url}
-            alt={`panel ${beat.n}`}
-            className="h-52 w-full bg-ink object-contain"
-          />
+          // tile throws away the thing it was drawn to show. A strip of three is the action.
+          <div className="flex h-52 w-full bg-ink">
+            {panelUrls(beat).map((url) => (
+              <img
+                key={url}
+                src={url}
+                alt={`panel ${beat.n}`}
+                className="h-full min-w-0 flex-1 object-contain"
+              />
+            ))}
+          </div>
         ) : (
           <div className="flex h-52 w-full items-center justify-center border-b border-dashed border-edge bg-ink text-[11px] text-zinc-400">
             {drawing ? "drawing…" : beat.panel?.trim() ? "not drawn yet" : "no shot written"}
@@ -836,8 +842,8 @@ function ShotCard({
               title={
                 shot.draft.trim()
                   ? beat.panel_url
-                    ? "draw this panel again"
-                    : "draw this panel"
+                    ? "draw these panels again"
+                    : "draw these panels"
                   : "write the shot first — there is nothing for a sketch to be a drawing of"
               }
               className="hover:text-warm disabled:opacity-30"
@@ -941,32 +947,50 @@ function ContactSheet({ board }: { board: Board }) {
   return (
     <div>
       <div className="grid grid-cols-3 gap-2 rounded-2xl border border-edge bg-panel p-3">
-        {board.beats.map((beat) => (
-          <button
-            key={beat.n}
-            onClick={() => studio.setExpanded(beat.n)}
-            className="text-left"
-            title={beat.panel || beat.scene}
-          >
-            {beat.panel_url ? (
+        {board.beats.flatMap((beat) => {
+          const urls = panelUrls(beat);
+          if (!urls.length) {
+            return [
+              <button
+                key={beat.n}
+                onClick={() => studio.setExpanded(beat.n)}
+                className="text-left"
+                title={beat.panel || beat.scene}
+              >
+                <div className="flex aspect-[9/16] w-full items-center justify-center rounded-lg border border-dashed border-edge bg-ink text-[10px] text-zinc-300">
+                  —
+                </div>
+                <div className="mt-1 text-center text-[10px] text-zinc-400">
+                  {beat.n} · {beat.actual_seconds.toFixed(0)}s ·{" "}
+                  <span className={JOIN_LOOK[beat.source].tone}>
+                    {JOIN_LOOK[beat.source].short}
+                  </span>
+                </div>
+              </button>,
+            ];
+          }
+          return urls.map((url, index) => (
+            <button
+              key={url}
+              onClick={() => studio.setExpanded(beat.n)}
+              className="text-left"
+              title={beat.panel || beat.scene}
+            >
               <img
-                src={beat.panel_url}
+                src={url}
                 alt={`panel ${beat.n}`}
                 className="aspect-[9/16] w-full rounded-lg bg-ink object-contain"
               />
-            ) : (
-              <div className="flex aspect-[9/16] w-full items-center justify-center rounded-lg border border-dashed border-edge bg-ink text-[10px] text-zinc-300">
-                —
+              <div className="mt-1 text-center text-[10px] text-zinc-400">
+                {beat.n}
+                {urls.length > 1 ? ` · ${index + 1}` : ""} · {beat.actual_seconds.toFixed(0)}s ·{" "}
+                <span className={JOIN_LOOK[beat.source].tone}>
+                  {JOIN_LOOK[beat.source].short}
+                </span>
               </div>
-            )}
-            <div className="mt-1 text-center text-[10px] text-zinc-400">
-              {beat.n} · {beat.actual_seconds.toFixed(0)}s ·{" "}
-              <span className={JOIN_LOOK[beat.source].tone}>
-                {JOIN_LOOK[beat.source].short}
-              </span>
-            </div>
-          </button>
-        ))}
+            </button>
+          ));
+        })}
       </div>
       {board.panel_sheet ? (
         <button

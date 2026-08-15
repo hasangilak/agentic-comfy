@@ -436,8 +436,9 @@ def review(board: board_mod.Board, n: int) -> dict:
     """Look at one finished still and say whether it belongs in this reel.
 
     Identity images (sheets, or the cast still when there are none), then the storyboard
-    panel when it is on disk, then the still, last. Referred to as "the first image" / "the
-    last image" rather than with tags like <Picture 1>: the tag vocabulary is what the
+    panel (the opening sketch -- shot size is judged against that one, not the landing),
+    then the still, last. Referred to as "the first image" / "the last image" rather than
+    with tags like <Picture 1>: the tag vocabulary is what the
     *video* model was trained on, and asked that way here the reviewer answered about only
     one of the two pictures it had been given.
     """
@@ -766,7 +767,7 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
                 f"{index}. this reel's locked cast reference: it fixes what the characters, the "
                 "materials and the palette look like, and this still is held to it."
             )
-        elif path == board.panel_path(n):
+        elif path in set(board.panel_paths(n)):
             listed.append(
                 f"{index}. this beat's storyboard panel -- a graphite sketch of the shot's "
                 "framing, not the film's medium. Match the composition, not the pencil."

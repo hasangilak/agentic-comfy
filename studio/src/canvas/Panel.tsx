@@ -1,16 +1,17 @@
 import { api } from "../api";
+import { panelUrls } from "../beat";
 import type { Beat } from "../types";
 import { useBusy, useStudio } from "../useStudio";
 
 /**
- * The scene's storyboard panel: a rough grey sketch of the shot, and the one line of shot grammar
- * it is drawn from.
+ * The scene's storyboard panels: rough grey sketches of the shot through the action, and the
+ * one line of shot grammar the opening is drawn from.
  *
- * It is not a still and must not read as one. A panel conditions the still as a composition
- * sketch and is handed to H3 never, and it is in no fingerprint — so nothing here can mark a
- * beat stale or change what a render costs. That is why it is drawn on the cheapest model, and
- * why the sketch is deliberately not in the film's medium: a cheap paper-cutout mini would
- * read as a finished frame.
+ * They are not stills and must not read as such. Panels condition the still as composition
+ * sketches and are handed to H3 never, and they are in no fingerprint — so nothing here can
+ * mark a beat stale or change what a render costs. That is why they are drawn on the cheapest
+ * model, and why the sketch is deliberately not in the film's medium: a cheap paper-cutout mini
+ * would read as a finished frame.
  *
  * Shown on every join, unlike the reference pictures. A panel is a drawing of the shot that
  * the still is then drawn from, so no join can make one pointless — which is the whole reason
@@ -19,7 +20,6 @@ import { useBusy, useStudio } from "../useStudio";
 export function Panel({ beat }: { beat: Beat }) {
   const studio = useStudio();
   const board = studio.board!;
-  // `beats` is null on a "draw everything" job, which covers this scene too.
   const busy = useBusy(
     "panel_draw",
     (detail) => !Array.isArray(detail.beats) || detail.beats.includes(beat.n),
@@ -29,11 +29,10 @@ export function Panel({ beat }: { beat: Beat }) {
     (detail) => !Array.isArray(detail.beats) || detail.beats.includes(beat.n),
   );
   const shot = beat.panel?.trim() ?? "";
+  const extras = (beat.panel_frames ?? []).filter((line) => line.trim());
+  const urls = panelUrls(beat);
 
-  // Nothing written and nothing drawn: the row would be an empty control for a feature this board
-  // has not used. The sidebar is where a storyboard is started, for the whole reel at once, because
-  // the shot sizes are only worth anything judged against each other.
-  if (!shot && !beat.panel_url) return null;
+  if (!shot && !urls.length) return null;
 
   return (
     <div className="space-y-1">
@@ -41,11 +40,12 @@ export function Panel({ beat }: { beat: Beat }) {
         <span
           className="text-[10px] uppercase tracking-wide text-zinc-500"
           title={
-            "a rough sketch of this shot, drawn on the cheapest model. It is a planning picture: " +
-            "nothing is rendered from it, so redrawing one costs the render nothing"
+            "rough sketches of this shot through the action, drawn on the cheapest model. " +
+            "Planning pictures: nothing in the clip is rendered from them, so redrawing " +
+            "costs the render nothing"
           }
         >
-          panel
+          {urls.length > 1 ? `panels · ${urls.length}` : "panel"}
         </span>
         {busy || writing ? (
           <span className="text-[10px] text-live">{writing ? "writing…" : "drawing…"}</span>
@@ -56,20 +56,20 @@ export function Panel({ beat }: { beat: Beat }) {
             disabled={busy || writing || !shot}
             title={
               shot
-                ? beat.panel_url
-                  ? "draw this panel again"
-                  : "draw this panel"
+                ? urls.length
+                  ? "draw these panels again"
+                  : "draw these panels"
                 : "no shot written for this scene yet — write the storyboard from the sidebar"
             }
             className="nodrag text-[10px] text-zinc-400 hover:text-warm disabled:opacity-30"
           >
             ✦
           </button>
-          {beat.panel_url ? (
+          {urls.length ? (
             <button
               onClick={() => void studio.guard(() => api.removePanel(board.slug, beat.n))}
               disabled={busy}
-              title="throw this panel away. Nothing is conditioned on it"
+              title="throw these panels away. Nothing in the clip is conditioned on them"
               className="nodrag text-[10px] text-zinc-400 hover:text-red-600 disabled:opacity-30"
             >
               ✕
@@ -78,14 +78,17 @@ export function Panel({ beat }: { beat: Beat }) {
         </div>
       </div>
 
-      {beat.panel_url ? (
-        <img
-          src={beat.panel_url}
-          alt=""
-          // object-contain, not cover: the framing IS the content of a panel, so cropping one to
-          // fit the node would remove the only thing it was drawn to show.
-          className="nodrag h-28 w-full rounded border border-edge bg-ink object-contain"
-        />
+      {urls.length ? (
+        <div className="nodrag flex gap-1">
+          {urls.map((url) => (
+            <img
+              key={url}
+              src={url}
+              alt=""
+              className="h-28 min-w-0 flex-1 rounded border border-edge bg-ink object-contain"
+            />
+          ))}
+        </div>
       ) : null}
 
       {shot ? (
@@ -93,6 +96,11 @@ export function Panel({ beat }: { beat: Beat }) {
           {shot}
         </p>
       ) : null}
+      {extras.map((line) => (
+        <p key={line} className="text-[10px] leading-snug text-zinc-400" title={line}>
+          {line}
+        </p>
+      ))}
     </div>
   );
 }
