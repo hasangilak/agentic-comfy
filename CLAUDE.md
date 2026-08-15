@@ -187,10 +187,13 @@ boundary:
   retuned freely.
 
 **What a still is drawn from is `Board.still_pictures`** — bound character/prop sheets first
-(the identity lock), then a set sheet if it fits the four-slot cap, then director uploads on a
-reference join. Beat 1's composed still is in **only when this beat binds no character sheet**:
-sending both locked every later still to that camera. Deliberately *not* the beat's own still,
-which is the thing being generated. It is a different list from `pictures_for` and a much
+(the identity lock), then this beat's storyboard panel when the PNG exists and the cap is at
+least two (reserved, never first — an older image server that reads only `referencePath[0]`
+must not turn the still into a pencil drawing), then a set sheet if it still fits, then
+director uploads on a reference join. Beat 1's composed still is in **only when this beat binds
+no character sheet**: sending both locked every later still to that camera. Deliberately *not*
+the beat's own still, which is the thing being generated, and deliberately *not* in
+`pictures_for` — H3 never sees the sketch. It is a different list from `pictures_for` and a much
 shorter one (4 against 9). Sheets are join-agnostic so an asset or bridge still still matches
 the puppets; uploads stay gated on `uses_refs`, because a picture on a keyframe beat reaches
 the clip never.
@@ -352,13 +355,15 @@ one scene body serve a still, a reference picture and a design sheet.
 ### Storyboard panels
 
 A storyboard in the film sense is a sheet of rough panels — one drawing per shot, showing framing,
-angle, and with arrows on the panel how the subject and camera move. `panels.py` is that pass, and
-it is the only module here that puts a picture on disk **which reaches no renderer**: a panel
-conditions nothing, is handed to H3 never, and is in no fingerprint. Written by Gemini into a new
-per-beat `panel` field (free, one turn for the whole reel), drawn by `gemini-3.1-flash-lite-image`
-at 1K, and stitched into `reels/<slug>/storyboard_sheet.png`.
+angle, and with arrows on the panel how the subject and camera move. `panels.py` is that pass.
+Written by Gemini into a per-beat `panel` field (free, one turn for the whole reel), drawn by
+`gemini-3.1-flash-lite-image` at 1K, and stitched into `reels/<slug>/storyboard_sheet.png`.
 
-That "reaches no renderer" is the whole design, and four things fall out of it:
+**A panel conditions the still, never the video.** It is in `Board.still_pictures` as a
+composition reference (`config.REF_ROLE_PANEL`) and is absent from `Board.pictures_for`. H3
+never sees the graphite sketch. It is in no fingerprint: the still *file* is what the clip
+hashes, and putting the sketch in `own_fingerprint` / `render_fingerprint` would mark every
+paid clip stale over a drawing the video model never saw. Four things fall out of that split:
 
 - **It is not in `own_fingerprint`, `render_fingerprint` or `frame_ids_for`** — not conditionally,
   as `staging_digest` is, but *never*. An unconditional part would mark every beat of every existing
@@ -367,17 +372,19 @@ That "reaches no renderer" is the whole design, and four things fall out of it:
 - **The sketch is deliberately not the film's medium.** `config.PANEL_STYLE_SUFFIX` asks for
   graphite and grey marker and explicitly negates paper cutout. A Lite 1K version of the real
   medium is a bad preview *of* that medium and reads on the canvas as a finished still, which is the
-  one confusion this feature must not create.
+  one confusion this feature must not create. The still prompt says match the composition, not the
+  pencil.
 - **Nothing conditions a panel** (`pictures=[]`, so `_scene_body` composes `"none"`).
   `pictures.py`'s measured lesson one level further out: a model shown the cast reference draws the
   cast, in the cast's medium. The subject travels as words. The cost is that consistency across
   panels is nil — two panels of the same fox are two readings of one sentence — and that is
-  acceptable in a storyboard and the reason a panel must never be promoted into conditioning.
-- **There is no review pass and no conversation**, and for a third reason again: `stills.review`
-  holds a still to the sheets, `pictures.py` skips review because a beat-level picture is
-  supposed to differ from the cast, `staging.review` holds a sheet to its note rather than to
-  a still, and here there is nothing for a verdict to be *about*. A wrong panel is redrawn, or
-  its one line is edited by hand.
+  acceptable in a storyboard. The still is then drawn from the sketch *and* the identity sheets,
+  which is how the film's medium comes back.
+- **There is no review pass and no conversation on the panel itself**, and for a third reason
+  again: `stills.review` holds a still to the sheets (and now to the panel for shot size),
+  `pictures.py` skips review because a beat-level picture is supposed to differ from the cast,
+  `staging.review` holds a sheet to its note rather than to a still, and here there is nothing
+  for a verdict to be *about*. A wrong panel is redrawn, or its one line is edited by hand.
 
 `config.PANEL_MODEL` / `PANEL_IMAGE_SIZE` are passed explicitly and therefore beat the beat's own
 `gemini_model` (`papercut.draw` does `gemini_model or beat_model`), so a board whose stills are Pro
@@ -386,16 +393,17 @@ at 2K still gets Lite 1K panels — a storyboard drawn on the expensive model is
 not cover-cropped by `media.fit_frame`, and a panel is never a frame. `gemini_options` is
 deliberately **not** wired to any panel route.
 
-**`paperreel/papercut.py` needed no change at all.** `draw` already took `style`, `aspect`,
-`out_path`, `label` and the two Gemini settings, which is exactly a panel — the payoff of
-`staging.py` having generalised it.
+`papercut._beat_text` is the one place the still prompt changes: when the panel is among the
+pictures it asks Gemini to match that composition and not copy the other refs' framing; without
+a panel the old "do not copy a reference's framing" sentence is unchanged.
 
-`Board.panel_path` is in `media_makers()` despite reaching no renderer, because `renumber()`
+`Board.panel_path` is in `media_makers()` even though it is not a video input, because `renumber()`
 renames through that tuple: a panel left out would hand beat 2 the sketch of the beat that used to
-be there. `sheet()` is PIL rather than ffmpeg's `tile` filter — `tile` cannot caption each cell
-without a font path and a `drawtext` escape dance, and a panel with no beat number under it is not
-a storyboard sheet. Job kinds `panel_write` and `panel_draw`; the controls are `RailRow`s in
-`panels/Sidebar.tsx`, **not** `CanvasToolbar`, which is the money bar.
+be there, and the next still would be drawn from the wrong shot. `sheet()` is PIL rather than
+ffmpeg's `tile` filter — `tile` cannot caption each cell without a font path and a `drawtext`
+escape dance, and a panel with no beat number under it is not a storyboard sheet. Job kinds
+`panel_write` and `panel_draw`; the controls are `RailRow`s in `panels/Sidebar.tsx`, **not**
+`CanvasToolbar`, which is the money bar.
 
 ### `@`-mentions
 
@@ -412,7 +420,7 @@ reasons, any one sufficient:
 
 1. The same stored string is read by two prompt builders with incompatible orderings. The video
    model gets `pictures_for` tagged `<Picture N>`; the still model gets `still_pictures`, which is
-   identity sheets (or the cast still) capped at four, with no tags at all. One literal cannot be
+   identity sheets (or the cast still) then the storyboard panel, capped at four, with no tags at all. One literal cannot be
    right in both, so `expand_mentions` takes a `prose=` flag and each consumer passes its own list.
 2. `ref_offset` moves when beat 1's still lands, when a `character.png` is pinned, when carry is
    ticked, and when the join is cycled — four events that touch no text and would silently
@@ -552,7 +560,7 @@ A new per-beat field, and the gap it fills was real. The style bible says what t
 a design sheet says it again precisely for one named thing; the `scene` line says where the shot
 is and at what scale — and is deliberately *shared* by every beat of one continuous shot, so a
 shot where the subject crosses left to right has one scene line for both halves. The `panel`
-says shot size, angle and camera move, and reaches no renderer at all. **Nobody said what is
+says shot size, angle and camera move, and conditions the still, never the clip. **Nobody said what is
 standing where.**
 
 `BLOCKING_PREFIX` ("In frame: ") sits between the staging and the scene line in `build_prompt`.
@@ -912,7 +920,7 @@ the right column for one. Four pieces exist so that neither view owns a copy of 
 - **`studio/src/beat.ts`** is the only place either picture numbering is computed. It mirrors
   `Board.pictures_for` (`videoPictures`, `<Picture N>`, empty on chain/bridge; asset cuts that
   bind character sheets are not empty) and
-  `Board.still_pictures` (`stillPictures`, identity sheets or the cast still, capped) line for
+  `Board.still_pictures` (`stillPictures`, identity then panel then set/uploads, capped) line for
   line, and `board.py` is
   the authority it must not drift from. Before it, the arithmetic was hand-rolled in three
   components; `@` would have made it five.

@@ -8,13 +8,16 @@ cheap and read fast, and it exists so the sequence is judged *before* money goes
     panels.draw_all(board, [1, 2, 3])   # the cheapest Nano Banana draws them, then the sheet
     panels.sheet(board)                 # 3 across, numbered, in reels/<slug>/storyboard_sheet.png
 
-**A panel reaches no renderer.** It is not conditioning, it is not a keyframe, it is in no
-fingerprint (see `Board.own_fingerprint`, where its absence is spelled out). That is what makes
-the cheapest model the right one here rather than a compromise, and it is the difference between
-this module and every other one that puts a picture on disk:
+**A panel conditions the still, never the video.** It is a composition reference for Gemini
+(`Board.still_pictures`) and is handed to H3 never (`Board.pictures_for`). It is in no
+fingerprint (see `Board.own_fingerprint`, where its absence is spelled out): the still file
+is what the clip hashes, and putting the sketch in there would re-price a paid render over a
+drawing the video model never saw. That is what makes the cheapest model the right one here
+rather than a compromise, and it is the difference between this module and every other one
+that puts a picture on disk:
 
-  * `stills.py` renders the image a clip *opens on* and then reviews it against the reel's locked
-    cast reference, rejecting it for drift.
+  * `stills.py` renders the image a clip *opens on*, conditioned on this sketch for framing,
+    and then reviews it against the reel's locked identity sheets, rejecting it for drift.
   * `pictures.py` and `staging.py` render design sheets that later stills are held *to*, and have
     no review pass because a design is supposed to differ from the cast.
   * this module renders a sketch nobody is ever held to. So there is **no review pass and no
@@ -31,8 +34,8 @@ subject travels as words, which `write` puts into the panel text.
 
 The consequence is worth stating rather than discovering: character consistency across panels is
 nil. Two panels of the same fox are two readings of the same sentence. That is what a storyboard
-is for -- the framing is the content -- and it is the reason a panel must never be promoted into
-conditioning.
+is for -- the framing is the content -- and it is why the panel is a composition lock for the
+still, never a picture H3 interpolates through.
 """
 
 from __future__ import annotations
@@ -286,10 +289,10 @@ def drawable(board: board_mod.Board, n: int) -> str:
     """The shot grammar beat `n`'s panel is drawn from. Raises with the reason when there is none.
 
     Deliberately short of `pictures.drawable`'s guards, and each omission is a decision. There is
-    no `manual_stills` check: that flag says the director supplies the images a render uses, and a
-    panel is not one of them. There is no join check either -- `pictures.drawable` refuses on a
-    chained beat because a picture there conditions nothing, and a panel conditions nothing on any
-    join, so no join can make one pointless.
+    no `manual_stills` check: that flag says the director supplies the images a video render uses,
+    and a panel is not one of them. There is no join check either -- `pictures.drawable` refuses
+    on a chained beat because a picture there conditions the clip never, and a panel conditions
+    the still on every join, so no join can make drawing one pointless.
     """
     if not any(b["n"] == n for b in board.beats):
         raise PanelsError(f"no such beat: {n}", status=404)

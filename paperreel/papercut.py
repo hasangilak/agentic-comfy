@@ -11,10 +11,10 @@ The seam is HTTP on loopback, not shared code. Papercut owns prompt composition,
 lock and the progress scraping; this side owns the board and the joins. Neither imports the
 other.
 
-What a still is drawn from is `Board.still_pictures`: the bound design sheets (and the reel's
-locked cast still only when those sheets are missing), then the director's uploads on a
-reference join. They go over as `referencePaths`, capped by whatever the image server reports
-in `limits.maxReferences`.
+What a still is drawn from is `Board.still_pictures`: identity sheets (or the reel's locked
+cast still when those are missing), then this beat's storyboard panel when it fits, then the
+set / previous pose / director uploads on a reference join. They go over as `referencePaths`,
+capped by whatever the image server reports in `limits.maxReferences`.
 
     if papercut.available():
         made = papercut.generate(board, [2, 3, 5], log=print)
@@ -144,7 +144,17 @@ def _still_sources(board: board_mod.Board, n: int, refs_cap: int,
     current = board.asset_path(n)
     if not include_current or not current.is_file():
         return pictures
-    return [(current, "")] + [picture for picture in pictures if picture[0] != current][:max(0, refs_cap - 1)]
+    rest = [picture for picture in pictures if picture[0] != current]
+    # The current still takes slot 0 so this is an edit. Keep the storyboard panel in what
+    # remains: dropping it here would redraw from identity alone and ignore the composition
+    # the first draw was held to. Same reserved-slot rule as `still_pictures`, one slot
+    # already spent.
+    panel = board.panel_path(n)
+    held = [picture for picture in rest if picture[0] == panel]
+    others = [picture for picture in rest if picture[0] != panel]
+    if held and refs_cap >= 2:
+        return [(current, "")] + held + others[:max(0, refs_cap - 2)]
+    return [(current, "")] + rest[:max(0, refs_cap - 1)]
 
 
 def _runs(board: board_mod.Board, beats: list[int], cap: int,
@@ -209,9 +219,8 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
     prompt = config.expand_mentions(
         (beat.get("asset_prompt") or beat.get("action") or "").strip(), mentions, prose=True
     )
-    # The angle used to live only in the panel, which reaches no renderer -- so this still
-    # invented a camera, usually fighting H3's hardcoded straight-on. First in the paragraph
-    # so "the camera angle described above" later in this function has something to describe.
+    # The locked-off angle, in words, so "the camera angle described above" later in this
+    # function has something to describe even when no panel PNG is on disk.
     prompt = (config.camera_still(board.camera_for(beat)) + prompt).strip()
     notes = [
         " ".join(config.expand_mentions(note, mentions, prose=True).split()).rstrip(".")
@@ -223,13 +232,23 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
     # Cast reference is almost always beat 1's still -- often a wide. Without this sentence the
     # image server's continuity clause used to lock camera angle to that wide, and every later
     # "medium" / "close-up" still came back as the same establishing two-shot. Framing lives in
-    # the beat text above; the pictures only lock who is in the film and what they are made of.
+    # the beat text above, and in the storyboard panel when one is among the pictures; the other
+    # images only lock who is in the film and what they are made of.
     if pictures:
-        prompt = (
-            f"{prompt} The reference images lock character design, materials and palette "
-            f"only -- compose this frame at the shot scale and camera angle described above; "
-            f"do not copy a reference's framing."
-        ).strip()
+        panel = board.panel_path(n)
+        if any(path == panel for path, _ in pictures):
+            prompt = (
+                f"{prompt} Match the storyboard panel's composition -- shot size, camera angle "
+                f"and who stands where. Do not copy the pencil medium. Any other reference "
+                f"images lock character design, materials and palette only; do not copy their "
+                f"framing."
+            ).strip()
+        else:
+            prompt = (
+                f"{prompt} The reference images lock character design, materials and palette "
+                f"only -- compose this frame at the shot scale and camera angle described above; "
+                f"do not copy a reference's framing."
+            ).strip()
     # And the bound design sheets this still was NOT handed, as words. Four slots do not hold
     # three characters and a clearing, so `still_pictures` spends them on identity and a set
     # that does not fit arrives as a sentence. Computed against the very list being conditioned

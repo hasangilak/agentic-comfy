@@ -365,9 +365,9 @@ def handle_panel_draw(job: Job, run: Runner) -> dict:
     """Draw storyboard panels, then rebuild the contact sheet.
 
     Its own kind for the reason `stage_draw` is not a variant of `ref_draw`: it addresses a
-    different thing. A panel is a sketch of the shot that reaches no renderer, so this handler runs
-    no review and touches no fingerprint -- and the canvas needs to be able to say which node's
-    panel is being drawn.
+    different thing. A panel is a composition sketch for the still, not a video input, so this
+    handler runs no review and touches no fingerprint -- and the canvas needs to be able to say
+    which node's panel is being drawn.
     """
     board = load(job.slug)
     made = panels.draw_all(
@@ -676,7 +676,8 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
         raise HTTPException(404, f"beat {n} not in {slug}")
     # `panel` is in here with the story fields even though it is not one: it is the shot grammar
     # the storyboard sketch is drawn from, hand-editable exactly as the others are. Editing it
-    # changes no fingerprint, because a panel reaches no renderer.
+    # changes no fingerprint: the panel conditions the still, and the still file is what the
+    # clip hashes.
     # `blocking` is in here with them and, unlike `panel`, editing it DOES move the beat's
     # fingerprint -- it is in the video prompt. That is handled in `own_fingerprint`; nothing
     # extra is needed here, but it is the difference between the two neighbours on this line.
@@ -1425,10 +1426,10 @@ def bind_staging(slug: str, n: int, body: dict = Body(...)) -> dict:
 
 # ## Storyboard panels
 #
-# The one set of routes here that spends nothing the board can lose. A panel reaches no renderer,
-# so none of these can make a rendered beat stale, and `gemini_options` is deliberately NOT wired
-# to any of them: the whole point of the pass is the cheapest model, and letting the canvas pass
-# Pro through would quietly undo it. See `panels.py`.
+# The one set of routes here that cannot stale a paid clip. A panel conditions the still, not
+# the video, so none of these can make a rendered beat stale, and `gemini_options` is deliberately
+# NOT wired to any of them: the whole point of the pass is the cheapest model, and letting the
+# canvas pass Pro through would quietly undo it. See `panels.py`.
 
 
 @app.post("/api/reels/{slug}/panels/text")

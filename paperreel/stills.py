@@ -88,7 +88,8 @@ JUDGEMENT = (
     "- shot size and camera against THIS STILL WAS ASKED FOR / THIS BEAT'S SCENE / THIS BEAT'S "
     "CAMERA: a medium must not be a wide two-shot; a macro of one leg tip must not show the "
     "whole puppet; a still asked for at a low angle must not be eye level. The "
-    "identity images lock who is in the film and what they are made of, not the camera.\n"
+    "identity images lock who is in the film and what they are made of, not the camera."
+    "{panel}\n"
     "- set geometry, only when a set sheet is among the images: the still must be the same "
     "place (same architecture, same web, same branches), not a new reading of the note.\n"
     "- whether the still actually shows what its prompt asked for.\n"
@@ -250,10 +251,11 @@ def generate(board: board_mod.Board, beats: list[int], *,
     so reviewing it at the end of the batch would be too late: rejecting it there would
     replace the reference every other still in the same run had already been matched against.
 
-    What each still is conditioned on is `Board.still_pictures` -- character sheets first, the
-    set if it fits the cap, uploads only on a reference join, and beat 1's still only when this
-    beat binds no character sheet. The review is shown those identity sheets (or that still
-    when there are none). The uploads are the director's intent for one shot, not a lock.
+    What each still is conditioned on is `Board.still_pictures` -- identity first, then the
+    storyboard panel when it fits, then the set if it still fits, uploads only on a reference
+    join, and beat 1's still only when this beat binds no character sheet. The review is shown
+    those identity sheets (or that still when there are none) and the panel as composition.
+    The uploads are the director's intent for one shot, not a lock.
     """
     made: list[int] = []
     remaining = list(beats)
@@ -423,10 +425,11 @@ def _review_lock(board: board_mod.Board, n: int) -> list[tuple[Path, str]]:
 def review(board: board_mod.Board, n: int) -> dict:
     """Look at one finished still and say whether it belongs in this reel.
 
-    Identity images (sheets, or the cast still when there are none) then the still, last.
-    Referred to as "the first image" / "the last image" rather than with tags like <Picture 1>:
-    the tag vocabulary is what the *video* model was trained on, and asked that way here the
-    reviewer answered about only one of the two pictures it had been given.
+    Identity images (sheets, or the cast still when there are none), then the storyboard
+    panel when it is on disk, then the still, last. Referred to as "the first image" / "the
+    last image" rather than with tags like <Picture 1>: the tag vocabulary is what the
+    *video* model was trained on, and asked that way here the reviewer answered about only
+    one of the two pictures it had been given.
     """
     still = board.asset_path(n)
     if not still.is_file():
@@ -435,37 +438,58 @@ def review(board: board_mod.Board, n: int) -> dict:
     prompt = (beat.get("asset_prompt") or "").strip()
     action = (beat.get("action") or "").strip()
     locks = _review_lock(board, n)
+    panel = board.panel_path(n)
+    has_panel = panel.is_file()
     images: list[Path] = [path for path, _ in locks]
     parts: list[str] = []
-    if locks:
-        count = len(locks)
-        if count == 1 and not board.still_identity_sheets(n):
-            parts.append(
-                "The first image is this reel's locked cast reference: it fixes what the "
-                "characters, the materials and the palette look like. The last image is a new "
-                "opening still for a different shot in the same reel."
+    listed: list[str] = []
+    for index, (_path, role) in enumerate(locks, start=1):
+        said = " ".join(str(role or "").split())
+        if index == 1 and len(locks) == 1 and not board.still_identity_sheets(n):
+            listed.append(
+                f"{index}. this reel's locked cast reference: it fixes what the characters, "
+                "the materials and the palette look like."
             )
         else:
-            listed = []
-            for index, (_path, role) in enumerate(locks, start=1):
-                said = " ".join(str(role or "").split())
-                listed.append(
-                    f"{index}. a design sheet this still is held to"
-                    + (f" -- {said}" if said else ".")
-                )
-            listed.append(f"{count + 1}. the opening still under review.")
-            parts.append(
-                f"You are given {count + 1} images, in this order:\n" + "\n".join(listed)
-                + " The design sheets lock who is in the film and what they are made of, not "
-                "the camera. The last image is a new opening still for a different shot."
+            listed.append(
+                f"{index}. a design sheet this still is held to"
+                + (f" -- {said}" if said else ".")
             )
-    else:
+    offset = len(listed)
+    if has_panel:
+        images.append(panel)
+        listed.append(
+            f"{offset + 1}. this beat's storyboard panel -- a graphite sketch of the shot's "
+            "size and angle, not the film's medium."
+        )
+        offset += 1
+    images.append(still)
+    listed.append(f"{offset + 1}. the opening still under review.")
+    if len(images) == 1:
         parts.append(
             "The image is the opening still that will define the look of a whole reel, so "
             "there is nothing yet to compare it against -- judge it against the description "
             "below instead."
         )
-    images.append(still)
+    else:
+        extra = ""
+        if locks:
+            extra += (
+                " The design sheets lock who is in the film and what they are made of, not "
+                "the camera."
+            )
+        if has_panel:
+            extra += (
+                " The storyboard panel is the composition to match; do not copy the pencil."
+            )
+        extra += (
+            " The last image is the opening still that will define the look of a whole reel."
+            if not locks else
+            " The last image is a new opening still for a different shot."
+        )
+        parts.append(
+            f"You are given {len(images)} images, in this order:\n" + "\n".join(listed) + extra
+        )
     parts.append(f"STYLE BIBLE: {board.identity()}")
     parts.append(f"REQUIRED OF EVERY STILL: {board.look().still}")
     if beat.get("scene"):
@@ -483,7 +507,13 @@ def review(board: board_mod.Board, n: int) -> dict:
         # holding tokens, this is the one nobody is watching when it does.
         if config.mention_bodies(prompt):
             parts.append(config.MENTION_NOTE)
-    parts.append(JUDGEMENT.format(medium=board.look().judge))
+    panel_hold = (
+        " When a storyboard panel is among the images, hold shot size and angle to that "
+        "sketch; it is composition, not the medium -- do not reject the still for not being "
+        "pencil."
+        if has_panel else ""
+    )
+    parts.append(JUDGEMENT.format(medium=board.look().judge, panel=panel_hold))
     parts.append("Return JSON only.")
     return gemini.structured(
         [{"role": "user", "content": "\n\n".join(parts),
@@ -726,6 +756,11 @@ def _chat_messages(board: board_mod.Board, n: int, message: str,
             listed.append(
                 f"{index}. this reel's locked cast reference: it fixes what the characters, the "
                 "materials and the palette look like, and this still is held to it."
+            )
+        elif path == board.panel_path(n):
+            listed.append(
+                f"{index}. this beat's storyboard panel -- a graphite sketch of the shot's "
+                "framing, not the film's medium. Match the composition, not the pencil."
             )
         elif path in identity:
             listed.append(

@@ -6,14 +6,15 @@ import { useBusy, useStudio } from "../useStudio";
  * The scene's storyboard panel: a rough grey sketch of the shot, and the one line of shot grammar
  * it is drawn from.
  *
- * It is not a still and must not read as one. A panel reaches no renderer — it conditions nothing,
- * it is handed to no model, and it is in no fingerprint — so nothing here can mark a beat stale or
- * change what a render costs. That is why it is drawn on the cheapest model, and why the sketch is
- * deliberately not in the film's medium: a cheap paper-cutout mini would read as a finished frame.
+ * It is not a still and must not read as one. A panel conditions the still as a composition
+ * sketch and is handed to H3 never, and it is in no fingerprint — so nothing here can mark a
+ * beat stale or change what a render costs. That is why it is drawn on the cheapest model, and
+ * why the sketch is deliberately not in the film's medium: a cheap paper-cutout mini would
+ * read as a finished frame.
  *
- * Shown on every join, unlike the reference pictures. A panel is a drawing OF the shot rather than
- * an input TO it, so no join can make one pointless — which is the whole reason `pictures.drawable`
- * refuses on a chained beat and `panels.drawable` does not.
+ * Shown on every join, unlike the reference pictures. A panel is a drawing of the shot that
+ * the still is then drawn from, so no join can make one pointless — which is the whole reason
+ * `pictures.drawable` refuses on a chained beat and `panels.drawable` does not.
  */
 export function Panel({ beat }: { beat: Beat }) {
   const studio = useStudio();

@@ -9,9 +9,10 @@ import type { Beat, StageEntry } from "./types";
  * then the director's uploads — and addresses them as `<Picture N>`. Empty on chain and bridge.
  * An asset cut that binds character sheets is not empty: H3 has no keyframe socket for a
  * turnaround, so that cut is ref2va with the still as Picture 1. The STILL model is given
- * `Board.still_pictures` — identity sheets (or the cast still when there are none), then
- * uploads on a reference join, capped at four — and is given no tags at all. The same picture
- * is a different number in each, and in the two fields that feed them.
+ * `Board.still_pictures` — identity sheets (or the cast still when there are none), then this
+ * beat's storyboard panel when it fits, then uploads on a reference join, capped at four — and
+ * is given no tags at all. The same picture is a different number in each, and in the two
+ * fields that feed them.
  *
  * This module mirrors those two methods and must not drift from them; `board.py` is the
  * authority, and every guard below quotes the line it is mirroring. Before this existed the
@@ -171,18 +172,20 @@ export function videoPictures(beat: Beat, staging: StageEntry[] = []): PictureRe
  * What the STILL model is given. Mirrors `Board.still_pictures`.
  *
  * Identity sheets (character/prop) are join-agnostic. The composed cast still is in only when
- * those sheets are missing. Director uploads are in only on a reference join. Everything past
- * the cap stays in the list but is marked unavailable — hiding it would make the menu disagree
- * with the tray you are looking at.
+ * those sheets are missing. The storyboard panel is reserved a slot when the PNG exists and
+ * the cap is at least two — never first, so an older image server that reads only the first
+ * reference does not turn the still into a pencil drawing. Director uploads are in only on a
+ * reference join. Everything past the cap stays in the list but is marked unavailable —
+ * hiding it would make the menu disagree with the tray you are looking at.
  */
 export function stillPictures(beat: Beat, staging: StageEntry[] = []): PictureRef[] {
   const hasIdentity = (beat.staging ?? [])
     .map((id) => staging.find((entry) => entry.id === id))
     .some((entry) => Boolean(entry?.sheet) && entry?.kind !== "environment");
   const cast = hasIdentity ? null : castRef(beat);
-  const found: PictureRef[] = [];
+  const identity: PictureRef[] = [];
   if (cast) {
-    found.push({
+    identity.push({
       index: null,
       id: "cast",
       url: cast.url,
@@ -192,12 +195,23 @@ export function stillPictures(beat: Beat, staging: StageEntry[] = []): PictureRe
       token: "@cast",
     });
   }
-  found.push(...stagePictures(beat, staging, true));
+  const staged = stagePictures(beat, staging, true);
+  const identitySheets = staged.filter((picture) => {
+    const id = picture.id?.startsWith(STAGE_PREFIX) ? picture.id.slice(STAGE_PREFIX.length) : "";
+    return staging.find((entry) => entry.id === id)?.kind !== "environment";
+  });
+  const envSheets = staged.filter((picture) => {
+    const id = picture.id?.startsWith(STAGE_PREFIX) ? picture.id.slice(STAGE_PREFIX.length) : "";
+    return staging.find((entry) => entry.id === id)?.kind === "environment";
+  });
+  identity.push(...identitySheets);
+  const rest: PictureRef[] = [...envSheets];
   if (
     beat.previous_pose &&
-    !found.some((picture) => picture.url === beat.previous_pose)
+    !identity.some((picture) => picture.url === beat.previous_pose) &&
+    !rest.some((picture) => picture.url === beat.previous_pose)
   ) {
-    found.push({
+    rest.push({
       index: null,
       id: null,
       url: beat.previous_pose,
@@ -208,20 +222,59 @@ export function stillPictures(beat: Beat, staging: StageEntry[] = []): PictureRe
     });
   }
   if (beat.source === "reference") {
-    found.push(...uploads(beat));
+    rest.push(...uploads(beat));
   }
+  const panel: PictureRef | null = beat.panel_url
+    ? {
+        index: null,
+        id: null,
+        url: beat.panel_url,
+        note:
+          "this beat's storyboard panel -- a graphite sketch of this shot's framing, angle, " +
+          "and who stands where. Match that composition. Do not copy the pencil medium",
+        tag: "",
+        label: "storyboard panel",
+        token: null,
+      }
+    : null;
   // How many of this list the still renderer actually gets. Counted off the numbers the
   // server publishes rather than off `max_still_refs`, because the image server may report a
-  // lower cap than ours and those are what it decided. The previous pose is extra continuity
-  // and is already in `found` when it fitted.
+  // lower cap than ours and those are what it decided. `still_panel` is the reserved slot;
+  // the previous pose is extra continuity and is already in `rest` when it fitted.
   const prevExtra =
     beat.previous_pose && beat.previous_pose !== cast?.url ? 1 : 0;
-  const reaching = (beat.still_cast ? 1 : 0) + beat.staging_still_refs + beat.still_refs + prevExtra;
+  const reaching =
+    (beat.still_cast ? 1 : 0) +
+    beat.staging_still_refs +
+    beat.still_refs +
+    prevExtra +
+    (beat.still_panel ? 1 : 0);
+  let found: PictureRef[];
+  if (panel && beat.still_panel) {
+    const room = Math.max(0, reaching - 1);
+    const identityKept = identity.slice(0, room);
+    const restKept = rest.slice(0, Math.max(0, room - identityKept.length));
+    found = [
+      ...identityKept,
+      panel,
+      ...restKept,
+      ...identity.slice(identityKept.length),
+      ...rest.slice(restKept.length),
+    ];
+  } else {
+    found = [...identity, ...rest];
+    if (panel) found.push(panel);
+  }
   return found.map((picture, at) => ({
     ...picture,
     tag: `the ${ordinal(at + 1)} reference image`,
     ...(at >= reaching
-      ? { unavailable: "past the still renderer's cap — this one reaches the clip only" }
+      ? {
+          unavailable:
+            picture.label === "storyboard panel"
+              ? "past the still renderer's cap — this sketch was not sent"
+              : "past the still renderer's cap — this one reaches the clip only",
+        }
       : {}),
   }));
 }

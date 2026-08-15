@@ -288,10 +288,12 @@ class Board:
         return self.workdir / f"beat{n}.mp4"
 
     def panel_path(self, n: int) -> Path:
-        """This beat's storyboard panel -- a sketch of the shot, drawn to be looked at and nothing else.
+        """This beat's storyboard panel -- a graphite sketch of the shot's framing.
 
-        The one per-beat image that reaches no renderer: it is not conditioning, it is not a
-        keyframe, and it is in no fingerprint. See `panels.py` and `config.PANEL_STYLE_SUFFIX`.
+        Conditions the still (`still_pictures`) as a composition reference, and is handed to
+        H3 never (`pictures_for`). It is in no fingerprint: the still file is what the clip
+        hashes, and putting the sketch in there would re-price a paid render over a drawing
+        the video model never saw. See `panels.py` and `config.REF_ROLE_PANEL`.
 
         Directly in the reel directory like every other per-beat file, because `api.media_file`
         serves only files whose parent IS that directory -- a panel in a subfolder would render
@@ -678,11 +680,11 @@ class Board:
             (lambda n, index=index: self.pose_path(n, index))
             for index in range(2, config.MAX_REF_IMAGES + 1)
         )
-        # The panel is in here despite reaching no renderer, and for exactly the reason the
-        # docstring gives: `renumber` renames through this tuple, so a panel left out would hand
-        # beat 2 the sketch of the beat that used to be there -- and a panel is read by eye, which
-        # is the one kind of orphan nothing else would catch. Poses 2..9 are here for the same
-        # reason: left out, beat 2 would inherit beat 1's in-betweens.
+        # The panel is in here even though it is not a video input, and for exactly the reason
+        # the docstring gives: `renumber` renames through this tuple, so a panel left out would
+        # hand beat 2 the sketch of the beat that used to be there -- and a still drawn from the
+        # wrong panel is a still of the wrong shot. Poses 2..9 are here for the same reason:
+        # left out, beat 2 would inherit beat 1's in-betweens.
         return (self.asset_path, self.frame_path, self.end_frame_path, self.video_path,
                 self.carry_path, self.panel_path, *refs, *poses)
 
@@ -1361,6 +1363,10 @@ class Board:
         Binding a sheet DOES renumber the uploads below it, and that is safe by construction
         rather than by luck: this method returns (path, role) pairs, so every note travels with
         its picture, and `mentions` resolves by path rather than by position.
+
+        The storyboard panel is not in this list. It conditions the still (`still_pictures`) and
+        is handed to H3 never -- a graphite sketch in a video reference slot is how the clip
+        becomes a drawing.
         """
         beat = self.beat(n)
         if not self.wires_refs(beat):
@@ -1395,18 +1401,18 @@ class Board:
         the thing being generated here, so it cannot also condition itself. What is left, in this
         order:
 
-          1. the reel's locked cast reference -- beat 1's still -- ONLY when this beat binds no
-             character or prop sheet. A turnaround is the puppet; the composed wide is a shot,
-             and sending both locked every later still to that camera;
-          2. the bound design sheets, characters and props first, environments last so the
-             four-slot cap drops the set first (`staging_pictures`). A set that fits is a
-             picture: dropping it unconditionally was five different webs from one environment
-             note. Sheets are join-agnostic -- an asset or bridge still still has to match the
-             puppets;
-          3. the director's uploads, only on a reference join. `uses_refs` still gates those,
-             because a picture on a keyframe beat reaches the clip never, and must not quietly
-             steer the still either.
+          1. the identity lock -- character and prop sheets, or beat 1's still when those are
+             missing. First on purpose: an older image server reads only `referencePath[0]`,
+             and a graphite sketch in that slot would be the whole still;
+          2. this beat's storyboard panel, when the PNG exists and the cap is at least two.
+             Reserved rather than appended: three character sheets already fill four slots, so
+             a tail-truncate would drop the sketch on the shots that need the composition most.
+             Omitted on a cap-1 server -- identity wins;
+          3. the bound set sheet, the previous shot's last pose, then director uploads on a
+             reference join. `uses_refs` still gates the uploads, because a picture on a
+             keyframe beat reaches the clip never, and must not quietly steer the still either.
 
+        Sheets are join-agnostic -- an asset or bridge still still has to match the puppets.
         Beat 1 itself has no cast slot (`reference_for` is None) and now gets the sheets, so the
         defining still is drawn from the designs rather than from a paragraph.
 
@@ -1414,27 +1420,44 @@ class Board:
         and a path list beside a note list that can slip by one is the bug that method exists to
         make impossible. The still prompt names nothing by number.
         """
-        found: list[tuple[Path, str]] = []
-        if not self.still_identity_sheets(n):
+        identity: list[tuple[Path, str]] = []
+        sheets = self.still_identity_sheets(n)
+        if not sheets:
             cast = self.reference_for(n)
             if cast is not None:
-                found.append((cast, ""))
-        found += self.staging_pictures(n, for_still=True)
-        # The previous shot's last pose, when it fits. Identity sheets come first; this is
-        # continuity, not a lock, and a set that already filled the cap must not be pushed
-        # out by it. Deduped against the cast still, which on beat 2 with no sequence IS the
-        # previous shot's only picture.
+                identity.append((cast, ""))
+        else:
+            identity.extend(sheets)
+        identity_paths = {path for path, _ in identity}
+        rest: list[tuple[Path, str]] = [
+            (path, role) for path, role in self.staging_pictures(n, for_still=True)
+            if path not in identity_paths
+        ]
+        # Continuity, not a lock: a set that already filled the remaining room must not be
+        # pushed out by it. Deduped against the cast still, which on beat 2 with no sequence
+        # IS the previous shot's only picture.
         prev = self.previous_last_pose(n)
-        if prev is not None and prev not in {path for path, _ in found}:
-            found.append((
+        if prev is not None and prev not in identity_paths and prev not in {path for path, _ in rest}:
+            rest.append((
                 prev,
                 "the last pose of the previous shot -- same puppets and materials, not "
                 "this shot's camera",
             ))
         if uses_refs(self.source_for(self.beat(n))):
-            found += list(zip(self.ref_paths(n), self.ref_prompts(n)))
+            rest += list(zip(self.ref_paths(n), self.ref_prompts(n)))
         cap = config.MAX_STILL_REFS if limit is None else min(limit, config.MAX_STILL_REFS)
-        return found[:max(0, cap)]
+        cap = max(0, cap)
+        panel = self.panel_path(n)
+        held = [(panel, config.REF_ROLE_PANEL)] if panel.is_file() else []
+        # Reserve one slot when the sketch can actually be sent. Cap 1 is the older
+        # single-reference image server: sending the panel there would replace the identity
+        # lock with a pencil drawing.
+        if held and cap >= 2:
+            room = cap - 1
+            identity_kept = identity[:room]
+            rest_kept = rest[:max(0, room - len(identity_kept))]
+            return identity_kept + held + rest_kept
+        return (identity + rest)[:cap]
 
     def ref_budget(self, n: int) -> int:
         """How many pictures the director may upload to this beat, after everything automatic.
@@ -1553,6 +1576,10 @@ class Board:
         camera = self.camera_digest(beat)
         if camera:
             parts.append(camera)
+        # Deliberately absent: `panel` and the panel image. The sketch conditions the still, not
+        # this clip; the still file is already hashed above. Putting it in here would mark every
+        # paid render stale over a drawing H3 never sees. Same reasoning that keeps
+        # `staging_digest` conditional, one step stronger: this part is never added at all.
         return fingerprint(*parts)
 
     def medium(self) -> str:
@@ -1738,11 +1765,11 @@ class Board:
         camera = self.camera_digest(beat)
         if camera:
             parts.append(camera)
-        # Deliberately absent: `panel` and the panel image. A storyboard panel is a sketch of the
-        # shot that reaches no renderer, so nothing about the render changes when one is redrawn --
-        # and putting it in here would mark every beat of every existing board `edited` at once and
-        # re-price a paid render over a drawing nobody rendered from. Same reasoning that keeps
-        # `staging_digest` conditional, one step stronger: this part is never added at all.
+        # Deliberately absent: `panel` and the panel image. The sketch conditions the still, not
+        # this clip; the still file is already hashed above. Putting it in here would mark every
+        # beat of every existing board `edited` at once and re-price a paid render over a drawing
+        # H3 never sees. Same reasoning that keeps `staging_digest` conditional, one step
+        # stronger: this part is never added at all.
         return fingerprint(*parts)
 
     def pending(self, *, rendering: set[int] | None = None) -> list[int]:
@@ -1849,13 +1876,13 @@ class Board:
                 "asset_chat": beat.get("asset_chat") or [],
                 # The shot grammar this beat's storyboard panel is drawn from -- shot size, angle,
                 # camera move -- and the panel itself. Shown on every join, unlike the reference
-                # pictures: a panel is a sketch of the shot rather than an input to it, so no join
-                # can make one unreachable.
+                # pictures: a panel is a sketch of the shot, and it conditions the still rather
+                # than the clip, so no join can make one unreachable.
                 "panel": beat.get("panel", ""),
                 "panel_url": self.media_url(self.panel_path(n)),
                 # Beside the panel because they answer next to each other -- the panel says how
                 # the shot is framed and this says what is standing in it. Unlike the panel, it
-                # reaches the render and is in both fingerprints, conditionally.
+                # reaches the video prompt and is in both fingerprints, conditionally.
                 "blocking": beat.get("blocking", ""),
                 # The locked-off angle for this take. Always one of the five, resolved --
                 # absent on disk means eye, so the chips have something to highlight on a
@@ -1913,6 +1940,10 @@ class Board:
                 # sheets are the identity lock -- the canvas must not draw a cast slot Gemini
                 # is never handed.
                 "still_cast": bool(cast) and any(path == cast for path, _ in still),
+                # Whether this beat's storyboard panel reached the still renderer. False when
+                # there is no PNG, or when the cap is 1 and identity took the only slot. The
+                # canvas uses this rather than re-deriving the reserved-slot rule.
+                "still_panel": any(path == self.panel_path(n) for path, _ in still),
                 # What the sheets this render was not handed say instead, exactly as the model
                 # will be told it. Published rather than recomputed on the canvas so there is
                 # one answer to "does binding this set actually do anything here".

@@ -328,6 +328,14 @@ REF_ROLE_CAST = (
     "this reel's locked cast reference -- it fixes what the characters and the materials look "
     "like everywhere in the film, and it is NOT this shot's setting or framing"
 )
+# Still-only. The panel is a composition reference for Gemini, never an H3 picture -- a graphite
+# sketch in a video slot is how the clip becomes a drawing. `Board.still_pictures` reserves a
+# slot for it; `Board.pictures_for` does not mention it.
+REF_ROLE_PANEL = (
+    "this beat's storyboard panel -- a graphite sketch of this shot's framing, angle, and "
+    "who stands where. Match that composition. Do not copy the pencil medium; the film is "
+    "made of the materials in the style"
+)
 # Poses 2..k of a stop-motion sequence. Pose 1 keeps REF_ROLE_OPENING, because that is still
 # where the clip begins; these are the in-betweens the video model interpolates through so a
 # ten-second transform cannot drop the puppet and invent a new one mid-clip.
@@ -1012,9 +1020,10 @@ STAGE_CHAT_MEMORY = int(os.environ.get("PAPERREEL_STAGE_CHAT_MEMORY", "40"))
 # framing, the angle and, with arrows on the panel, how the subject and the camera move. It is
 # drawn cheap and read fast, and it exists so the sequence is judged before money goes out.
 #
-# Everything else in this file describes a picture that reaches a renderer. A panel does not: it
-# conditions nothing, is handed to H3 never, and is in no fingerprint. It is a planning artifact,
-# which is what makes the cheapest model the right one rather than a compromise.
+# Everything else in this file describes a picture that reaches a renderer. A panel reaches the
+# still renderer as a composition sketch (`Board.still_pictures`, `config.REF_ROLE_PANEL`) and
+# is handed to H3 never. It is in no fingerprint: the still file is what the clip hashes. That
+# split is what makes the cheapest model the right one rather than a compromise.
 PANEL_MODEL = os.environ.get("PAPERREEL_PANEL_MODEL", "gemini-3.1-flash-lite-image")
 # Lite is 1K-only, which the image server enforces itself and `api.gemini_options` rejects early.
 # Stated here so a change of PANEL_MODEL has the pair to change in one place.
@@ -1322,8 +1331,8 @@ def reference_roles(notes: list[str]) -> str:
 # stored string is read by two prompt builders with two incompatible orderings -- the video
 # model gets `pictures_for` (own still, identity sheets or the cast still, uploads) tagged
 # `<Picture N>`, the still model
-# gets `still_pictures` (identity sheets or the cast still, then uploads on a reference join,
-# capped at four) with no tags at all -- so one literal
+# gets `still_pictures` (identity sheets or the cast still, then the storyboard panel, then
+# uploads on a reference join, capped at four) with no tags at all -- so one literal
 # expansion cannot be correct in both places, and a number typed into prose is persisted
 # derived state, which is the thing `board.py` exists to not have. `ref_offset` alone moves
 # when beat 1's still lands, when a character.png is uploaded, when carry is ticked, and when

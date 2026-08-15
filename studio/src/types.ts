@@ -57,8 +57,8 @@ export interface Beat {
    * where the subject sits. Written by the local model in one pass over the whole reel, then
    * hand-editable.
    *
-   * It reaches no renderer, so editing it marks nothing stale. That is the whole difference
-   * between a panel and everything else on this beat that holds a prompt.
+   * It conditions the still, not the clip, so editing it marks nothing stale. That is the
+   * difference between a panel and `blocking`, which reaches the video prompt.
    */
   panel: string;
   /** The panel itself: a rough grey sketch of the shot, drawn on the cheapest model. */
@@ -71,7 +71,8 @@ export interface Beat {
   /**
    * Locked-off camera angle for this take. Always one of the five the board publishes in
    * `cameras` — absent on disk means `eye`, so the chips have something to highlight on a
-   * board that never named one. Reaches stills and video, unlike `panel`.
+   * board that never named one. Reaches stills and the clip, and is in both fingerprints;
+   * the panel reaches the still only.
    */
   camera: string;
   /** The frame this beat actually opened on. A chained beat has no still of its own. */
@@ -129,6 +130,12 @@ export interface Beat {
    * are the identity lock.
    */
   still_cast: boolean;
+  /**
+   * Whether this scene's storyboard panel reached the still renderer. False when there is no
+   * PNG, or when the cap is 1 and identity took the only slot. The canvas uses this rather
+   * than re-deriving the reserved-slot rule.
+   */
+  still_panel: boolean;
   /**
    * Which of the reel's designs this scene contains, in the order they are numbered. Ids into
    * `Board.staging`, not copies: the designs themselves are reel-level, and a second copy per

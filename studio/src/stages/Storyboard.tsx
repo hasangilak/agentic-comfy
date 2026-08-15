@@ -337,7 +337,7 @@ function StoryboardWaiting({
         }
       >
         {written - drawn} shot{written - drawn === 1 ? "" : "s"} written but not sketched. A
-        panel reaches no renderer, so this changes no scene&apos;s state.
+        panel conditions the still, not the clip, so this changes no scene&apos;s render state.
       </WaitingOn>
     );
   }
@@ -873,8 +873,8 @@ function ShotCard({
           onChange={(event) => shot.change(event.target.value)}
           onBlur={shot.flush}
           placeholder="medium shot, eye level, locked off — the subject at frame left"
-          title="shot size, angle, camera move. It reaches no renderer, so editing it marks
-            nothing stale."
+          title="shot size, angle, camera move. It conditions the still, not the clip, so editing
+            it marks nothing stale."
         />
 
         {bound.length ? (
