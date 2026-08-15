@@ -192,11 +192,14 @@ MAX_REF_VIDEOS = 3
 # Mixed image+video+audio files in one ref2va request. The node has 9+3+3 sockets; the
 # checkpoint will not take more than this many of them at once.
 MAX_REF_FILES = 12
-# On a beat with only its opening still, two of those nine slots fill themselves --
-# <Picture 1> is that still, <Picture 2> is the reel's locked cast reference -- which is why
-# an upload budget exists rather than a flat nine. On a beat whose asset pass drew a
-# stop-motion sequence, the poses themselves take those slots (they ARE the cast, in motion)
-# and fill whatever is left after staging sheets and uploads, so a quiet cut uses all nine.
+# On a beat with only its opening still, that still fills <Picture 1>. <Picture 2> is the
+# reel's locked cast reference only when this beat binds no character or prop sheet -- a
+# turnaround is the puppet, beat 1's composed wide is a camera, and sending both pulled
+# later clips back to that two-shot. On a beat whose asset pass drew a stop-motion sequence,
+# the poses themselves take those slots (they ARE the cast, in motion) and fill whatever is
+# left after staging sheets and uploads, so a quiet cut uses all nine. An asset cut that
+# binds identity sheets is the same list without the sequence: the still as Picture 1, then
+# the sheets, on ref2va, because fl2va has no socket for a turnaround.
 # `Board.pictures_for` is where the order is decided; the roles below are the words each
 # auto-wired slot is described to the model with.
 #

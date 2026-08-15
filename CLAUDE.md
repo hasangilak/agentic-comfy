@@ -323,13 +323,17 @@ one of it. It is also what makes a written-but-undrawn entry useful.
 Bound sheets sit between `auto_pictures` and the uploads in `pictures_for`, which renumbers the
 uploads — safe by construction rather than by luck, because that method returns (path, role)
 pairs and `mentions` resolves by path. `ref_budget` subtracts them, so an upload the render would
-truncate is refused rather than stored.
+truncate is refused rather than stored. Character and prop sheets also wire an **asset** cut:
+fl2va has no socket for a turnaround, so that cut renders on ref2va with the still as
+`<Picture 1>` and the sheets after it. Chain and bridge keep a keyframe latent and cannot mix;
+those sheets stay words. The composed cast still is omitted once identity sheets exist — sending
+both pulled H3 back to beat 1's wide, the stills lesson applied to video.
 
 **Both fingerprints append `staging_digest` only when the beat binds something.** An
 unconditional part would change every existing board's fingerprint, mark every rendered beat
 stale at once and re-price a paid render for a feature nobody had used. It overlaps
-`frame_ids.refs` on a reference beat; that is harmless (both move together) and it is what
-carries staging onto the three joins with no picture list at all.
+`frame_ids.refs` on a beat that wires pictures; that is harmless (both move together) and it is
+what carries staging onto chain and bridge, which take the same sheets as words.
 
 `pictures.py`'s three drawing lessons apply here unchanged, and `staging.conditioning` records
 them: nothing conditions a first draw unless the director names a sibling with `@stage:` (a model
@@ -749,15 +753,19 @@ it differently. Same split as `chains()` vs `Board.follows_upstream()`.
 **`reference` is the default cut, not an uploads-only special case.** It is a different
 checkpoint (`config.UNET_REF`) taking up to `config.MAX_REF_IMAGES` (9) pictures referred to in
 the prompt as `<Picture 1>`…`<Picture 9>` **1-based in connection order** while graph sockets are
-0-based. Two of the nine wire themselves, and `Board.pictures_for(n)` is the single place that
-order is decided:
+0-based. `Board.pictures_for(n)` is the single place that order is decided:
 
-1. the beat's own generated still — `config.REF_ROLE_OPENING`, and `config.OPEN_REFERENCE_STILL`
-   tells the model to begin the clip on it;
+1. the beat's own generated still (or its stop-motion sequence) — `config.REF_ROLE_OPENING`,
+   and `config.OPEN_REFERENCE_STILL` tells the model to begin the clip on it;
 2. the reel's locked cast reference (`Board.reference_for`, so `None` on the beat that *is* the
-   reference) — `config.REF_ROLE_CAST`;
-3. then the director's uploads, `beat<n>_ref1.png` upward — which are now *drawn or* uploaded;
+   reference) — `config.REF_ROLE_CAST` — **only when this beat binds no character or prop
+   sheet**. A turnaround is the puppet; the composed wide is a camera;
+3. bound staging sheets, characters and props before sets;
+4. then the director's uploads, `beat<n>_ref1.png` upward — which are now *drawn or* uploaded;
    `pictures.py` puts a Gemini render into the same file, and nothing downstream can tell.
+
+An **asset** cut that binds identity sheets uses the same list (still as Picture 1, then the
+sheets) on ref2va: fl2va has no socket for a turnaround. Chain and bridge stay keyframe.
 
 Everything a beat stores per picture is a list the same length as `ref_paths`, read and written
 through one pair of methods (`Board.REF_SLOT_KEYS`, `_ref_slots`, `_store_ref_slots`) rather than
@@ -902,7 +910,8 @@ The modal's thumbnail strip is where a picture is added, selected and removed; `
 the right column for one. Four pieces exist so that neither view owns a copy of the other's:
 
 - **`studio/src/beat.ts`** is the only place either picture numbering is computed. It mirrors
-  `Board.pictures_for` (`videoPictures`, `<Picture N>`, empty off the reference join) and
+  `Board.pictures_for` (`videoPictures`, `<Picture N>`, empty on chain/bridge; asset cuts that
+  bind character sheets are not empty) and
   `Board.still_pictures` (`stillPictures`, identity sheets or the cast still, capped) line for
   line, and `board.py` is
   the authority it must not drift from. Before it, the arithmetic was hand-rolled in three

@@ -41,11 +41,15 @@ to read the exact video prompt a beat would send before you change it. Then `set
 4. **No shot longer than 20 seconds** total of chained run. Split with a cut or re-anchor with
    a bridge.
 5. **Joins.** `reference` is the default cut for same-scale coverage — that is where sheets
-   riding every sampling step are the point. If the scene, panel or `asset_prompt` is a
-   **macro**, an **extreme close-up**, or a shot scale that is not the establishing wide,
-   `set_source` to `asset`. The opening frame must hold; ref2va with the wide as a picture
-   pulls the camera back to the two-shot. `asset` is also the join when the opening frame
-   itself must land pixel-exact. Coherence owns bridge landing text; leave landings to them.
+   riding every sampling step are the point. Character sheets also ride an `asset` cut: fl2va
+   has no socket for a turnaround, so that cut renders on ref2va with the still as
+   `<Picture 1>` and the sheets after it, and the composed establishing wide is NOT wired
+   once those sheets exist. If the scene, panel or `asset_prompt` is a **macro**, an
+   **extreme close-up**, or a shot scale that is not the establishing wide, `set_source` to
+   `asset` so the opening still holds. `asset` is also the join when the opening frame itself
+   must land pixel-exact *and* there are no identity sheets yet. Coherence owns bridge
+   landing text; leave landings to them. Chain and bridge keep a keyframe latent and cannot
+   mix; their sheets stay words.
 
 ## What you do not touch
 

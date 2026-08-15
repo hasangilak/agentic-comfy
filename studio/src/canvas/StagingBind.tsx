@@ -14,9 +14,9 @@ import { useStudio } from "../useStudio";
  *
  * It also carries no join warning, unlike every other control that adds an image to a scene. A
  * picture reaches a render only through the reference join, so storing one has to move the join
- * and say so. A bound design reaches every join: as a numbered picture where there are picture
- * slots, and as a sentence everywhere else. There is nothing to warn about because nothing
- * changes underneath you.
+ * and say so. Character and prop sheets reach H3 as pictures on `reference` and on `asset`
+ * (that cut renders on ref2va with the still as Picture 1). Chain and bridge keep a keyframe
+ * and take the same sheets as words. The join itself does not move.
  */
 export function StagingBind({ board, beat }: { board: Board; beat: Beat }) {
   const studio = useStudio();
@@ -94,9 +94,9 @@ export function StagingBind({ board, beat }: { board: Board; beat: Beat }) {
       {bound.length ? (
         <div className="space-y-0.5 text-[10px] leading-snug text-zinc-400">
           <p>
-            {beat.source === "reference"
+            {beat.staging_refs
               ? `the clip is given ${beat.staging_refs} of ${bound.length} as pictures`
-              : `this scene is on the ${beat.source} join, which takes no pictures at all`}
+              : `the clip is told them in words`}
             {beat.staging_text ? (
               <>
                 {" "}

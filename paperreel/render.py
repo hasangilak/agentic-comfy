@@ -70,7 +70,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
         # to condition on -- no still of its own, and no uploads. ref2va with nothing connected
         # is text-to-video on the wrong weights, so it is worth the check before the container
         # is deployed rather than after it has been paid for.
-        if (board_mod.uses_refs(source) and not board.pictures_for(n)
+        if (board.wires_refs(board.beat(n)) and not board.pictures_for(n)
                 and not board.holds_upstream(board.beat(n))):
             raise FileNotFoundError(
                 f"beat {n} is conditioned on references but has none; generate its opening "
@@ -148,6 +148,9 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                     poses = len(board.pose_paths(n))
                     join = JOIN_LOG[sources[n]]
                     if pictures or carry:
+                        # Pictures mean ref2va, even on an asset cut that bound identity sheets.
+                        if pictures:
+                            join = JOIN_LOG[board_mod.SOURCE_REFERENCE]
                         detail = [f"{len(pictures)} of {config.MAX_REF_IMAGES} pictures"]
                         if opens_on:
                             detail.append("opening on its own still")
@@ -296,7 +299,9 @@ def _frames(board: board_mod.Board, n: int, source: str):
 
     This is where the wire on the canvas becomes real:
 
-      * "asset"     -- the beat's own still, fitted onto the generation grid, as the first frame
+      * "asset"     -- the beat's own still as a keyframe, unless it binds character sheets:
+                       those have no fl2va socket, so the cut renders on ref2va with the still
+                       as <Picture 1> and the sheets after it
       * "chain"     -- the previous clip's true last frame as the first frame, nothing after it
       * "bridge"    -- both: the previous clip's last frame to start from AND the beat's own
                        still as the frame the clip has to arrive at
@@ -312,24 +317,30 @@ def _frames(board: board_mod.Board, n: int, source: str):
     through because somebody dropped a file on a later node.
 
     Returns (first, last, pictures, carry, frame_ids). `last` is None unless this is a bridge,
-    `first` is None only on a reference beat, `pictures` is empty on every other join, and
-    `carry` is the cut tail of the previous clip -- present only on a reference beat set to
-    carry motion. The hashes are taken here, at the moment of use, so the recorded fingerprint
-    names the images really rendered rather than whatever is on disk when the beat finishes.
+    `first` is None when pictures are wired (ref2va has no keyframe), `pictures` is empty on
+    chain and bridge and on an asset cut with no identity sheets, and `carry` is the cut tail
+    of the previous clip -- present only on a reference beat that holds the upstream. The
+    hashes are taken here, at the moment of use, so the recorded fingerprint names the images
+    really rendered rather than whatever is on disk when the beat finishes.
 
     `pictures` is (path, role) pairs, the same shape `Board.pictures_for` returns and for the
     same reason: the prompt addresses each picture by position, so the file and the words
     describing it have to travel together rather than as two lists that can slip apart.
     """
     asset = board.asset_path(n)
-    if source == board_mod.SOURCE_REFERENCE:
+    pictures = board.pictures_for(n)
+    if source == board_mod.SOURCE_REFERENCE or pictures:
         # Handed over at their own size: the node scales each one itself, down only and
         # aspect-preserving, so cover-cropping them onto the 9:16 grid first would throw away
         # parts of the design for nothing. The beat's own still rides along under the same rule,
         # which is why nothing is written to beat<n>_frame.png on this path -- it is already on
         # the generation grid, and it is a reference here rather than a keyframe.
+        #
+        # `pictures` is also how an asset cut that binds character sheets gets here: fl2va has
+        # no socket for them, so that cut is ref2va with the still as <Picture 1>. Carry stays
+        # a reference-join behaviour -- asset has no upstream clip to hold.
         carry, upstream_hash = None, ""
-        if board.holds_upstream(board.beat(n)):
+        if source == board_mod.SOURCE_REFERENCE and board.holds_upstream(board.beat(n)):
             # Only the tail. The whole clip would be paid for through every sampling step,
             # for motion that stopped mattering seconds ago. holds_upstream, not only the
             # carry checkbox: a pose sequence sends the same clip as identity so a transform
@@ -343,11 +354,6 @@ def _frames(board: board_mod.Board, n: int, source: str):
             # A beat that used to carry and no longer does must not leave the old tail on
             # disk, where the canvas would still show it as this beat's input.
             board.carry_path(n).unlink(missing_ok=True)
-        # Read after the hold decision, not before: `pictures_for` used to ask `carries_motion`
-        # whether this beat's own still was wired at all. It no longer does -- stills and the
-        # video sit together -- but the tail file is still created here, so the comment stays
-        # as a warning against taking the list first if that split ever returns.
-        pictures = board.pictures_for(n)
         # The up-front pass already refused a beat with nothing to condition on, so reaching
         # this with an empty list means the board moved underneath the batch -- someone changed
         # the join, or deleted the still, after the container was warm. Worth raising rather

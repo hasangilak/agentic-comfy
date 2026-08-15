@@ -67,7 +67,12 @@ def uses_asset(source: str) -> bool:
 
 
 def uses_refs(source: str) -> bool:
-    """Is this beat conditioned on reference pictures rather than on a keyframe?"""
+    """Is this beat's JOIN the reference one (ref2va, no keyframe)?
+
+    Not the same question as whether H3 is handed pictures: an asset cut that binds
+    character sheets also renders on ref2va (`Board.wires_refs`). This predicate is the
+    join, which is what `source_for`, cascade and the canvas still mean by `reference`.
+    """
     return source == SOURCE_REFERENCE
 
 
@@ -845,16 +850,14 @@ class Board:
     def staging_pictures(self, n: int, *, for_still: bool) -> list[tuple[Path, str]]:
         """The bound design sheets that go into THIS render as images, with their roles.
 
-        The two callers want different ORDERINGS, and the difference is the one measured
-        constraint in the whole feature: the video model takes nine pictures and the still
-        renderer takes `config.MAX_STILL_REFS` (four, one of which is already the cast
-        reference). When the still's cap bites, the set is what should give -- characters are
-        what drift visibly between shots; a clearing redrawn from a fixed sentence is
-        survivable, a wolf that changes species is not. So on the still side environments
-        sort last and the truncation in `still_pictures` drops them first, and `staging_text`
-        picks up whatever falls off as words. Dropping the set unconditionally was the
-        spider-flea reel's five-different-webs failure: a set that fits the cap is a picture,
-        because prose invents a new geometry for it in every shot.
+        Environments sort last on both renders, so a tight cap drops the set first -- characters
+        are what drift visibly between shots; a clearing redrawn from a fixed sentence is
+        survivable, a wolf that changes species is not. The still's four-slot cap is why this
+        exists (`for_still`); the video's nine can still bite when leftover poses or a
+        hand-edited board overflow, and dropping a character there is the same failure.
+        `staging_text` picks up whatever falls off as words. Dropping the set unconditionally
+        was the spider-flea reel's five-different-webs failure: a set that fits the cap is a
+        picture, because prose invents a new geometry for it in every shot.
 
         A sheet with no file on disk is skipped here and picked up as text by `staging_text`, so
         writing the bible is useful before a single sheet has been drawn.
@@ -865,11 +868,11 @@ class Board:
             if path.is_file():
                 found.append((path, self.stage_role(entry),
                               self.stage_kind(entry) == config.STAGE_ENVIRONMENT))
-        if for_still:
-            # Stable sort: characters and props keep their binding order, sets move behind
-            # them, so a tight cap sacrifices the set first rather than whatever was bound
-            # last.
-            found.sort(key=lambda item: item[2])
+        # Characters and props before sets on both renders, so a tight cap keeps the puppets.
+        # The still's four-slot cap is why this exists (`for_still`); the video's nine can
+        # still bite when leftover poses or a hand-edited board overflow, and dropping a
+        # character there is the same failure. Bind order inside each group is preserved.
+        found.sort(key=lambda item: item[2])
         return [(path, role) for path, role, _is_set in found]
 
     def staging_text(self, n: int, shown: list[tuple[Path, str]]) -> str:
@@ -967,9 +970,10 @@ class Board:
 
         Deliberately does NOT move the join. A beat's own uploads do (`api.store_refs`), because
         an upload only reaches a render through the reference join and storing one otherwise
-        means nothing. A staging entry always reaches the render: as pictures on the reference
-        join, and as words on every other one. So there is nothing here to warn about and
-        nothing to silently change.
+        means nothing. Character and prop sheets reach H3 as pictures on `reference` and on
+        `asset` (that cut renders on ref2va with the still as <Picture 1>, because fl2va has
+        no socket for them). Chain and bridge keep a keyframe latent and cannot mix, so those
+        sheets stay words. The join itself does not move, and there is nothing to warn about.
         """
         known = [str(entry.get("id")) for entry in self.staging]
         wanted: list[str] = []
@@ -1176,23 +1180,39 @@ class Board:
         """
         return chains(self.source_for(beat)) or self.holds_upstream(beat)
 
+    def wires_refs(self, beat: dict) -> bool:
+        """Does MiniMax-H3 get reference pictures for this beat (the ref2va checkpoint)?
+
+        Always on the reference join. Also on an asset cut that binds a character or prop
+        sheet on disk: those sheets are the identity lock, fl2va has no socket for them, and
+        sending the still as a keyframe instead is how H3 never saw the turnaround. The cut
+        stays `asset` on the board -- cascade, the canvas, continuity -- and renders as
+        ref2va with the still as <Picture 1>. Chain and bridge keep a keyframe latent and
+        cannot mix, so their sheets stay words.
+        """
+        source = self.source_for(beat)
+        if uses_refs(source):
+            return True
+        return uses_asset(source) and bool(self.still_identity_sheets(beat["n"]))
+
     def opens_on_still(self, beat: dict) -> bool:
-        """Does this reference beat open on a still drawn for it, rather than composing one?
+        """Does this beat open on a still drawn for it, as <Picture 1> on ref2va?
 
         This is what makes `reference` the default cut rather than an uploads-only special case:
         the beat's own still goes in as <Picture 1> and the clip begins on that composition.
-        Two things have to hold -- the beat is on this join, and the still is actually on disk.
+        Two things have to hold -- H3 is on ref2va for this beat (`wires_refs`), and the still
+        is actually on disk.
 
         A carried clip used to exclude the still, because CARRY_VIDEO and OPEN_REFERENCE_STILL
         were two answers to where the shot begins. They still are, but a pose sequence plus
         HOLD_VIDEO (or a continuation whose first pose is that carry) needs the still wired
         as well: that is how all nine image sockets get used instead of being emptied the
         moment a video is attached.
+
+        True on an asset cut that binds identity sheets, for the same reason: that cut is
+        ref2va now, and the still is Picture 1 rather than a keyframe.
         """
-        return (
-            uses_refs(self.source_for(beat))
-            and self.asset_path(beat["n"]).is_file()
-        )
+        return self.wires_refs(beat) and self.asset_path(beat["n"]).is_file()
 
     def needs_still(self, beat: dict) -> bool:
         """Is this beat BLOCKED for want of `beat<n>_asset.png`?
@@ -1214,19 +1234,26 @@ class Board:
     def auto_pictures(self, n: int) -> list[tuple[Path, str]]:
         """The reference pictures that wire themselves, in <Picture i> order, with their roles.
 
-        On a beat with only its opening still, two: that still as the composition to begin on,
-        and the reel's locked cast reference so the characters keep being re-asserted through
-        every sampling step. On a beat whose asset pass drew a stop-motion sequence, the
+        On a beat with only its opening still, that still as the composition to begin on, and
+        the reel's locked cast reference only when this beat binds no character or prop sheet.
+        A turnaround is the puppet; beat 1's composed wide is a camera, and sending both is
+        the stills lesson (`still_pictures`) applied to H3 -- the wide pulls every later clip
+        back to that two-shot. On a beat whose asset pass drew a stop-motion sequence, the
         poses themselves take those slots -- they ARE the cast, in motion -- and the extra
         cast still is dropped so the nine sockets fill with the sequence rather than crowding
         it out. Together with `sequence_count` that is how a quiet cut uses all nine.
+
+        Poses on disk are capped to `sequence_count`, which already reserved room for bound
+        sheets. Without that, a nine-pose generate followed by binding two characters would
+        hand H3 the stale in-betweens and truncate the sheets they were meant to leave room
+        for.
 
         `reference_for` returns None on the beat whose own still IS the reference, so beat 1
         never gets the same file twice even on the single-still path.
         """
         if not self.opens_on_still(self.beat(n)):
             return []
-        poses = self.pose_paths(n)
+        poses = self.pose_paths(n)[:self.sequence_count(n)]
         if not poses:
             return []
         found: list[tuple[Path, str]] = []
@@ -1235,7 +1262,7 @@ class Board:
             role = (config.REF_ROLE_OPENING if index == 1
                     else config.REF_ROLE_POSE.format(i=index, k=total))
             found.append((path, role))
-        if total == 1:
+        if total == 1 and not self.still_identity_sheets(n):
             cast = self.reference_for(n)
             if cast is not None:
                 found.append((cast, config.REF_ROLE_CAST))
@@ -1254,18 +1281,25 @@ class Board:
         rendering the first nine pictures beats refusing to render at all.
 
         Three tiers, in this order and for this reason: the automatic slots (this shot's own
-        opening composition, then the cast) come first because they always did; the reel's bound
-        staging sheets come next, because they are the film's fixed designs and a beat cannot
-        change them; the director's own uploads come last, because they are this one shot's and
+        opening composition, then the cast only when there are no identity sheets) come first
+        because they always did; the reel's bound staging sheets come next, characters and
+        props before sets, because they are the film's fixed designs and a beat cannot change
+        them; the director's own uploads come last, because they are this one shot's and
         appending is what keeps a new upload from renumbering the ones already described.
+
+        Empty on chain and bridge: those joins keep a keyframe latent, and ref2va cannot mix.
+        An asset cut that binds identity sheets is not empty -- it renders on ref2va with the
+        still as <Picture 1> so H3 actually sees the turnaround.
 
         Binding a sheet DOES renumber the uploads below it, and that is safe by construction
         rather than by luck: this method returns (path, role) pairs, so every note travels with
         its picture, and `mentions` resolves by path rather than by position.
         """
-        if not uses_refs(self.source_for(self.beat(n))):
+        beat = self.beat(n)
+        if not self.wires_refs(beat):
             return []
-        uploaded = list(zip(self.ref_paths(n), self.ref_prompts(n)))
+        uploaded = (list(zip(self.ref_paths(n), self.ref_prompts(n)))
+                    if uses_refs(self.source_for(beat)) else [])
         return (
             self.auto_pictures(n) + self.staging_pictures(n, for_still=False) + uploaded
         )[:config.MAX_REF_IMAGES]
@@ -1273,8 +1307,10 @@ class Board:
     def still_identity_sheets(self, n: int) -> list[tuple[Path, str]]:
         """Bound character and prop sheets on disk, in binding order.
 
-        These are the identity lock for a still. Beat 1's composed opening is a camera angle; a
-        turnaround is a puppet. Sending both made Gemini copy the wide.
+        These are the identity lock for a still AND for the clip. Beat 1's composed opening is a
+        camera angle; a turnaround is a puppet. Sending both made Gemini copy the wide, and H3
+        pulled every later cut back to that two-shot. `still_pictures` and `auto_pictures`
+        both drop the composed still when these exist.
         """
         found = []
         for entry in self.bound_staging(n):
@@ -1342,7 +1378,7 @@ class Board:
         upload the render would truncate away has to be refused, not stored.
         """
         spoken = len(self.auto_pictures(n))
-        if uses_refs(self.source_for(self.beat(n))):
+        if self.wires_refs(self.beat(n)):
             spoken += len(self.staging_pictures(n, for_still=False))
         return max(0, config.MAX_REF_IMAGES - spoken)
 
@@ -1381,10 +1417,10 @@ class Board:
         # unconditional part here would mark every rendered beat in every reel stale at once and
         # re-price a paid render for a feature nobody had used yet.
         #
-        # It overlaps `frame_ids.refs` on a reference beat, where the sheets are hashed as
-        # pictures too. Harmless -- both move together -- and it is what carries staging onto the
-        # three joins that have no picture list at all: a chained beat is given the same sheets
-        # as words, so rewriting one really does change what it would render as.
+        # It overlaps `frame_ids.refs` on a beat that wires pictures, where the sheets are
+        # hashed as pictures too. Harmless -- both move together -- and it is what carries
+        # staging onto chain and bridge, which keep a keyframe latent and take the same
+        # sheets as words, so rewriting one really does change what they would render as.
         staging = self.staging_digest(beat["n"])
         parts: list = [
             beat.get("action", ""),
@@ -1453,7 +1489,12 @@ class Board:
         and its pictures are hashed together in order instead.
         """
         source = self.source_for(beat)
-        asset = file_hash(self.asset_path(beat["n"])) if uses_asset(source) else ""
+        pictures = self.pictures_for(beat["n"])
+        # When pictures are wired, the still is <Picture 1> rather than a keyframe, so it
+        # hashes in `refs` and must not also hash as `asset` -- that would be the same file
+        # counted twice, and a beat that moved from fl2va to ref2va would look unchanged.
+        asset = (file_hash(self.asset_path(beat["n"]))
+                 if uses_asset(source) and not pictures else "")
         upstream = ""
         if self.follows_upstream(beat):
             # Identified by whatever the upstream beat currently renders to, so this changes
@@ -1462,7 +1503,7 @@ class Board:
             up = self.upstream(beat["n"])
             upstream = file_hash(self.video_path(up["n"])) if up else ""
         refs = ""
-        if uses_refs(source):
+        if pictures:
             # Positional, so reordering the pictures counts as an edit -- which it is, since
             # the prompt names them by position. The notes are in here for the same reason
             # the action is: they are words the model is given, so rewriting one really does
@@ -1478,7 +1519,7 @@ class Board:
             # Hashed as (file, note) pairs in order, so swapping two pictures changes the
             # fingerprint even when both notes stay put.
             refs = fingerprint(*(
-                part for path, note in self.pictures_for(beat["n"])
+                part for path, note in pictures
                 for part in (file_hash(path), note)
             ))
         return FrameIds(asset=asset, upstream=upstream, refs=refs)
@@ -1731,8 +1772,10 @@ class Board:
                 # carries.
                 "ref_ids": self.ref_ids(n),
                 # The slots that filled themselves: the beat's own still as the composition to
-                # open on, and the reel's cast reference. Read-only on the canvas -- they follow
-                # the still and the reference rather than being editable in their own right.
+                # open on, and the reel's cast reference only when identity sheets are missing.
+                # Read-only on the canvas -- they follow the still and the reference rather than
+                # being editable in their own right. Also filled on an asset cut that binds
+                # character sheets, because that cut is ref2va with the still as Picture 1.
                 "auto_refs": [
                     {
                         "url": self.media_url(path),
@@ -1772,15 +1815,15 @@ class Board:
                 # describe the wrong picture.
                 "ref_offset": len(self.auto_pictures(n)) + len(
                     self.staging_pictures(n, for_still=False)
-                ) if uses_refs(self.source_for(beat)) else len(self.auto_pictures(n)),
+                ) if self.wires_refs(beat) else len(self.auto_pictures(n)),
                 # What is left of the model's nine after the automatic ones.
                 "ref_slots": self.ref_budget(n),
                 # How many of the director's pictures also condition the STILL, counted off the
                 # capped list `still_pictures` actually returns -- see that method.
                 "still_refs": sum(1 for path, _ in still if path in upload_paths),
                 # Whether this beat's still is wired as the composition it opens on. True on a
-                # reference beat with a still on disk, including one that also holds the previous
-                # clip as a video -- the still is <Picture 1>, the video is <Video 1>.
+                # reference beat with a still on disk, and on an asset cut that binds identity
+                # sheets -- both render on ref2va with the still as <Picture 1>.
                 "opens_on": self.opens_on_still(beat),
                 # A reference beat can also be shown the tail of the previous clip, which is
                 # how this join gets continuity without a keyframe.

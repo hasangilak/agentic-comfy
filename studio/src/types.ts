@@ -103,8 +103,9 @@ export interface Beat {
   ref_ids: string[];
   /**
    * The slots that filled themselves: this beat's own still as the composition it opens on,
-   * and the reel's cast reference. Read-only — they follow the still and the reference rather
-   * than being editable here. Empty on every join but a reference cut.
+   * and the reel's cast reference only when identity sheets are missing. Read-only — they
+   * follow the still and the reference rather than being editable here. Also filled on an
+   * asset cut that binds character sheets (that cut is ref2va with the still as Picture 1).
    */
   auto_refs: { url: string | null; note: string; kind?: "opening" | "pose" | "cast" }[];
   /** How far those push the director's pictures down the numbering. `auto_refs.length`. */

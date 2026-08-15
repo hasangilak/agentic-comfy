@@ -4,12 +4,14 @@ import type { Beat, StageEntry } from "./types";
  * The two pictures lists a beat has, and the one place either numbering is worked out.
  *
  * There are two because the server has two, and they are ordered differently. The VIDEO model
- * is given `Board.pictures_for` — this beat's own still, then the reel's cast reference, then
- * the designs this scene binds, then the director's uploads — and addresses them as
- * `<Picture N>`. The STILL model is given `Board.still_pictures` — identity sheets (or the
- * cast still when there are none), then uploads on a reference join, capped at four — and is
- * given no tags at all. The same picture is a different number in each, and in the two fields
- * that feed them.
+ * is given `Board.pictures_for` — this beat's own still, then the reel's cast reference only
+ * when identity sheets are missing, then the designs this scene binds (characters before sets),
+ * then the director's uploads — and addresses them as `<Picture N>`. Empty on chain and bridge.
+ * An asset cut that binds character sheets is not empty: H3 has no keyframe socket for a
+ * turnaround, so that cut is ref2va with the still as Picture 1. The STILL model is given
+ * `Board.still_pictures` — identity sheets (or the cast still when there are none), then
+ * uploads on a reference join, capped at four — and is given no tags at all. The same picture
+ * is a different number in each, and in the two fields that feed them.
  *
  * This module mirrors those two methods and must not drift from them; `board.py` is the
  * authority, and every guard below quotes the line it is mirroring. Before this existed the
@@ -107,14 +109,14 @@ function uploads(beat: Beat): PictureRef[] {
  * A design with no sheet drawn yet is skipped here and reaches both renders as words instead,
  * which is what makes writing the bible useful before anything has been drawn.
  */
-function stagePictures(beat: Beat, staging: StageEntry[], forStill: boolean): PictureRef[] {
+function stagePictures(beat: Beat, staging: StageEntry[], _forStill: boolean): PictureRef[] {
   const byId = new Map(staging.map((entry) => [entry.id, entry]));
   const found = (beat.staging ?? [])
     .map((id) => byId.get(id))
     .filter((entry): entry is StageEntry => Boolean(entry?.sheet));
-  if (forStill) {
-    found.sort((a, b) => Number(a.kind === "environment") - Number(b.kind === "environment"));
-  }
+  // Both renders: characters and props first, so a tight cap drops the set. Mirrors
+  // `Board.staging_pictures`. `forStill` still names which render the caller is asking for.
+  found.sort((a, b) => Number(a.kind === "environment") - Number(b.kind === "environment"));
   return found.map((entry) => ({
     index: null,
     id: stageId(entry.id),
@@ -129,15 +131,18 @@ function stagePictures(beat: Beat, staging: StageEntry[], forStill: boolean): Pi
 /**
  * What the VIDEO model is given, in `<Picture N>` order. Mirrors `Board.pictures_for`.
  *
- * Empty off the reference join, exactly as the server's `uses_refs` guard makes it
- * (`board.py`, `pictures_for`). A picture on a chained or keyframe beat conditions nothing, and
- * a menu that offered it would be promising the model something it never sees.
+ * Empty on chain and bridge, matching `Board.wires_refs`: those joins keep a keyframe latent
+ * and cannot mix with pictures. An asset cut that binds character or prop sheets is not empty
+ * — fl2va has no socket for a turnaround, so that cut is ref2va with the still as Picture 1.
  *
  * `staging` is the reel's whole bible; this picks out what THIS scene binds. Passed in rather
  * than reached for, so the numbering and the list it numbers come from one board read.
  */
 export function videoPictures(beat: Beat, staging: StageEntry[] = []): PictureRef[] {
-  if (beat.source !== "reference") return [];
+  const identity = (beat.staging ?? [])
+    .map((id) => staging.find((entry) => entry.id === id))
+    .some((entry) => Boolean(entry?.sheet) && entry?.kind !== "environment");
+  if (beat.source !== "reference" && !(beat.source === "asset" && identity)) return [];
   const autos: PictureRef[] = (beat.auto_refs ?? []).map((auto, at) => {
     const kind =
       auto.kind ??
@@ -157,7 +162,8 @@ export function videoPictures(beat: Beat, staging: StageEntry[] = []): PictureRe
       token: kind === "cast" ? "@cast" : null,
     };
   });
-  return [...autos, ...stagePictures(beat, staging, false), ...uploads(beat)]
+  const uploaded = beat.source === "reference" ? uploads(beat) : [];
+  return [...autos, ...stagePictures(beat, staging, false), ...uploaded]
     .map((picture, at) => ({ ...picture, tag: `<Picture ${at + 1}>` }));
 }
 

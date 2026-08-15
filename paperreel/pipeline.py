@@ -25,8 +25,10 @@ class Shot:
     cut, the last frame for a bridge. Unused by a plain continuation, which has no still.
 
     `pictures` is the other conditioning mode: up to config.MAX_REF_IMAGES images, in
-    <Picture i> order, which the ref2va checkpoint uses INSTEAD of a keyframe. Only read when
-    the join is "reference", and empty on every other one.
+    <Picture i> order, which the ref2va checkpoint uses INSTEAD of a keyframe. Filled on the
+    reference join, and on an asset cut that binds character sheets (that cut has no fl2va
+    socket for them, so it renders on ref2va with the still as Picture 1). Empty on chain
+    and bridge.
 
     Each entry is a (path, role) pair rather than the two lists this used to carry, because the
     prompt addresses every picture by position: a path list and a note list that can slip by one
@@ -205,9 +207,11 @@ def render_beats(
                 # Whether this beat opens mid-motion decides how the prompt has to describe
                 # its first frame, so it is read off the same branch that chooses the frame.
                 continues = board_mod.chains(shot.source)
-                if board_mod.uses_refs(shot.source):
+                if shot.pictures or board_mod.uses_refs(shot.source):
                     # No keyframe on this path at all -- the pictures are the conditioning,
-                    # and they go to the model at their own size.
+                    # and they go to the model at their own size. An asset cut lands here when
+                    # it binds character sheets: fl2va cannot take them, so the still is
+                    # Picture 1 on ref2va instead.
                     pictures = [pair for pair in shot.pictures if pair[0].exists()]
                     frame = None
                     continues = False
