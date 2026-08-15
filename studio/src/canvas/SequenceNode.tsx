@@ -32,9 +32,10 @@ const JOIN_HELP: Record<Source, string> = {
     "frame: continuity plus a composition you chose. Needs one still. Click to make it a " +
     "clean cut instead",
   reference:
-    "a clean cut: this scene opens CLOSE to its own still — the still is conditioning, " +
-    "not a keyframe, so the opening is near rather than identical, and the cast is held " +
-    "through the whole clip. Click for a cut whose opening frame IS this still, pixel for pixel",
+    "opens CLOSE to its own still — conditioning, not a keyframe — and the cast is held " +
+    "through the whole clip as pictures. A later beat of the same shot on this join holds " +
+    "the previous clip as identity once poses exist. Click for a cut whose opening frame IS " +
+    "this still, pixel for pixel",
   asset:
     "a clean cut whose opening frame IS this still — handed as a keyframe, pixel for pixel. " +
     "Nothing else is supplied, so the cast is not re-asserted after frame zero. Worth it when " +
@@ -417,7 +418,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                 : "the still this scene opens on, and what it is drawn from"
             }
           >
-            <span className={beat.asset ? "text-zinc-500" : "text-warm"}>
+            <span className={
+              beat.asset || beat.source === "chain" ? "text-zinc-500" : "text-warm"
+            }>
               {beat.asset ? "◫" : "○"}
             </span>
             <span className="min-w-0 flex-1 truncate text-zinc-500">
@@ -428,7 +431,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                     : refs.length
                       ? ` · ${refs.length} picture${refs.length === 1 ? "" : "s"}`
                       : "")
-                : `needs ${isBridge ? "the still it lands on" : "an opening still"}`}
+                : beat.source === "chain"
+                  ? `continues from beat ${beat.n - 1}`
+                  : `needs ${isBridge ? "the still it lands on" : "an opening still"}`}
             </span>
             <span className="shrink-0 text-zinc-400">→</span>
           </button>

@@ -23,7 +23,7 @@ export const JOIN_LOOK: Record<Source, { short: string; tone: string; hint: stri
   reference: {
     short: "◈ cut, close",
     tone: "text-warm",
-    hint: "a clean cut: opens close to its own still (conditioning, not a keyframe), so the cast holds through the clip",
+    hint: "opens close to its own still; sheets and poses ride the clip. A later beat of the same shot on this join holds the previous clip as identity",
   },
   asset: {
     short: "◈ cut, exact",
