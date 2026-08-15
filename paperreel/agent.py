@@ -794,8 +794,7 @@ def create(concept: str, beats: int, seconds: float, *,
     document = script.normalise(plan)
     # Written onto the board only when it is not the default, so a paper-cutout reel's document
     # is byte-identical to what it always was and `Board.medium_digest` keeps hashing to nothing.
-    if config.medium(medium_key).key != config.DEFAULT_MEDIUM:
-        document["medium"] = config.medium(medium_key).key
+    config.write_medium(document, medium_key)
     document["steps"] = config.DEFAULT_STEPS
     document["seed"] = 1101
 

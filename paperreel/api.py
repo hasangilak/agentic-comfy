@@ -17,7 +17,7 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -70,6 +70,22 @@ def load(slug: str) -> board_mod.Board:
         return board_mod.Board.load(safe_slug(slug))
     except FileNotFoundError:
         raise HTTPException(404, f"no reel called {slug!r}")
+
+
+def parse_medium(body: dict) -> str | None:
+    """A medium key the request named, or None when it named nothing.
+
+    Validated rather than stored as typed: the medium reaches nine places in a render, and
+    a typo would silently fall back to paper while the board said something else. Absent
+    from the body is the default, which is also what a paper reel stores by storing
+    nothing -- see `config.write_medium`.
+    """
+    if "medium" not in body:
+        return None
+    wanted = str(body.get("medium") or "").strip()
+    if wanted not in config.MEDIUMS:
+        raise HTTPException(422, f"medium must be one of {', '.join(config.MEDIUMS)}")
+    return wanted
 
 
 def rendering_now(slug: str) -> set[int]:
@@ -134,6 +150,7 @@ def handle_plan(job: Job, run: Runner) -> dict:
     detail = job.detail
     run.log(job, f'[plan] {detail["beats"]} beats x {detail["seconds"]:.0f}s via {config.TEXT_MODEL}')
     board = agent.create(detail["concept"], detail["beats"], detail["seconds"],
+                         medium_key=detail.get("medium"),
                          log=lambda line: run.log(job, line))
     job.slug = board.slug  # the slug only exists once the title does
     run.log(job, f'[plan] "{board.data.get("title")}" -> {board.slug}')
@@ -478,19 +495,27 @@ def create_reel(body: dict = Body(...)) -> dict:
     beats = max(1, min(int(body.get("beats") or 4), 8))
     seconds = config.snap_seconds(body.get("seconds") or config.BEAT_LENGTHS[-1])
     job = runner.submit("plan", board_mod.slugify(concept),
-                        {"concept": concept, "beats": beats, "seconds": seconds})
+                        {"concept": concept, "beats": beats, "seconds": seconds,
+                         "medium": parse_medium(body)})
     return {"job": job.to_json()}
 
 
 @app.get("/api/brief")
-def authoring_brief() -> dict:
+def authoring_brief(medium: str | None = Query(None)) -> dict:
     """The script-authoring prompt itself, so the studio can show what it is interviewing about.
 
     Costs nothing and calls nothing. It exists because the alternative -- paraphrasing the rules
     in the UI -- is the second copy of the specification this codebase keeps refusing to have.
+
+    `medium` picks which physics and construction sections are spliced in. The interview page
+    passes the open board's medium so a clay reel is not shown paper's rules while the model
+    is writing against clay's.
     """
+    key = (medium or "").strip() or None
+    if key is not None and key not in config.MEDIUMS:
+        raise HTTPException(422, f"medium must be one of {', '.join(config.MEDIUMS)}")
     try:
-        return {"markdown": planner.template()}
+        return {"markdown": planner.template(key)}
     except planner.NoTemplate as missing:
         raise HTTPException(404, str(missing))
 
@@ -506,7 +531,7 @@ def develop_reel(body: dict = Body(...)) -> dict:
     the first message rather than living in a tab until it is worth keeping.
     """
     try:
-        board = develop.start(str(body.get("message") or ""))
+        board = develop.start(str(body.get("message") or ""), medium=parse_medium(body))
     except develop.DevelopError as refused:
         raise HTTPException(refused.status, str(refused))
     job = runner.submit("develop", board.slug, {"message": str(body.get("message") or "")})
@@ -547,6 +572,10 @@ def import_reel(body: dict = Body(...)) -> dict:
 
     `manual_stills` adopts the script with image generation switched off, for the case where
     the opening frames are the author's own work as well.
+
+    `medium` is the picker's, not the pasted JSON's. A script written for clay imported as
+    paper would fight its own reviewer, so this is decided on the way in rather than patched
+    afterwards.
     """
     raw = body.get("script")
     try:
@@ -554,7 +583,8 @@ def import_reel(body: dict = Body(...)) -> dict:
             raw = script.parse(raw)
         if not isinstance(raw, dict):
             raise script.BadScript("send the script as JSON text, or as a JSON object")
-        board = script.adopt(raw, manual_stills=bool(body.get("manual_stills")))
+        board = script.adopt(raw, manual_stills=bool(body.get("manual_stills")),
+                             medium=parse_medium(body))
     except script.BadScript as bad:
         raise HTTPException(422, str(bad))
     # So a second open tab's rail picks the new reel up rather than waiting for a reload.
@@ -589,17 +619,11 @@ def patch_reel(slug: str, body: dict = Body(...)) -> dict:
     if "medium" in body:
         # Validated rather than stored as typed: the medium reaches nine places in a render, and
         # a typo would silently fall back to paper while the board said something else.
-        wanted = str(body["medium"] or "").strip()
-        if wanted not in config.MEDIUMS:
-            raise HTTPException(422, f"medium must be one of {', '.join(config.MEDIUMS)}")
         # The default is stored by being ABSENT, never by being written. `Board.medium` reads a
         # missing key as paper cutout and `medium_digest` hashes it to nothing, so one
         # representation is what keeps "a board that never named a medium" and "a board set back
         # to the default" the same board -- and keeps a document clean of a key that says nothing.
-        if wanted == config.DEFAULT_MEDIUM:
-            board.data.pop("medium", None)
-        else:
-            board.data["medium"] = wanted
+        config.write_medium(board.data, parse_medium(body))
     if "manual_stills" in body:
         board.data["manual_stills"] = bool(body["manual_stills"])
     board.save()

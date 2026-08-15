@@ -506,29 +506,36 @@ def _hold_for_answers(board: board_mod.Board, message: str, raw_answers) -> dict
     return {"reply": reply, "written": False, "questions": questions}
 
 
-def start(message: str) -> board_mod.Board:
+def start(message: str, medium: str | None = None) -> board_mod.Board:
     """The empty board a conversation begins on.
 
     Named from the first thing said rather than from a title, because there is no title yet,
     and through `free_slug` rather than bare `slugify`: `agent.create` deliberately reuses a
     directory when the same concept is planned again, but two *conversations* about a paper pig
     are two films.
+
+    `medium` is written here, before the first model turn, because the brief this path hands
+    over splices this medium's physics into section 4 -- paper's rules produce a stiff clay
+    film. Only a non-default key is stored, so a paper reel's document is byte-identical to
+    one that never named a medium.
     """
     concept = message.strip()
     if not concept:
         raise DevelopError("say what the film is about", status=422)
+    data = {
+        "title": concept[:60],
+        "concept": concept,
+        "style_bible": "",
+        "beats": [],
+        "seconds": config.BEAT_LENGTHS[-1],
+        "steps": config.DEFAULT_STEPS,
+        "seed": 1101,
+        "chat": [],
+    }
+    config.write_medium(data, medium)
     return board_mod.Board.create(
         script.free_slug(board_mod.slugify(concept)),
-        {
-            "title": concept[:60],
-            "concept": concept,
-            "style_bible": "",
-            "beats": [],
-            "seconds": config.BEAT_LENGTHS[-1],
-            "steps": config.DEFAULT_STEPS,
-            "seed": 1101,
-            "chat": [],
-        },
+        data,
     )
 
 

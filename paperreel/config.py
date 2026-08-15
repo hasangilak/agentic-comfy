@@ -656,6 +656,24 @@ def medium(key: str | None = None) -> Medium:
     return MEDIUMS.get((key or "").strip() or DEFAULT_MEDIUM, PAPER_CUTOUT)
 
 
+def write_medium(data: dict, key: str | None) -> None:
+    """Persist a medium the way `Board.medium_digest` expects: absent means the default.
+
+    A paper-cutout reel's document stays byte-identical to one that never named a medium,
+    which is what keeps every board written before this bundle out of `stale`. Callers that
+    take a key from a request must validate it against `MEDIUMS` first -- this function
+    falls back the same way `medium` does, and a typo here would silently become paper.
+    `None` is a no-op so a create path that did not send a medium leaves the document alone.
+    """
+    if key is None:
+        return
+    resolved = medium(key).key
+    if resolved == DEFAULT_MEDIUM:
+        data.pop("medium", None)
+    else:
+        data["medium"] = resolved
+
+
 # What every still is asked for on top of the board's style bible and the beat's own
 # asset_prompt. One place, because it is also what the vision review judges a still against:
 # a still is rejected for missing the medium described here, so the words that ask for it and

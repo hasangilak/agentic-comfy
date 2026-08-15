@@ -617,11 +617,9 @@ def start(concept: str, *, beats: int = 4, seconds: float = config.BEAT_LENGTHS[
     default. Before, because the writer is shown the medium in its digest and the brief it works
     from has this medium's physics spliced into section 4 -- paper's rules produce a stiff clay
     film. Only when non-default, so a paper reel's document is byte-identical to what it was.
+    `develop.start` is the one write: the studio's talk-it-through path uses the same function.
     """
-    board = develop.start(concept)
-    if medium and config.medium(medium).key != config.DEFAULT_MEDIUM:
-        board.data["medium"] = config.medium(medium).key
-        board.save()
+    board = develop.start(concept, medium=medium)
     hooks.say(f"[crew] new reel {board.slug} in {board.look().name}")
     hooks.changed()
     stage("script", board,

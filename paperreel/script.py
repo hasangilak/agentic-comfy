@@ -196,15 +196,22 @@ def free_slug(base: str) -> str:
 
 
 def adopt(data: dict, *, slug: str | None = None,
-          manual_stills: bool = False) -> board_mod.Board:
+          manual_stills: bool = False, medium: str | None = None) -> board_mod.Board:
     """Build a board from a supplied script. Costs nothing and calls nothing.
 
     `manual_stills` says the opening frames are the author's own work too, so nothing on
     this board may spend image quota. Worth deciding at import: the first thing an imported
     script offers otherwise is a button that generates the stills it just described.
+
+    `medium` is the studio picker's, not the pasted document's. `normalise` drops a medium
+    key the JSON might have carried, because how the film is rendered is the board's
+    business -- same reason it ignores `steps` and `seed`. The picker is what the director
+    just chose, and a script written for clay imported as paper would fight its own
+    reviewer.
     """
     plan = normalise(data)
     plan["manual_stills"] = manual_stills
+    config.write_medium(plan, medium)
     # Both cut joins: `reference` is the default one and `asset` the exact-keyframe variant, and
     # either way the beat begins a new shot, which is what a shot count means.
     cuts = [b["n"] for b in plan["beats"]
