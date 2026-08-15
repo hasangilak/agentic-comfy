@@ -549,15 +549,19 @@ function InterviewForm({
  * The brief, from the file, beside the conversation until there is a script to show instead.
  */
 export function TheBrief() {
+  const studio = useStudio();
+  const medium = studio.board?.medium;
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
+    setMarkdown(null);
+    setFailed(null);
     void api
-      .brief()
+      .brief(medium)
       .then(setMarkdown)
       .catch((problem) => setFailed(String(problem)));
-  }, []);
+  }, [medium]);
 
   if (failed) {
     return <p className="text-[11px] leading-relaxed text-stale">{failed}</p>;

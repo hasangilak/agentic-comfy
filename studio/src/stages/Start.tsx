@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { money } from "../api";
+import { useEffect, useState } from "react";
+import { api, money } from "../api";
 import { useStudio } from "../useStudio";
 import { TrashReel } from "../panels/TrashReel";
-import { PasteAScript, TalkItThrough, WriteItForMe } from "./NewReel";
+import { MediumPicker, PasteAScript, TalkItThrough, WriteItForMe } from "./NewReel";
 
 /**
  * The page with no reel open.
@@ -21,6 +21,17 @@ export function Start() {
   // in a 24 rem rail; "talk it through" is the default because the four questions it asks are
   // the four decisions that shape the film, and the other two both answer them for you.
   const [mode, setMode] = useState<"talk" | "write" | "paste">("talk");
+  // Lifted above the three forms so switching how you start does not lose the medium, and so
+  // the catalogue is fetched once. Default is paper-cutout: that is what a board that never
+  // names a medium already is.
+  const [medium, setMedium] = useState("paper-cutout");
+  const [mediums, setMediums] = useState<{ key: string; name: string }[]>([]);
+  useEffect(() => {
+    void api
+      .agents()
+      .then((roster) => setMediums(roster.mediums))
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="thin h-full overflow-y-auto">
@@ -35,7 +46,8 @@ export function Start() {
         </p>
 
         <div className="mt-8 rounded-2xl border border-edge bg-panel p-5">
-          <div className="mb-4 flex gap-1 rounded-full bg-ink p-0.5 text-[11px]">
+          <MediumPicker value={medium} options={mediums} onChange={setMedium} />
+          <div className="mb-4 mt-4 flex gap-1 rounded-full bg-ink p-0.5 text-[11px]">
             {(
               [
                 ["talk", "talk it through"],
@@ -55,11 +67,11 @@ export function Start() {
             ))}
           </div>
           {mode === "talk" ? (
-            <TalkItThrough />
+            <TalkItThrough medium={medium} />
           ) : mode === "write" ? (
-            <WriteItForMe />
+            <WriteItForMe medium={medium} />
           ) : (
-            <PasteAScript />
+            <PasteAScript medium={medium} />
           )}
         </div>
 

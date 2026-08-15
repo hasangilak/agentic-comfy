@@ -61,8 +61,8 @@ export const api = {
   deleteReel: (slug: string) =>
     call<{ trashed: string }>(`/api/reels/${slug}`, { method: "DELETE" }),
 
-  createReel: (concept: string, beats: number, seconds: number) =>
-    post<{ job: Job }>("/api/reels", { concept, beats, seconds }).then((r) => r.job),
+  createReel: (concept: string, beats: number, seconds: number, medium?: string) =>
+    post<{ job: Job }>("/api/reels", { concept, beats, seconds, medium }).then((r) => r.job),
 
   /**
    * Begin a film by talking about it. The reel exists when this answers — with no beats yet —
@@ -71,8 +71,8 @@ export const api = {
    * The interview is section 0 of the authoring brief, run the way that document says it
    * should be: the one-shot path is the one that splices it out.
    */
-  developReel: (message: string) =>
-    post<{ slug: string; board: Board; job: Job }>("/api/reels/develop", { message }),
+  developReel: (message: string, medium?: string) =>
+    post<{ slug: string; board: Board; job: Job }>("/api/reels/develop", { message, medium }),
 
   /** One more turn of that interview. 409 once any beat has been rendered. */
   develop: (slug: string, message: string, answers?: Record<string, string>) =>
@@ -83,13 +83,17 @@ export const api = {
    * they are being interviewed about — from the file, so there is no second copy of the rules
    * anywhere in this studio.
    */
-  brief: () => call<{ markdown: string }>("/api/brief").then((r) => r.markdown),
+  brief: (medium?: string) =>
+    call<{ markdown: string }>(
+      medium ? `/api/brief?medium=${encodeURIComponent(medium)}` : "/api/brief",
+    ).then((r) => r.markdown),
 
   /** Adopt a script written outside the studio. No model turn, so the reel exists on return. */
-  importReel: (script: string, manualStills: boolean) =>
+  importReel: (script: string, manualStills: boolean, medium?: string) =>
     post<{ slug: string; board: Board; notes: string[] }>("/api/reels/import", {
       script,
       manual_stills: manualStills,
+      medium,
     }),
 
   board: (slug: string) =>

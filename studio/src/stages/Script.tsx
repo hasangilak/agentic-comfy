@@ -4,6 +4,7 @@ import { JOIN_LOOK } from "../joins";
 import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 import { TalkItOut, TheBrief } from "./TalkItOut";
+import { MediumPicker } from "./NewReel";
 import { StagePage, WaitingOn } from "./parts";
 
 /**
@@ -121,6 +122,8 @@ export function Script() {
                 />
               </label>
 
+              <BoardMedium />
+
               <label className="block">
                 <span className="mb-1 block text-[10px] uppercase tracking-wide text-zinc-400">
                   style bible
@@ -162,11 +165,29 @@ export function Script() {
               </div>
             </>
           ) : (
-            <TheBrief />
+            <div className="space-y-4">
+              <BoardMedium />
+              <TheBrief />
+            </div>
           )}
         </div>
       </div>
     </StagePage>
+  );
+}
+
+/** The reel's medium, patched immediately — it is a chip, not a text field. */
+function BoardMedium() {
+  const studio = useStudio();
+  const board = studio.board!;
+  return (
+    <MediumPicker
+      value={board.medium}
+      options={board.mediums}
+      onChange={(next) =>
+        void studio.guard(() => api.patchBoard(board.slug, { medium: next }))
+      }
+    />
   );
 }
 

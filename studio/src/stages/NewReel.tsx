@@ -3,6 +3,69 @@ import { api } from "../api";
 import { useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 
+/** Shown until `/api/agents` answers, so the start screen is not a blank pair of chips. */
+const FALLBACK_MEDIUMS = [
+  { key: "paper-cutout", name: "paper-cutout stop-motion" },
+  { key: "claymation", name: "clay stop-motion" },
+];
+
+/**
+ * What the puppets are physically made of — not a tint, the rules the script is written against.
+ *
+ * Paper is rigid and hinged; clay squashes and stretches. A clay film drafted under paper's
+ * physics comes out stiff, which is why this is a create-time pick rather than a PATCH after
+ * the model has already written the beats. `board.mediums` is the live catalogue; the fallback
+ * is the two that ship, so a start screen that has not fetched yet still has something to tap.
+ */
+export function MediumPicker({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options?: { key: string; name: string }[];
+  onChange: (key: string) => void;
+}) {
+  const list = options?.length ? options : FALLBACK_MEDIUMS;
+  return (
+    <div>
+      <span className="mb-1 block text-[10px] uppercase tracking-wide text-zinc-400">medium</span>
+      <div className="grid grid-cols-2 gap-2">
+        {list.map((entry) => {
+          const selected = entry.key === value;
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              onClick={() => onChange(entry.key)}
+              className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                selected
+                  ? "border-transparent bg-solid text-white"
+                  : "border-edge bg-ink text-zinc-700 hover:border-zinc-300 hover:bg-hover"
+              }`}
+            >
+              <span className="block text-[12px] font-medium capitalize">
+                {entry.key.replace(/-/g, " ")}
+              </span>
+              <span
+                className={`mt-0.5 block text-[10px] leading-snug ${
+                  selected ? "text-white/70" : "text-zinc-400"
+                }`}
+              >
+                {entry.key === "claymation"
+                  ? "soft, heavy — shapes squash and stretch"
+                  : entry.key === "paper-cutout"
+                    ? "rigid, flat, hinged — shapes are swapped"
+                    : entry.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
  * The ways a reel begins, as components rather than as a panel.
  *
@@ -24,7 +87,7 @@ import { Button, inputClass } from "../ui";
  * interview while the model is still reading the brief. That the board comes first is the whole
  * design: `storyboard.json` stays the only store, and the transcript survives a reload.
  */
-export function TalkItThrough() {
+export function TalkItThrough({ medium }: { medium: string }) {
   const studio = useStudio();
   const [concept, setConcept] = useState("");
   const [starting, setStarting] = useState(false);
@@ -34,7 +97,7 @@ export function TalkItThrough() {
     if (!trimmed || starting) return;
     setStarting(true);
     try {
-      const started = await api.developReel(trimmed);
+      const started = await api.developReel(trimmed, medium);
       studio.setError(null);
       setConcept("");
       await studio.refreshReels();
@@ -58,7 +121,7 @@ export function TalkItThrough() {
             void begin();
           }
         }}
-        placeholder="a paper pig finds a hidden pond"
+        placeholder={medium === "claymation" ? "a clay pig finds a hidden pond" : "a paper pig finds a hidden pond"}
         autoFocus
       />
       <Button
@@ -80,7 +143,13 @@ export function TalkItThrough() {
 }
 
 /** One concept, a beat count and a length: the model writes the whole script in one pass. */
-export function WriteItForMe({ onStarted }: { onStarted?: () => void }) {
+export function WriteItForMe({
+  medium,
+  onStarted,
+}: {
+  medium: string;
+  onStarted?: () => void;
+}) {
   const studio = useStudio();
   const [concept, setConcept] = useState("");
   const [beats, setBeats] = useState(4);
@@ -95,7 +164,7 @@ export function WriteItForMe({ onStarted }: { onStarted?: () => void }) {
     if (!trimmed) return;
     setConcept("");
     onStarted?.();
-    void studio.guard(() => api.createReel(trimmed, beats, seconds));
+    void studio.guard(() => api.createReel(trimmed, beats, seconds, medium));
   };
 
   return (
@@ -104,7 +173,7 @@ export function WriteItForMe({ onStarted }: { onStarted?: () => void }) {
         className={`${inputClass} h-20`}
         value={concept}
         onChange={(event) => setConcept(event.target.value)}
-        placeholder="a paper pig finds a hidden pond"
+        placeholder={medium === "claymation" ? "a clay pig finds a hidden pond" : "a paper pig finds a hidden pond"}
       />
       <div className="flex items-center gap-2 text-[11px] text-zinc-500">
         <label className="flex items-center gap-1">
@@ -153,7 +222,13 @@ export function WriteItForMe({ onStarted }: { onStarted?: () => void }) {
 }
 
 /** A script written outside the studio, adopted verbatim. No model turn at all. */
-export function PasteAScript({ onImported }: { onImported?: (notes: string[]) => void }) {
+export function PasteAScript({
+  medium,
+  onImported,
+}: {
+  medium: string;
+  onImported?: (notes: string[]) => void;
+}) {
   const studio = useStudio();
   const [pasted, setPasted] = useState("");
   const [manualStills, setManualStills] = useState(false);
@@ -166,7 +241,7 @@ export function PasteAScript({ onImported }: { onImported?: (notes: string[]) =>
     setImporting(true);
     setNotes([]);
     try {
-      const result = await api.importReel(text, manualStills);
+      const result = await api.importReel(text, manualStills, medium);
       setPasted("");
       studio.setError(null);
       // Notes are worth reading before the page changes under them, so they are shown here as
@@ -246,9 +321,10 @@ export function PasteAScript({ onImported }: { onImported?: (notes: string[]) =>
         </div>
       ) : (
         <p className="text-[10px] leading-snug text-zinc-400">
-          Free — no model turn at all. Beat order, lengths and cuts arrive exactly as written.{" "}
-          <code>prompts/40s-stop-motion-script.md</code> is the prompt that gets an AI to write
-          one — the same brief “write it for me” uses.
+          Free — no model turn at all. Beat order, lengths and cuts arrive exactly as written.
+          Pick the medium this script was written for — a clay script imported as paper fights
+          its own reviewer. <code>prompts/40s-stop-motion-script.md</code> is the prompt that
+          gets an AI to write one — the same brief “write it for me” uses.
         </p>
       )}
     </div>
