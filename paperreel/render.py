@@ -145,7 +145,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                     # told about the pictures it was given.
                     opens_on = bool(pictures) and pictures[0][0] == board.asset_path(n)
                     hold_video = bool(carry) and not board.carries_motion(board.beat(n))
-                    poses = len(board.pose_paths(n))
+                    poses = len(board.pose_paths(n)[:board.sequence_count(n)])
                     join = JOIN_LOG[sources[n]]
                     if pictures or carry:
                         # Pictures mean ref2va, even on an asset cut that bound identity sheets.
@@ -168,7 +168,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                             )
                         join += f" ({', '.join(detail)})"
                     runner.log(job, f"[render] beat {n}: {frames[n]} frames, {steps} steps, "
-                                    f"{join}")
+                                    f"temperature {board.temperature()}, {join}")
                     started = time.monotonic()
                     outputs = comfy.run_graph(
                         http,
@@ -236,6 +236,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 mentions=board.mentions(n, pictures),
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
+                            temperature=board.temperature(),
                         ),
                         poll=2.0,
                         log=lambda line: runner.log(job, line),
@@ -400,6 +401,7 @@ def _record(board: board_mod.Board, n: int, elapsed: float, frames: int, steps: 
         "frames": frames,
         "steps": steps,
         "seed": board.seed_for(beat),
+        "temperature": board.temperature(),
         "seconds": round(frames / config.FPS, 2),
         "render_seconds": round(elapsed, 1),
         "cost": round(config.estimate_cost(elapsed), 4),

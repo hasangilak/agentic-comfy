@@ -133,6 +133,7 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
                 steps: int, seed: int, last_frame: str | None = None,
                 ref_images: list[str] | None = None,
                 ref_videos: list[str] | None = None,
+                temperature: float = config.DEFAULT_TEMPERATURE,
                 filename_prefix: str = "video/reel") -> dict:
     """The 15-node H3 graph in ComfyUI API format, in one of its two conditioning modes.
 
@@ -163,6 +164,9 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
     node wants frames rather than a container, so each one goes through LoadVideo ->
     GetVideoComponents; the node itself resizes them, caps them at this clip's length and
     trims onto the 17k+5 grid, and refuses anything under 5 frames.
+
+    `temperature` is ComfyUI TemporalScoreRescaling's k, not an H3 input -- the model has none.
+    1.0 omits the node. See `config.DEFAULT_TEMPERATURE`.
     """
     ref_images = list(ref_images or [])
     ref_videos = list(ref_videos or [])
@@ -225,6 +229,17 @@ def build_graph(*, first_frame: str | None, prompt: str, length: int,
                "inputs": {"video": ["14", 0], "filename_prefix": filename_prefix,
                           "format": "auto", "codec": "auto"}},
     }
+    # k=1 is a no-op inside the node, and omitting it is what keeps a default board's graph
+    # byte-identical to the one that ran before this existed. The node is ComfyUI's
+    # TemporalScoreRescaling -- H3 itself has no temperature input.
+    scaled = config.clamp_temperature(temperature)
+    if scaled != config.DEFAULT_TEMPERATURE:
+        graph["17"] = {
+            "class_type": "TemporalScoreRescaling",
+            "inputs": {"model": ["2", 0], "tsr_k": scaled, "tsr_sigma": 1.0},
+        }
+        graph["9"]["inputs"]["model"] = ["17", 0]
+        graph["10"]["inputs"]["model"] = ["17", 0]
     if references:
         # The reference node encodes audio references through the audio VAE, so it wants it
         # whether or not one is wired -- and node 5 already has it loaded for the decode.

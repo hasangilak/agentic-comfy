@@ -53,6 +53,8 @@ def main() -> None:
                         help=f"clip length; >{config.PROVEN_MAX_FRAMES / config.FPS:.0f}s is unproven")
     parser.add_argument("--steps", type=int, default=config.DEFAULT_STEPS)
     parser.add_argument("--seed", type=int, default=1101)
+    parser.add_argument("--temperature", type=float, default=config.DEFAULT_TEMPERATURE,
+                        help="H3 sampling temperature; 1 is the default (unchanged sampling)")
     parser.add_argument("--name", default="reel")
     parser.add_argument("--out", type=Path, default=config.ROOT / "out")
     parser.add_argument("--mute", action="store_true", help="drop H3's generated audio")
@@ -112,6 +114,7 @@ def main() -> None:
                 prompt=config.build_prompt(args.prompt, mute=args.mute, refs=len(refs),
                                            ref_notes=ref_notes),
                 length=length, steps=args.steps, seed=args.seed,
+                temperature=args.temperature,
             ))
             raw = comfy.download(http, comfy.only_video(outputs),
                                  args.out / f"{args.name}_raw.mp4")

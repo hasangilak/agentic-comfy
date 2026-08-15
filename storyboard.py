@@ -58,6 +58,9 @@ def main() -> None:
                         help="independent shots; needs one asset per beat")
     parser.add_argument("--steps", type=int, default=config.DEFAULT_STEPS)
     parser.add_argument("--seed", type=int, default=1101)
+    parser.add_argument("--temperature", type=float, default=None,
+                        help="H3 sampling temperature; 1 is the default (unchanged). "
+                             "Omit to keep whatever the board already stores")
     parser.add_argument("--mute", action="store_true")
     parser.add_argument("--name", help="reuse an existing reels/<name> directory")
     parser.add_argument("--keep-app", action="store_true", help="leave the app deployed")
@@ -203,6 +206,8 @@ def main() -> None:
         result = pipeline.render_reel(
             board, workdir,
             seconds=args.seconds, steps=args.steps, seed=args.seed,
+            temperature=(args.temperature if args.temperature is not None
+                         else board.get("temperature", config.DEFAULT_TEMPERATURE)),
             chain=args.chain, mute=args.mute, manage_app=not args.keep_app,
             out_name=f"{name}_{suffix}",
         )

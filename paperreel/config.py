@@ -90,6 +90,37 @@ DEFAULT_STEPS = 8       # 20 steps costs ~70% more; 8 was judged good on paper a
 DRAFT_STEPS = 8
 DRAFT_SECONDS = 5.0
 
+# H3 has no native temperature socket -- MiniMax's own sampler is steps, seed, and a
+# baked-in flow shift of 12/3. What a director asking for "temperature" means is sampling
+# diversity, and ComfyUI's TemporalScoreRescaling is that knob: it rescales the model's
+# score during denoising. k=1 is a no-op (the node is omitted from the graph), which is
+# why the default is stored by being ABSENT -- same representation as the medium, so every
+# board written before this keeps the fingerprint it already had.
+#
+# Polarity is the node's, not an LLM's: lower k is sharper and more detailed, higher k is
+# smoother. Unmeasured on H3; do not quote a quality claim. The floor is above the node's
+# 0.01 so a slider cannot park on a degenerate rescale.
+DEFAULT_TEMPERATURE = 1.0
+MIN_TEMPERATURE = 0.1
+MAX_TEMPERATURE = 2.0
+
+
+def clamp_temperature(value) -> float:
+    return round(max(MIN_TEMPERATURE, min(MAX_TEMPERATURE, float(value))), 2)
+
+
+def write_temperature(data: dict, value) -> None:
+    """Persist H3 sampling temperature the way `Board.temperature_digest` expects.
+
+    The default is stored by being absent, so a board that never named one and a board set
+    back to 1.0 are the same document -- which is what keeps every existing reel out of
+    `stale` until somebody actually moves the slider.
+    """
+    if clamp_temperature(value) == DEFAULT_TEMPERATURE:
+        data.pop("temperature", None)
+    else:
+        data["temperature"] = clamp_temperature(value)
+
 # ## Billing
 #
 # Modal list rates. A container is billed for GPU + requested cores + requested
@@ -1206,7 +1237,8 @@ def reference_roles(notes: list[str]) -> str:
 #
 # The token carries the picture's ID, not its number, and that is the whole design. The same
 # stored string is read by two prompt builders with two incompatible orderings -- the video
-# model gets `pictures_for` (own still, cast, uploads) tagged `<Picture N>`, the still model
+# model gets `pictures_for` (own still, identity sheets or the cast still, uploads) tagged
+# `<Picture N>`, the still model
 # gets `still_pictures` (identity sheets or the cast still, then uploads on a reference join,
 # capped at four) with no tags at all -- so one literal
 # expansion cannot be correct in both places, and a number typed into prose is persisted

@@ -1395,6 +1395,27 @@ class Board:
     def steps(self) -> int:
         return int(self.data.get("steps") or config.DEFAULT_STEPS)
 
+    def temperature(self) -> float:
+        """H3 sampling diversity. Absent means the default, and must keep meaning it.
+
+        Same contract as `medium`: every board written before this existed has no key, so a
+        missing one has to resolve to 1.0 AND has to hash to nothing -- see `temperature_digest`.
+        """
+        raw = self.data.get("temperature")
+        if raw is None:
+            return config.DEFAULT_TEMPERATURE
+        return config.clamp_temperature(raw)
+
+    def temperature_digest(self) -> str:
+        """The temperature, for the fingerprints -- empty on every board that never named one.
+
+        The `staging_digest` rule: an unconditional part would rehash every beat of every reel
+        at once and re-price a paid render over a slider nobody had moved. Empty at the default,
+        whether the board says 1.0 or says nothing.
+        """
+        value = self.temperature()
+        return "" if value == config.DEFAULT_TEMPERATURE else f"temperature:{value}"
+
     def seed_for(self, beat: dict) -> int:
         return int(self.data.get("seed") or 1101) + beat["n"]
 
@@ -1455,6 +1476,11 @@ class Board:
         medium = self.medium_digest()
         if medium:
             parts.append(medium)
+        # Last, after medium, in both fingerprints. Conditional for the same reason: a board
+        # that never named a temperature keeps the hash it already had.
+        temp = self.temperature_digest()
+        if temp:
+            parts.append(temp)
         return fingerprint(*parts)
 
     def medium(self) -> str:
@@ -1622,15 +1648,19 @@ class Board:
             parts.append(staging)
         # The beat's blocking is in the video prompt, so rewriting where things stand really does
         # change what it would render as -- and it is the beat's own line, not something inherited,
-        # so it reads as `edited`. The medium is board-wide like the style bible above. Temperature
-        # is board-wide too. All three conditional, all last, in the same order as
-        # `render_fingerprint`.
+        # so it reads as `edited`. The medium is board-wide like the style bible above. Both
+        # conditional, both last, in the same order as `render_fingerprint`.
         blocking = " ".join(str(beat.get("blocking") or "").split())
         if blocking:
             parts.append(blocking)
         medium = self.medium_digest()
         if medium:
             parts.append(medium)
+        # Last, after medium, in both fingerprints. Conditional for the same reason: a board
+        # that never named a temperature keeps the hash it already had.
+        temp = self.temperature_digest()
+        if temp:
+            parts.append(temp)
         # Deliberately absent: `panel` and the panel image. A storyboard panel is a sketch of the
         # shot that reaches no renderer, so nothing about the render changes when one is redrawn --
         # and putting it in here would mark every beat of every existing board `edited` at once and
@@ -1864,6 +1894,8 @@ class Board:
             "seconds": self.data.get("seconds", 10.0),
             "steps": self.steps(),
             "seed": self.data.get("seed", 1101),
+            "temperature": self.temperature(),
+            "temperature_range": [config.MIN_TEMPERATURE, config.MAX_TEMPERATURE],
             # The only lengths a beat may have; the node renders one button per entry.
             "lengths": list(config.BEAT_LENGTHS),
             "gen_aspect": round(config.GEN_WIDTH / config.GEN_HEIGHT, 3),

@@ -107,6 +107,9 @@ export function ScriptNode() {
         <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-400">
           <span>
             {totalFrames} frames @ {board.steps} steps
+            {board.temperature != null && board.temperature !== 1
+              ? ` · temp ${board.temperature.toFixed(2)}`
+              : ""}
           </span>
           <span>seed {board.seed}</span>
         </div>

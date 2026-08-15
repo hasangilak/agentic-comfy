@@ -261,6 +261,10 @@ export interface Board {
   seconds: number;
   steps: number;
   seed: number;
+  /** H3 sampling diversity. 1 is the default (unchanged). Lower is sharper, higher is smoother. */
+  temperature: number;
+  /** Inclusive [min, max] the PATCH accepts. */
+  temperature_range: [number, number];
   mute: boolean;
   /** The only lengths a beat may have. One button per entry on the node. */
   lengths: number[];

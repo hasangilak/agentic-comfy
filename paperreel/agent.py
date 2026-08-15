@@ -152,11 +152,17 @@ TOOLS = [
     ),
     gemini.tool(
         "set_reel",
-        "Change a board-wide setting: the default beat length, or the sampler step count.",
+        "Change a board-wide setting: the default beat length, the sampler step count, "
+        "or H3 sampling temperature.",
         {
             "seconds": {"type": "number", "enum": [5, 10],
                         "description": "default length for beats that do not set their own"},
             "steps": {"type": "integer", "description": "sampler steps; 8 is the measured default"},
+            "temperature": {
+                "type": "number",
+                "description": "H3 sampling temperature; 1 is the default (unchanged sampling). "
+                               "Lower is sharper, higher is smoother. Marks every beat edited.",
+            },
         },
     ),
     gemini.tool(
@@ -604,6 +610,9 @@ def apply_one(board: board_mod.Board, op: dict) -> str | None:
         if op.get("steps"):
             board.data["steps"] = int(op["steps"])
             changed.append("steps")
+        if "temperature" in op and op["temperature"] is not None:
+            config.write_temperature(board.data, op["temperature"])
+            changed.append("temperature")
         return f'reel: {", ".join(changed)}' if changed else None
 
     raise ValueError(f"unknown op {kind!r}")

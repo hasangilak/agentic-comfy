@@ -3,6 +3,7 @@ import { api, clock, money } from "../api";
 import type { Estimate } from "../types";
 import { useStudio } from "../useStudio";
 import { Button } from "../ui";
+import { H3Settings } from "./H3Settings";
 import { JobStrip } from "./JobStrip";
 
 /**
@@ -97,11 +98,13 @@ export function CanvasToolbar() {
     <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex flex-col items-center gap-1.5">
       <div
         className="lift pointer-events-auto flex max-w-[calc(100%-2rem)] items-center gap-2
-          rounded-full border border-edge bg-panel/95 px-2 py-1.5 backdrop-blur"
+          overflow-visible rounded-full border border-edge bg-panel/95 px-2 py-1.5 backdrop-blur"
       >
         <span className="max-w-48 truncate px-2 text-[12px] font-medium text-zinc-800">
           {board.title}
         </span>
+        <span className="text-zinc-200">|</span>
+        <H3Settings />
         <span className="text-zinc-200">|</span>
 
         {job ? <JobStrip job={job} /> : null}

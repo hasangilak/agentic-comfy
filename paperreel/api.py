@@ -614,6 +614,16 @@ def patch_reel(slug: str, body: dict = Body(...)) -> dict:
         board.data["steps"] = max(1, min(int(body["steps"]), MAX_STEPS))
     if "seed" in body:
         board.data["seed"] = int(body["seed"])
+    if "temperature" in body:
+        # Same representation as the medium: the default is stored by being absent, so a
+        # board set back to 1.0 and a board that never named one stay the same document.
+        if body["temperature"] is None:
+            board.data.pop("temperature", None)
+        else:
+            try:
+                config.write_temperature(board.data, body["temperature"])
+            except (TypeError, ValueError):
+                raise HTTPException(422, "temperature must be a number")
     if "mute" in body:
         board.data["mute"] = bool(body["mute"])
     if "medium" in body:

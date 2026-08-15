@@ -149,6 +149,7 @@ def render_beats(
     seconds: float,
     steps: int = config.DEFAULT_STEPS,
     seed: int = 1101,
+    temperature: float = config.DEFAULT_TEMPERATURE,
     mute: bool = False,
     identity: str = "",
     manage_app: bool = True,
@@ -243,7 +244,8 @@ def render_beats(
                 else:
                     frame = None  # text-to-video
 
-                log(f"[render] beat {n}/{len(shots)}: {length} frames, {steps} steps")
+                log(f"[render] beat {n}/{len(shots)}: {length} frames, {steps} steps, "
+                    f"temperature {config.clamp_temperature(temperature)}")
                 started = time.monotonic()
                 uploaded = comfy.upload_image(http, frame) if frame else None
                 outputs = comfy.run_graph(
@@ -272,6 +274,7 @@ def render_beats(
                                                    medium_key=shot.medium_key,
                                                    mentions=shot.mentions or None),
                         length=length, steps=steps, seed=seed + n,
+                        temperature=temperature,
                     ),
                     log=log,
                 )
@@ -296,6 +299,7 @@ def render_reel(
     seconds: float,
     steps: int = config.DEFAULT_STEPS,
     seed: int = 1101,
+    temperature: float = config.DEFAULT_TEMPERATURE,
     chain: bool = True,
     mute: bool = False,
     manage_app: bool = True,
@@ -367,7 +371,7 @@ def render_reel(
                 and len(view.pose_paths(beat["n"])) > 1
                 and beat.get("ref_video") != board_mod.CARRY_UPSTREAM
             ),
-            poses=len(view.pose_paths(beat["n"])),
+            poses=len(view.pose_paths(beat["n"])[:view.sequence_count(beat["n"])]),
             blocking=beat.get("blocking", ""),
             medium_key=view.medium(),
         )
@@ -377,6 +381,7 @@ def render_reel(
     result = render_beats(
         shots, workdir,
         seconds=seconds, steps=steps, seed=seed,
+        temperature=temperature,
         mute=mute, identity=board.get("style_bible", ""),
         manage_app=manage_app, log=log,
     )
