@@ -46,6 +46,17 @@ const CONTINUITY_CLAUSE_MULTI =
   'but compose the framing, shot scale and camera angle as the beat describes, and move ' +
   'the subject into a clearly different pose and position as described. Now:'
 
+// Lateral travel: lock set IDENTITY, license set POSITION to change. The default clause
+// above is how a walk-cycle against a glued-down garden becomes fake walking -- Gemini
+// copies the previous frame's fence and only re-poses the legs.
+const CONTINUITY_CLAUSE_TRAVEL =
+  'Keep the exact same paper cutout collage style, the same characters and costumes, ' +
+  'the same materials, palette and lighting as the reference. The set is the same place ' +
+  'and the same pieces (same architecture, same props) but those pieces MAY translate in ' +
+  'the frame when the beat describes travel -- a background pull, not a new location and ' +
+  'not a new camera. Move the subject into a clearly different pose as described, holding ' +
+  'their on-screen size and roughly the same screen third. Now:'
+
 const scenes = new Map<string, Scene>()
 export const bus = new EventEmitter()
 bus.setMaxListeners(0)
@@ -215,6 +226,8 @@ function composePrompt(scene: Scene, frame: Frame, references: number): string {
   // land here too, and a reader should not have to work out which arm of the count it fell down.
   if (scene.consistency === 'edit') {
     // nothing prepended
+  } else if (scene.slideBackground && references > 0) {
+    parts.push(CONTINUITY_CLAUSE_TRAVEL)
   } else if (references === 1) parts.push(CONTINUITY_CLAUSE)
   else if (references > 1) parts.push(CONTINUITY_CLAUSE_MULTI)
   parts.push(frame.beat.trim())

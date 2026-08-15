@@ -252,6 +252,8 @@ def _beat_text(board: board_mod.Board, n: int, pictures: Pictures) -> str:
                 f"only -- compose this frame at the shot scale and camera angle described above; "
                 f"do not copy a reference's framing."
             ).strip()
+    if config.is_travel(beat.get("action") or ""):
+        prompt = f"{prompt} {config.TRAVEL_STILL_NOTE}".strip()
     # And the bound design sheets this still was NOT handed, as words. Nine slots now hold a
     # cast, several graphite panels and a previous pose; a set that still does not fit arrives
     # as a sentence. Computed against the very list being conditioned on, so a sheet is never
@@ -271,7 +273,8 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
                 gemini_image_size: str | None = None,
                 vary_seeds: bool | None = None,
                 duration: float | None = None,
-                negative: str | None = None) -> dict:
+                negative: str | None = None,
+                slide_background: bool = False) -> dict:
     """One Papercut scene describing a run of stills.
 
     Papercut composes `continuity clause (when conditioned) + frame beat + scene style`. The
@@ -341,6 +344,12 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
         ),
         "beats": texts if texts is not None else [_beat_text(board, n, pictures) for n in beats],
     }
+    if slide_background:
+        # Older image servers ignore unknown fields. A build that advertises
+        # `slideBackground` on /api/health swaps the chain continuity clause so the set
+        # may translate; without it the pose text is the only instruction, and it often
+        # loses to "keep the same background".
+        body["slideBackground"] = True
     selected_model = gemini_model
     selected_size = gemini_image_size
     if beats:
@@ -412,7 +421,8 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
                   vary_seeds: bool | None = None,
                   duration: float | None = None,
                   negative: str | None = None,
-                  label: Callable[[int], str] | None = None) -> list[int]:
+                  label: Callable[[int], str] | None = None,
+                  slide_background: bool = False) -> list[int]:
     """Create, render and collect one scene. Returns the beats whose frames landed.
 
     `out_paths` says where each frame goes, positionally. Without it every frame lands on its
@@ -427,7 +437,8 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
     created = client.post("/api/scenes", json=_scene_body(
         board, beats, pictures, seed, texts=texts, aspect=aspect, consistency=consistency,
         style=style, gemini_model=gemini_model, gemini_image_size=gemini_image_size,
-        vary_seeds=vary_seeds, duration=duration, negative=negative))
+        vary_seeds=vary_seeds, duration=duration, negative=negative,
+        slide_background=slide_background))
     created.raise_for_status()
     scene_id = created.json()["id"]
     # Explicit frame indices, because Papercut clamps a scene to a minimum of two frames --
@@ -483,12 +494,16 @@ def _pose_texts(board: board_mod.Board, n: int, count: int, pictures: Pictures) 
     Papercut's own `beatHint` is a left-to-right walk, which is the wrong action for most
     shots. The beat text already names the moment; `pose_phase` only says how far through it
     this frame is, so pose 4 of 7 of "she raises the lantern" is the lantern partway up.
+
+    Lateral travel adds the pull instruction on every pose, because the image server's
+    chain clause otherwise locks background position to the previous frame.
     """
     base = _beat_text(board, n, pictures)
     action = (board.beat(n).get("action") or "").strip()
+    pull = f" {config.TRAVEL_POSE_NOTE}" if config.is_travel(action) else ""
     return [
         f"{base} Stop-motion pose {index} of {count}: "
-        f"{config.pose_phase(index, count, action)}."
+        f"{config.pose_phase(index, count, action)}.{pull}"
         for index in range(1, count + 1)
     ]
 
@@ -542,6 +557,7 @@ def _render_sequence(client: httpx.Client, board: board_mod.Board, n: int, *,
         consistency="chain", vary_seeds=False,
         duration=board.seconds_for(board.beat(n)),
         gemini_model=gemini_model, gemini_image_size=gemini_image_size, label=label,
+        slide_background=board.is_travel(board.beat(n)),
     )
     keep = sum(1 for path in out_paths if path.is_file())
     _clear_extra_poses(board, n, keep)
@@ -633,6 +649,16 @@ def edits(reported: dict | None) -> bool:
     half, which is the better half to lose.
     """
     return "edit" in ((reported or {}).get("modes") or [])
+
+
+def slides(reported: dict | None) -> bool:
+    """Does this image server license the set to translate on a travel chain?
+
+    An older build keeps the continuity clause that locks background position, so a
+    travel sequence has to fight that with pose text alone. Advertised as `slideBackground`
+    on /api/health, same contract as `edit`.
+    """
+    return "slideBackground" in ((reported or {}).get("modes") or [])
 
 
 def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_path: Path,

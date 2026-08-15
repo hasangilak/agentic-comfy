@@ -85,7 +85,11 @@ app.get('/api/health', (_req, res) => {
     // a frame that does not exist, and quietly rendering from the text alone. Sending `anchor`
     // instead loses the "change nothing else" instruction but keeps the picture, which is the
     // better half to keep.
-    modes: CONSISTENCY_MODES,
+    //
+    // `slideBackground` is not a consistency mode. It swaps the chain continuity clause so a
+    // travel sequence may translate the set; without it paperreel still sends the pull in
+    // the frame text, and that text often loses to "keep the same background".
+    modes: [...CONSISTENCY_MODES, 'slideBackground'],
     // `maxReferences` is here for the same reason `maxFrames` is: the caller next door batches
     // its stills against these numbers, and one hardcoded on that side drifts the day this one
     // moves.

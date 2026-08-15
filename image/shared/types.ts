@@ -129,6 +129,14 @@ export interface SceneSettings {
    * door — send both: this list, and its first entry as `referencePath`.
    */
   referencePaths?: string[]
+  /**
+   * License the set to translate between chained frames. Default false, so a scene that
+   * never named it composes the byte-identical continuity clause it always did.
+   *
+   * The default clause locks "background" to the previous frame, which is how a walk
+   * sequence comes back as a gait on a treadmill. paperreel sets this on lateral travel.
+   */
+  slideBackground?: boolean
 }
 
 export interface Scene extends SceneSettings {
