@@ -184,7 +184,7 @@ def draw_text(board: board_mod.Board, n: int, index: int | None, prompt: str) ->
     """The frame text one picture is drawn from: the director's prompt, with its tokens resolved.
 
     Nothing else. The medium rides on the scene's `style` instead -- `papercut.draw` sends
-    `REF_DRAW_STYLE_SUFFIX` there, which is where a still's suffix goes too, so the two are
+    `board.look().sheet` there, which is where a still's suffix goes too, so the two are
     assembled the same way rather than one of them being special.
 
     **The board's style bible must not reach this render, and that is the whole reason `style` is
@@ -488,7 +488,7 @@ def _chat_messages(board: board_mod.Board, n: int, index: int, message: str) -> 
         "is NOT a description of the picture you are working on, and none of it belongs in your "
         f"prompt unless the picture is already of it: {board.identity()}"
     )
-    parts.append(f"REQUIRED OF EVERY REFERENCE PICTURE: {config.REF_DRAW_STYLE_SUFFIX}")
+    parts.append(f"REQUIRED OF EVERY REFERENCE PICTURE: {board.look().sheet}")
     if beat.get("scene"):
         parts.append(f"THE SHOT THIS PICTURE IS USED IN: {beat['scene']}")
     parts.append(f"THE DIRECTOR SAYS: {message}")

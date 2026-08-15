@@ -29,6 +29,19 @@
         "Wide shot, eye level, locked-off camera. Ginger Tabby has leapt into the centre third facing left with horizontal arrows pointing left, while the single Tuxedo Cat has slid into the right third in pursuit.",
         "Wide shot, eye level, locked-off camera. Ginger Tabby lands in the lower-left third near the trellis facing left with a downward landing arrow, while the single Tuxedo Cat reaches the middle third, leaving the one snail motionless in the foreground."
       ],
+      "render": {
+        "at": "2026-08-15T19:16:36+00:00",
+        "cost": 0.2098,
+        "draft": false,
+        "fingerprint": "5044bff5ef497ba1",
+        "frames": 124,
+        "own": "235cd800ce06787a",
+        "render_seconds": 192.7,
+        "seconds": 5.17,
+        "seed": 1102,
+        "steps": 8,
+        "temperature": 1.0
+      },
       "scene": "wide diorama of a cottage vegetable patch with raised soil beds and wooden fence",
       "seconds": 5.0,
       "source": "reference",
@@ -68,6 +81,19 @@
         "Wide shot, eye level, locked-off camera. Ginger Tabby is halfway up the left trellis in the upper-left third with an upward arrow, while the single Tuxedo Cat reaches the lower-left base directly below.",
         "Wide shot, eye level, locked-off camera. Ginger Tabby clings to the top of the trellis in the upper-left third, while the single Tuxedo Cat brakes at the trellis base facing left, with the one snail remaining static on the cabbage leaf below."
       ],
+      "render": {
+        "at": "2026-08-15T19:21:32+00:00",
+        "cost": 0.3205,
+        "draft": false,
+        "fingerprint": "812a39febf2d6c63",
+        "frames": 124,
+        "own": "8dbf2c5b48836669",
+        "render_seconds": 294.3,
+        "seconds": 5.17,
+        "seed": 1103,
+        "steps": 8,
+        "temperature": 1.0
+      },
       "scene": "wide diorama of a cottage vegetable patch with raised soil beds and wooden fence",
       "seconds": 5.0,
       "source": "reference",
@@ -107,6 +133,19 @@
         "Wide shot, eye level, locked-off camera. Ginger Tabby is mid-fall in the left-centre third pivoting toward the right with a downward arrow, while the single Tuxedo Cat drops low in the centre third.",
         "Wide shot, eye level, locked-off camera. Ginger Tabby lands four-paws-down in the lower-left third facing right, while the single Tuxedo Cat halts in the lower-right third facing left, both tails pointing upright with vertical arrows beside the static single snail."
       ],
+      "render": {
+        "at": "2026-08-15T19:26:26+00:00",
+        "cost": 0.3201,
+        "draft": false,
+        "fingerprint": "2b69746172bc5f7d",
+        "frames": 124,
+        "own": "3b50abf79cab79d7",
+        "render_seconds": 293.9,
+        "seconds": 5.17,
+        "seed": 1104,
+        "steps": 8,
+        "temperature": 1.0
+      },
       "scene": "wide diorama of a cottage vegetable patch with raised soil beds and wooden fence",
       "seconds": 5.0,
       "source": "reference",
@@ -152,6 +191,19 @@
         "Close-up, high angle locked-off camera. The one butterfly hovers in the middle third just above the snail with a short downward arrow, while the faces of the single Ginger Tabby and single Tuxedo Cat remain motionless on either side of the frame.",
         "Close-up, high angle locked-off camera. The one butterfly rests fully landed atop the single snail's shell in the lower-centre third, flanked by the motionless peering heads of the single Ginger Tabby on the left and the single Tuxedo Cat on the right."
       ],
+      "render": {
+        "at": "2026-08-15T19:28:51+00:00",
+        "cost": 0.1569,
+        "draft": false,
+        "fingerprint": "014f04bbd9474f54",
+        "frames": 124,
+        "own": "62ef51a9ae31bfe5",
+        "render_seconds": 144.1,
+        "seconds": 5.17,
+        "seed": 1105,
+        "steps": 8,
+        "temperature": 1.0
+      },
       "scene": "close-up of the garden bed cabbage leaves with the snail",
       "seconds": 5.0,
       "source": "asset",
@@ -2317,8 +2369,20 @@
       "lock"
     ]
   },
+  "last_render": {
+    "at": "2026-08-15T19:28:52+00:00",
+    "beats": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "container_seconds": 954.0,
+    "cost": 1.0387
+  },
   "seconds": 10.0,
   "seed": 1101,
+  "spend_seconds": 954.0,
   "staging": [
     {
       "chat": [

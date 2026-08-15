@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { useStudio } from "../useStudio";
-import { Button, inputClass } from "../ui";
+import { Button, inputClass, prettyKey } from "../ui";
 
 /** Shown until `/api/agents` answers, so the start screen is not a blank pair of chips. */
 const FALLBACK_MEDIUMS = [
@@ -53,7 +53,7 @@ export function MediumPicker({
               }`}
             >
               <span className="block text-[12px] font-medium capitalize">
-                {entry.key.replace(/-/g, " ")}
+                {prettyKey(entry.key)}
               </span>
               <span
                 className={`mt-0.5 block text-[10px] leading-snug ${

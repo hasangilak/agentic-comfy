@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ActivityEvent, ChatTurn } from "../types";
+import { prettyKey } from "../ui";
 import { ActivityTimeline } from "./ActivityTimeline";
 
 /**
@@ -61,7 +62,7 @@ export function Turn({
   }
 
   const showRole = AGENT_ROLES.has(turn.role);
-  const roleLabel = ROLE_LABELS[turn.role] ?? turn.role;
+  const roleLabel = ROLE_LABELS[turn.role] ?? prettyKey(turn.role);
 
   return (
     <div>

@@ -113,6 +113,15 @@ export const inputClass =
   "transition-colors";
 
 /**
+ * Skill ids and medium keys are kebab-case (`style-paper-craft`, `paper-craft`). The medium
+ * picker and the crew list show the same words with spaces, plus `capitalize` at the call
+ * site. The id itself is what the API still takes.
+ */
+export function prettyKey(key: string): string {
+  return key.replace(/-/g, " ");
+}
+
+/**
  * A row that looks like navigation and is actually a readout. The reference design's left rail
  * is a stack of icon rows; ours has nothing to navigate to -- one board is open at a time -- so
  * the same shape carries the three things that can silently not be running.

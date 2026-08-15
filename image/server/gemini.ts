@@ -185,11 +185,11 @@ function imageInput(file: string) {
 
 function promptWithNegative(req: RenderRequest): string {
   const negative = req.negativePrompt?.trim()
-  const paperCutoutDirection =
-    'Render one finished frame as handcrafted layered paper-cutout collage for stop-motion: '
-    + 'physical construction paper, clean cut edges, visible paper fibers, layered depth, '
-    + 'soft contact shadows, flat graphic composition, not photorealistic and not 3D CGI. '
-  const prompt = `${paperCutoutDirection}${req.prompt.trim()}`
+  // Scene `style` is the medium lock: paperreel sends bible + Medium.still (or .sheet /
+  // .model / .set), and the standalone UI sends DEFAULT_STYLE. A second medium prepended
+  // here is how a papercraft or clay still was drawn as paper-cutout anyway -- models
+  // overweight the opener, so the cutout sentence won every time.
+  const prompt = req.prompt.trim()
   return negative ? `${prompt} Avoid: ${negative}` : prompt
 }
 

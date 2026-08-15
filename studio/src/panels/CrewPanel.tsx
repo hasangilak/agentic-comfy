@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { AgentInfo, AgentRoster, CrewPlan, Job, PhasePlan, StagePlan } from "../types";
 import { useStudio } from "../useStudio";
+import { prettyKey } from "../ui";
 import { ActivityTimeline } from "./ActivityTimeline";
 
 /**
@@ -104,7 +105,7 @@ export function CrewPanel() {
     <div className="mt-4 space-y-0.5 px-3">
       <div className="flex items-baseline gap-2 px-2.5 pb-1">
         <span className="text-[11px] font-medium text-zinc-400">Crew</span>
-        <span className="text-[10px] text-zinc-300">{board.medium}</span>
+        <span className="text-[10px] capitalize text-zinc-300">{prettyKey(board.medium)}</span>
         {!running && !empty ? (
           <>
             <button
@@ -359,11 +360,11 @@ function CastRow({
             )}
           </span>
           <span
-            className={`min-w-0 flex-1 truncate text-[12px] ${
+            className={`min-w-0 flex-1 truncate text-[12px] capitalize ${
               live ? "font-medium text-zinc-900" : "text-zinc-700"
             }`}
           >
-            {name}
+            {prettyKey(name)}
           </span>
           {lens ? <span className="shrink-0 text-[10px] text-live">{lens}</span> : null}
           {agent?.error ? <span className="shrink-0 text-[10px] text-danger">broken</span> : null}
@@ -388,7 +389,7 @@ function CastRow({
             rows={2}
             value={askText}
             onChange={(event) => onAskText(event.target.value)}
-            placeholder={`what should ${name} do?`}
+            placeholder={`what should ${prettyKey(name)} do?`}
           />
           <button
             onClick={onSubmitAsk}
@@ -430,7 +431,9 @@ function LiveCrew({ job }: { job: Job }) {
       <div className="flex items-center gap-2">
         <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-warm live-dot" />
         <span className="min-w-0 flex-1 truncate text-[11px] text-warm">
-          {job.phase || (job.kind === "crew" ? "the crew is starting" : "the agent is starting")}
+          {prettyKey(
+            job.phase || (job.kind === "crew" ? "the crew is starting" : "the agent is starting"),
+          )}
         </span>
         <button
           onClick={() => void studio.guard(() => api.cancel(job.id))}
@@ -486,7 +489,7 @@ function AgentTurn({ role, text, ops }: { role: string; text: string; ops: { sum
     <div className="rounded-2xl border border-edge bg-panel px-3 py-2.5">
       <div className="mb-1 flex items-center gap-2">
         <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-          {role}
+          {prettyKey(role)}
         </span>
         {ops.length ? (
           <button

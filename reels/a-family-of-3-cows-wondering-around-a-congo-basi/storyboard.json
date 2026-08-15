@@ -1,0 +1,476 @@
+{
+  "beats": [
+    {
+      "action": "The large bull cow steps forward slowly with faceted legs, lowering its head toward a tuft of folded paper grass; the mother cow and small calf remain completely motionless standing nearby.",
+      "asset_prompt": "FOREGROUND: A row of serrated folded cardstock fern fronds and scored tropical grass tufts in jungle green and moss green lining the bottom edge, throwing crisp shadows rightward.\nMIDGROUND: The three folded paper cattle standing together on scored earth. On the left third, the father bull (a 12cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and massive sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) stands facing three-quarters right with head slightly elevated. In the center, the mother cow (a 10cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and medium-sized sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) stands in profile facing right. To her right, the calf (a 6cm tall angular faceted quadruped folded from warm beige cardstock with tiny pointed pale terracotta horn nubs, glossy black pin-head bead eyes, and scored boxy snout) stands beside her flank facing right. All three animals are fully visible, unobstructed, and clearly lit.\nBACKGROUND: Receding staggered layers of scored paper rainforest tree trunks in damp bark brown and broad leaves cut from deep moss green and jungle green cardstock.\nUPPER THIRD: Layered canopy silhouettes of scalloped rainforest foliage in damp bark brown, jungle green, and moss green.\nLIGHT: Single locked warm tungsten key light from upper left raking across paper tooth and scoring lines, with cool faint shadow fill from lower right.\nCOMPOSITION: Vertical 9:16 portrait. The three cows span the lower-to-middle thirds, weighted slightly toward the left third, with generous vertical negative space and rainforest canopy in the upper half.",
+      "blocking": "",
+      "n": 1,
+      "panel": "Wide shot, eye level, static locked-off camera showing the family group of three cattle in a clearing with three large tree trunks framing the vertical 9:16 space. The large father bull stands in the center-left third facing right, with the mother cow in the right third facing left and the small calf tucked behind her, while an arrow points down and forward from the bull's head toward a grass tuft.",
+      "panel_frames": [
+        "Wide shot, eye level, static camera. The father bull's front leg lifts and his head lowers halfway toward the ground with a downward curved arrow, while the mother cow and calf remain completely stationary in their positions.",
+        "Wide shot, eye level, static camera. The father bull completes the forward step with his head down near the grass tuft, locked in place beside the motionless mother cow and calf in the right third."
+      ],
+      "scene": "Congo basin clearing under rainforest canopy, eye-level long take",
+      "seconds": 5.0,
+      "source": "reference",
+      "staging": [
+        "50f83e",
+        "b774c5",
+        "a9a9f2",
+        "8d5334"
+      ]
+    },
+    {
+      "action": "Continuing without pause from the step, the mother cow tilts her folded neck downward and takes two rhythmic mechanical chews of paper grass; the father bull and calf hold completely still.",
+      "asset_prompt": "FOREGROUND: The same serrated folded cardstock fern fronds and scored tropical grass tufts in jungle green and moss green lining the bottom edge, throwing crisp shadows rightward.\nMIDGROUND: Same physical diorama setup. On the left third, the father bull (a 12cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and massive sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) stands stationary with head lowered near the grass. In the center, the mother cow (a 10cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and medium-sized sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) has her neck pivoted down at a folded hinge, muzzle touching a standing paper grass blade. To her right, the calf (a 6cm tall angular faceted quadruped folded from warm beige cardstock with tiny pointed pale terracotta horn nubs, glossy black pin-head bead eyes, and scored boxy snout) stands motionless beside her.\nBACKGROUND: Identical receding staggered layers of scored paper rainforest tree trunks in damp bark brown and broad leaves cut from deep moss green and jungle green cardstock.\nUPPER THIRD: Identical layered canopy silhouettes of scalloped rainforest foliage in damp bark brown, jungle green, and moss green.\nLIGHT: Single locked warm tungsten key light from upper left raking across paper tooth and scoring lines, with cool faint shadow fill from lower right.\nCOMPOSITION: Vertical 9:16 portrait. The three cows occupy the lower third with the mother cow in the center, negative space and canopy above.",
+      "blocking": "",
+      "n": 2,
+      "panel": "Wide shot, eye level, continuing the same locked-off setup with the three cattle in the clearing. The mother cow in the right third begins tilting her head with a downward directional arrow, while the father bull holds his low grazing pose and the calf stands still.",
+      "panel_frames": [
+        "Wide shot, eye level, static camera. The mother cow's snout touches the paper tuft with double-ended vertical chewing arrows at her jaw, while the bull on the left and the calf beside her remain completely frozen.",
+        "Wide shot, eye level, static camera. The mother cow completes her second chewing motion with head still dipped, while the father bull and calf hold their static poses without moving."
+      ],
+      "scene": "Congo basin clearing under rainforest canopy, eye-level long take",
+      "seconds": 5.0,
+      "source": "reference",
+      "staging": [
+        "50f83e",
+        "b774c5",
+        "a9a9f2",
+        "8d5334"
+      ]
+    },
+    {
+      "action": "Carrying on in the same take, the small calf takes two deliberate jerky steps on twos toward the mother and lowers its snout to sniff a folded leaf; both adult cattle hold their grazing poses entirely still.",
+      "asset_prompt": "FOREGROUND: The same serrated folded cardstock fern fronds and scored tropical grass tufts in jungle green and moss green lining the bottom edge, throwing crisp shadows rightward.\nMIDGROUND: Same physical diorama setup. On the left third, the father bull (a 12cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and massive sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) remains completely stationary with head lowered. In the center, the mother cow (a 10cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and medium-sized sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) holds her lowered grazing pose with muzzle at the grass. To her right, the calf (a 6cm tall angular faceted quadruped folded from warm beige cardstock with tiny pointed pale terracotta horn nubs, glossy black pin-head bead eyes, and scored boxy snout) stands poised to take two steps closer to the mother.\nBACKGROUND: Identical receding staggered layers of scored paper rainforest tree trunks in damp bark brown and broad leaves cut from deep moss green and jungle green cardstock.\nUPPER THIRD: Identical layered canopy silhouettes of scalloped rainforest foliage in damp bark brown, jungle green, and moss green.\nLIGHT: Single locked warm tungsten key light from upper left raking across paper tooth and scoring lines, with cool faint shadow fill from lower right.\nCOMPOSITION: Vertical 9:16 portrait. Cattle clustered across the lower two-fifths of the frame, canopy towering in the upper half.",
+      "blocking": "",
+      "n": 3,
+      "panel": "Wide shot, eye level, continuing the same locked setup with all three cattle in the clearing. The small calf in the right third begins stepping forward with an arrow pointing toward the mother cow, while both adult cattle hold their heads down motionless.",
+      "panel_frames": [
+        "Wide shot, eye level, static camera. The calf is midway through its second step closer to the center-right, lowering its wedge head with a downward pointing arrow toward a grounded leaf.",
+        "Wide shot, eye level, static camera. The calf lands its step with snout pressed close to the leaf, locking into place alongside the frozen mother cow and still father bull."
+      ],
+      "scene": "Congo basin clearing under rainforest canopy, eye-level long take",
+      "seconds": 5.0,
+      "source": "reference",
+      "staging": [
+        "50f83e",
+        "b774c5",
+        "a9a9f2",
+        "8d5334"
+      ]
+    },
+    {
+      "action": "Still in the same unbroken take, the mother cow slowly raises her folded head back to level posture while the father, calf, and entire rainforest diorama remain in absolute frozen stillness.",
+      "asset_prompt": "FOREGROUND: The same serrated folded cardstock fern fronds and scored tropical grass tufts in jungle green and moss green lining the bottom edge, throwing crisp shadows rightward.\nMIDGROUND: Same physical diorama setup. On the left third, the father bull (a 12cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and massive sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) rests motionless in grazing pose. In the center, the mother cow (a 10cm tall angular faceted quadruped constructed from creamy off-white cold-press cardstock with dark umber ink patches on the flank, glossy black pin-head bead eyes, scored boxy snout, and medium-sized sweeping crescent-shaped horns built from curved, scored pale terracotta kraft paper) begins with head lowered, ready to lift back to level posture. To her right, the calf (a 6cm tall angular faceted quadruped folded from warm beige cardstock with tiny pointed pale terracotta horn nubs, glossy black pin-head bead eyes, and scored boxy snout) stands close against the mother flank with snout near a leaf, holding still.\nBACKGROUND: Identical receding staggered layers of scored paper rainforest tree trunks in damp bark brown and broad leaves cut from deep moss green and jungle green cardstock.\nUPPER THIRD: Identical layered canopy silhouettes of scalloped rainforest foliage in damp bark brown, jungle green, and moss green.\nLIGHT: Single locked warm tungsten key light from upper left raking across paper tooth and scoring lines, with cool faint shadow fill from lower right.\nCOMPOSITION: Vertical 9:16 portrait. Serene off-balance group composition weighted across the lower third with quiet negative space in the upper canopy.",
+      "blocking": "",
+      "n": 4,
+      "panel": "Wide shot, eye level, unbroken locked-off long take with the three cattle in the clearing. An upward curved arrow points from the mother cow's lowered head in the right third as she begins lifting it, with the bull on the left and calf in the center-right remaining static.",
+      "panel_frames": [
+        "Wide shot, eye level, static camera. The mother cow's neck is halfway raised toward horizontal with an upward motion arrow, while the father bull and calf remain entirely motionless.",
+        "Wide shot, eye level, static camera. The mother cow reaches a full level standing posture looking left, with all three cattle and the surrounding clearing completely still."
+      ],
+      "scene": "Congo basin clearing under rainforest canopy, eye-level long take",
+      "seconds": 5.0,
+      "source": "reference",
+      "staging": [
+        "50f83e",
+        "b774c5",
+        "a9a9f2",
+        "8d5334"
+      ]
+    }
+  ],
+  "chat": [
+    {
+      "ops": [
+        {
+          "op": "set_medium",
+          "summary": "paper-craft"
+        }
+      ],
+      "role": "studio",
+      "text": "This reel is papercraft stop-motion. The script, the stills and the clips all have to be that -- the director already chose."
+    },
+    {
+      "role": "user",
+      "text": "a family of 3 cows wondering around a congo basin and eating grass"
+    },
+    {
+      "ops": [
+        {
+          "op": "ask_director",
+          "summary": "asked 4 questions"
+        }
+      ],
+      "questions": [
+        {
+          "id": "beats",
+          "kind": "choice",
+          "options": [
+            "4 \u00d7 5s (20s \u2014 brisk test reel)",
+            "2 \u00d7 10s (20s \u2014 two held beats)",
+            "6 \u00d7 5s (30s \u2014 brisk, montage-leaning)",
+            "2 \u00d7 10s + 4 \u00d7 5s (40s \u2014 default balance: slow open and close around quick middle)",
+            "4 \u00d7 10s (40s \u2014 slow, contemplative, film-like)",
+            "8 \u00d7 5s (40s \u2014 busy cutting energy)",
+            "1 \u00d7 10s + 6 \u00d7 5s (40s \u2014 one held moment, otherwise brisk)",
+            "3 \u00d7 10s + 2 \u00d7 5s (40s \u2014 very slow, with two accents)",
+            "6 \u00d7 10s (60s \u2014 extended contemplative arc)"
+          ],
+          "prompt": "How long should the film run, and how do you want that time split across 5s and 10s beats?"
+        },
+        {
+          "id": "shots",
+          "kind": "choice",
+          "options": [
+            "3 camera setups (wide, medium tracking/grazing, macro close-up)",
+            "4 camera setups (establishing wide, medium group, close chewing, held wide)",
+            "5 camera setups (more variety in scale and vantage)",
+            "One continuous unbroken long take across multiple beats"
+          ],
+          "prompt": "How many separate camera setups (shots) would you like across the reel?"
+        },
+        {
+          "id": "cast",
+          "kind": "choice",
+          "options": [
+            "Design the family of 3 cows (mother, father, calf with Ankole/Watusi-inspired folded paper horns)",
+            "I have an existing style bible / reference images to paste"
+          ],
+          "prompt": "Do you want me to design the 3 cows from scratch, or do you have an existing style bible/character sheet?"
+        },
+        {
+          "id": "tone",
+          "kind": "choice",
+          "options": [
+            "Quiet, serene grazing under the rainforest canopy",
+            "Curious and gentle exploration of riverbanks and clearing",
+            "Lingering stillness and humid jungle atmosphere",
+            "Playful calf wandering while parents chew peacefully"
+          ],
+          "prompt": "What tone and final feeling should the last frame leave the viewer with?"
+        }
+      ],
+      "role": "gemini",
+      "text": "Let's set up the structure and look for your papercraft Congo Basin cows film before writing the script."
+    },
+    {
+      "role": "user",
+      "text": "How long should the film run, and how do you want that time split across 5s and 10s beats?: 4 \u00d7 5s (20s \u2014 brisk test reel)\nHow many separate camera setups (shots) would you like across the reel?: One continuous unbroken long take across multiple beats\nDo you want me to design the 3 cows from scratch, or do you have an existing style bible/character sheet?: Design the family of 3 cows (mother, father, calf with Ankole/Watusi-inspired folded paper horns)\nWhat tone and final feeling should the last frame leave the viewer with?: Quiet, serene grazing under the rainforest canopy"
+    },
+    {
+      "ops": [
+        {
+          "op": "set_script",
+          "summary": "wrote the script from the interview"
+        }
+      ],
+      "role": "gemini",
+      "text": "Written: \"Congo Pasture\" -- 4 beats, 20s. Every line of it is yours to change from here."
+    },
+    {
+      "role": "user",
+      "text": "The director already chose the medium. Read it and polish this reel's style bible. Do not change the medium. Do not mint or draw designs -- mise-en-scene names the roster, character-sheet and set-designer draw the sheets."
+    },
+    {
+      "activity": [
+        {
+          "agent": "style-paper-craft",
+          "ended_at": 1786825362.7616792,
+          "id": "0763bb13",
+          "kind": "agent_start",
+          "started_at": 1786825354.703244,
+          "status": "done",
+          "summary": "The style bible for Congo Pasture has been updated with exact papercraft specifications, material stocks, tab-and-slot joinery, precise character dimensions, relative scaling, and locked directional l"
+        },
+        {
+          "agent": "style-paper-craft",
+          "ended_at": 1786825354.703273,
+          "id": "2afa72cf",
+          "kind": "round",
+          "started_at": 1786825354.703273,
+          "status": "done",
+          "summary": "round 1"
+        },
+        {
+          "agent": "style-paper-craft",
+          "ended_at": 1786825356.077727,
+          "id": "326357e0",
+          "kind": "tool_call",
+          "started_at": 1786825356.077661,
+          "status": "done",
+          "summary": "medium: paper-craft (papercraft stop-motion)\nevery video prompt opens: Single continuous locked-off shot in handcrafted ",
+          "tool": "read_medium"
+        },
+        {
+          "agent": "style-paper-craft",
+          "ended_at": 1786825356.077776,
+          "id": "fd82c940",
+          "kind": "round",
+          "started_at": 1786825356.077776,
+          "status": "done",
+          "summary": "round 2"
+        },
+        {
+          "agent": "style-paper-craft",
+          "ended_at": 1786825361.322259,
+          "id": "15bb0bbf",
+          "kind": "tool_call",
+          "started_at": 1786825361.3212202,
+          "status": "done",
+          "summary": "script: title, style_bible",
+          "tool": "set_script"
+        },
+        {
+          "agent": "style-paper-craft",
+          "ended_at": 1786825361.322313,
+          "id": "6f71866f",
+          "kind": "round",
+          "started_at": 1786825361.3223119,
+          "status": "done",
+          "summary": "round 3"
+        }
+      ],
+      "ops": [
+        {
+          "n": null,
+          "op": "set_script",
+          "summary": "script: title, style_bible"
+        }
+      ],
+      "role": "style-paper-craft",
+      "text": "The style bible for Congo Pasture has been updated with exact papercraft specifications, material stocks, tab-and-slot joinery, precise character dimensions, relative scaling, and locked directional lighting across faceted creases. All motion references have been removed so the style bible strictly governs the static visual craft across every prompt."
+    },
+    {
+      "role": "user",
+      "text": "The script and style bible are written. Extract the roster: every recurring character and every recurring place. Mint each with add_design (name, kind, note from the bible's exact wording) -- do not draw. Bind each beat to the full list of designs that shot contains. A one-off extra is blocking text, not a sheet. A group is one sheet plus a count in blocking, never a sheet note that says single."
+    },
+    {
+      "activity": [
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825367.285654,
+          "id": "2df29df9",
+          "kind": "agent_start",
+          "started_at": 1786825362.7650769,
+          "status": "done",
+          "summary": "Extracted and minted designs for Father Bull, Mother Cow, Calf, and the Rainforest Canopy Clearing using the style bible's exact wording. Bound all four recurring designs across beats 1 through 4."
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825362.76511,
+          "id": "81aea98b",
+          "kind": "round",
+          "started_at": 1786825362.76511,
+          "status": "done",
+          "summary": "round 1"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825364.212977,
+          "id": "0cea348e",
+          "kind": "tool_call",
+          "started_at": 1786825364.211791,
+          "status": "done",
+          "summary": "added the character 'Father Bull'",
+          "tool": "add_design"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825364.213463,
+          "id": "344ac5c4",
+          "kind": "tool_call",
+          "started_at": 1786825364.213006,
+          "status": "done",
+          "summary": "added the character 'Mother Cow'",
+          "tool": "add_design"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825364.213794,
+          "id": "ff372f80",
+          "kind": "tool_call",
+          "started_at": 1786825364.2134762,
+          "status": "done",
+          "summary": "added the character 'Calf'",
+          "tool": "add_design"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825364.214147,
+          "id": "090b3a75",
+          "kind": "tool_call",
+          "started_at": 1786825364.213807,
+          "status": "done",
+          "summary": "added the environment 'Rainforest Canopy Clearing'",
+          "tool": "add_design"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825364.2141938,
+          "id": "f8f13ff7",
+          "kind": "round",
+          "started_at": 1786825364.2141938,
+          "status": "done",
+          "summary": "round 2"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825365.4016159,
+          "id": "0096daec",
+          "kind": "tool_call",
+          "started_at": 1786825365.4006379,
+          "status": "done",
+          "summary": "beat 1: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing",
+          "tool": "bind_designs"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825365.402133,
+          "id": "875548cd",
+          "kind": "tool_call",
+          "started_at": 1786825365.40165,
+          "status": "done",
+          "summary": "beat 2: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing",
+          "tool": "bind_designs"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825365.402495,
+          "id": "64ea6e8d",
+          "kind": "tool_call",
+          "started_at": 1786825365.40215,
+          "status": "done",
+          "summary": "beat 3: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing",
+          "tool": "bind_designs"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825365.402977,
+          "id": "c84dd9bf",
+          "kind": "tool_call",
+          "started_at": 1786825365.4025059,
+          "status": "done",
+          "summary": "beat 4: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing",
+          "tool": "bind_designs"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825365.4030342,
+          "id": "421824ef",
+          "kind": "round",
+          "started_at": 1786825365.4030342,
+          "status": "done",
+          "summary": "round 3"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825366.211638,
+          "id": "60afd51f",
+          "kind": "tool_call",
+          "started_at": 1786825366.209863,
+          "status": "done",
+          "summary": "0 cast finding(s)",
+          "tool": "audit_cast"
+        },
+        {
+          "agent": "mise-en-scene",
+          "ended_at": 1786825366.211699,
+          "id": "58412c2a",
+          "kind": "round",
+          "started_at": 1786825366.211699,
+          "status": "done",
+          "summary": "round 4"
+        }
+      ],
+      "ops": [
+        {
+          "op": "add_design",
+          "summary": "added the character 'Father Bull'"
+        },
+        {
+          "op": "add_design",
+          "summary": "added the character 'Mother Cow'"
+        },
+        {
+          "op": "add_design",
+          "summary": "added the character 'Calf'"
+        },
+        {
+          "op": "add_design",
+          "summary": "added the environment 'Rainforest Canopy Clearing'"
+        },
+        {
+          "n": 1,
+          "op": "bind_designs",
+          "summary": "beat 1: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing"
+        },
+        {
+          "n": 2,
+          "op": "bind_designs",
+          "summary": "beat 2: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing"
+        },
+        {
+          "n": 3,
+          "op": "bind_designs",
+          "summary": "beat 3: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing"
+        },
+        {
+          "n": 4,
+          "op": "bind_designs",
+          "summary": "beat 4: Father Bull, Mother Cow, Calf, Rainforest Canopy Clearing"
+        },
+        {
+          "op": "audit_cast",
+          "summary": "0 cast finding(s)"
+        }
+      ],
+      "role": "mise-en-scene",
+      "text": "Extracted and minted designs for Father Bull, Mother Cow, Calf, and the Rainforest Canopy Clearing using the style bible's exact wording. Bound all four recurring designs across beats 1 through 4."
+    }
+  ],
+  "concept": "A family of three folded papercraft Ankole cows peacefully grazes in a lush Congo Basin clearing in an unbroken long take.",
+  "crew": {
+    "awaiting": "panels",
+    "done": [
+      "extract"
+    ]
+  },
+  "medium": "paper-craft",
+  "seconds": 10.0,
+  "seed": 1101,
+  "staging": [
+    {
+      "draw": "",
+      "id": "50f83e",
+      "kind": "character",
+      "name": "Father Bull",
+      "note": "The father bull is a 12cm tall faceted quadruped of creamy off-white cold-press cardstock with dark umber ink patches on the flank, four folded rectangular pillar legs, a boxy scored head with glued black paper-dot eyes, and two massive swept crescent horns folded from scored pale terracotta kraft paper."
+    },
+    {
+      "draw": "",
+      "id": "b774c5",
+      "kind": "character",
+      "name": "Mother Cow",
+      "note": "The mother cow is a 10cm tall faceted quadruped of creamy off-white cardstock with dark umber ink flank markings, four folded pillar legs, a scored geometric head with black paper-dot eyes, and medium-length swept crescent horns of pale terracotta kraft paper."
+    },
+    {
+      "draw": "",
+      "id": "a9a9f2",
+      "kind": "character",
+      "name": "Calf",
+      "note": "The calf is a 6cm tall faceted quadruped folded from warm beige cardstock with four slender folded strip legs, a scored wedge snout, black paper-dot eyes, and two tiny pointed pale terracotta horn nubs."
+    },
+    {
+      "draw": "",
+      "id": "8d5334",
+      "kind": "environment",
+      "name": "Rainforest Canopy Clearing",
+      "note": "Congo basin clearing under rainforest canopy. World elements: static faceted rainforest tree trunks of damp bark brown kraft paper, low angular tufts of scored paper grass, and rigid faceted canopy leaves in jungle green and moss green. Relative scale: the largest rainforest tree trunk stands three times the father's height."
+    }
+  ],
+  "steps": 8,
+  "style_bible": "Handcrafted folded papercraft miniature set constructed entirely from 250gsm cold-press textured cardstock and 300gsm heavy kraft paper, scored with bone folders into crisp geometric faceted volumes with visible mountain and valley creases, exposed raw paper edge thickness, and interlocking glued tab-and-slot joinery. Relative scale: the mother cow stands five-sixths the height of the father bull, the calf stands half the father's height, and the largest rainforest tree trunk stands three times the father's height. The father bull is a 12cm tall faceted quadruped of creamy off-white cold-press cardstock with dark umber ink patches on the flank, four folded rectangular pillar legs, a boxy scored head with glued black paper-dot eyes, and two massive swept crescent horns folded from scored pale terracotta kraft paper. The mother cow is a 10cm tall faceted quadruped of creamy off-white cardstock with dark umber ink flank markings, four folded pillar legs, a scored geometric head with black paper-dot eyes, and medium-length swept crescent horns of pale terracotta kraft paper. The calf is a 6cm tall faceted quadruped folded from warm beige cardstock with four slender folded strip legs, a scored wedge snout, black paper-dot eyes, and two tiny pointed pale terracotta horn nubs. World elements: static faceted rainforest tree trunks of damp bark brown kraft paper, low angular tufts of scored paper grass, and rigid faceted canopy leaves in jungle green and moss green. Palette strictly limited to creamy off-white, pale terracotta, warm beige, dark umber, jungle green, moss green, and damp bark brown. Lighting: single locked warm tungsten key light from upper-left raking across textured paper tooth and scored fold ridges, with faint cool fill from lower-right.",
+  "title": "Congo Pasture"
+}
