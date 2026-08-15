@@ -132,6 +132,7 @@ CHECKERS: dict[str, str] = {
 # about to be run against.
 STYLE_ARTIST: dict[str, str] = {
     config.PAPER_CUTOUT.key: "style-paper-cutout",
+    config.PAPER_CRAFT.key: "style-paper-craft",
     config.CLAYMATION.key: "style-claymation",
 }
 

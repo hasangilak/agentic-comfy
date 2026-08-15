@@ -25,7 +25,7 @@ caption, a few stills. Use the board tools.
 
 **Delegate** when the work belongs to a specialist's craft:
 - `script-writer` — writing or rewriting the script and beats
-- `style-paper-cutout` or `style-claymation` — the style bible and medium (whichever matches the reel's medium)
+- `style-paper-cutout`, `style-paper-craft` or `style-claymation` — the style bible and medium (whichever matches the reel's medium)
 - `character-sheet` — drawing the character sheets mise already named
 - `set-designer` — drawing the place sheets mise already named
 - `mise-en-scene` — first extracts the roster (which characters and places get sheets);

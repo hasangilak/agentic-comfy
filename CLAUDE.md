@@ -521,12 +521,13 @@ for "not yours to overrule"), `negate` (what a storyboard panel must NOT look li
 Papercut's `negativePrompt`; neither model has a real negative socket), `name`,
 `opening`, `physics` and `construction` (the brief's two medium-bound sections).
 
-**Two media ship: `paper-cutout` and `claymation`, and they are not translations of each
-other.** Paper is rigid, flat and hinged, and its grammar is that a shape is *swapped* for
-another. Clay's grammar is that a shape *becomes* another — squash and stretch is what the
-medium is for. A clay film written under paper's physics comes out stiff, which reads as a
-cheap 3D render, which is the exact thing both media are trying not to look like. So
-`CLAYMATION.physics` inverts `PAPER_CUTOUT.physics` rather than substituting words into it.
+**Three media ship: `paper-cutout`, `paper-craft` and `claymation`, and they are not
+translations of each other.** Cutout is stacked flats: a shape is *swapped* for another on
+a pin. Papercraft is the same rigid paper *folded into volume* — scored creases, faceted
+forms, tabs. Clay's grammar is that a shape *becomes* another — squash and stretch is what
+the medium is for. Writing any of them under another's physics produces the failure that
+reads as a cheap 3D render. Each entry is written from the material outward rather than by
+substituting words into another.
 
 **Absent means the default, and the default is stored by being absent.** `Board.medium()` reads
 a missing key as paper cutout; `Board.medium_digest()` returns `""` for it; `PATCH` *deletes*
@@ -602,9 +603,10 @@ script writer MAKE on their own stages and CHECK on the assets stage, so the sam
 appears in three casts doing two different things.
 
 **The style role resolves by medium.** `STAGE_CAST` names `crew.STYLE`, and `style_artist(board)`
-turns it into `style-paper-cutout` or `style-claymation`. Two skills, one tool set — what
-differs is the prompt, not what they can do. Both own `set_medium`, so the skill and the render
-ask for the same material by construction rather than by the director remembering to set both.
+turns it into `style-paper-cutout`, `style-paper-craft` or `style-claymation`. One skill
+per medium, one tool set — what differs is the prompt, not what they can do. Each owns
+`set_medium`, so the skill and the render ask for the same material by construction rather
+than by the director remembering to set both.
 
 **The cross-check reports; it never re-renders.** Three lenses (`critique.LENSES`) — craft,
 staging, story — one structured vision call each, filed into the beat's own `asset_chat` beside

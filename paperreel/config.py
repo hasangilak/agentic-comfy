@@ -394,12 +394,13 @@ MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "4"))
 # `prompts/40s-stop-motion-script.md`; only its section 4 (the physics) and section 6(a) (the
 # construction) are medium-bound, and those two are `physics` and `construction` below.
 #
-# The two entries are not symmetrical descriptions of one thing. Paper is rigid, hinged and
-# flat, and its whole grammar is that shapes are SWAPPED rather than deformed. Clay is the
-# opposite on exactly that axis: squash and stretch is what the medium is FOR, and writing a
-# clay film under paper's physics produces stiff clay, which reads as a bad 3D render. So the
-# claymation entry is written from the material outward rather than by find-and-replacing
-# "paper" -- and it is reasoned, not measured. Nothing has been rendered in it yet.
+# The three entries are not translations of one thing. Cutout is stacked flats: a shape is
+# SWAPPED for another on a pin. Papercraft is folded volume: the same rigid paper, assembled
+# into faceted 3D forms, still swapped rather than deformed. Clay is the opposite on the
+# deformation axis: a shape BECOMES another. Writing any of them under another's physics
+# produces the failure that reads as a cheap 3D render. Each entry is written from the
+# material outward -- and papercraft and clay are reasoned, not measured. Nothing has been
+# rendered in either yet.
 @dataclass(frozen=True)
 class Medium:
     """One medium's words, in the fifteen places a render or a review asks for them."""
@@ -552,11 +553,97 @@ render, no plastic sheen, no airbrushing**.""",
 )
 
 
-# Written from the material outward, not by substituting words into the entry above. The one
-# axis where the two media are opposites is deformation: paper's grammar is that a shape is
-# swapped for another shape, and clay's grammar is that a shape BECOMES another shape. A clay
-# film written under paper's rules comes out stiff, which is the failure mode that reads as a
-# cheap 3D render -- the exact thing both media are trying not to look like.
+# Folded volume, not stacked flats. Cutout's depth is air between sheets; papercraft's depth
+# is the paper itself, scored and assembled into faceted 3D forms. It is still paper -- rigid,
+# no squash -- so a papercraft film written under cutout's physics comes out as theater flats,
+# which is the one look this medium must not be. MiniMax's own skill is named for this, not
+# for cutout, and the two reads of "paper" are why they are separate table entries.
+PAPER_CRAFT = Medium(
+    key="paper-craft",
+    name="papercraft stop-motion",
+    shot=("Single continuous locked-off shot in handcrafted folded papercraft stop-motion "
+          "style, shot straight-on. "),
+    surface="scored creases, folded edges, paper thickness",
+    craft=(
+        " Animate it as real folded papercraft: scored crease lines catching the light, "
+        "geometric faceted forms assembled from folded planes, visible tabs and slots, "
+        "paper thickness at every folded edge. Joints are folded hinges and interlocking "
+        "tabs, not split pins. Keep every character's face, markings, proportions, colours, "
+        "paper surface, crease pattern, faceted silhouette, and scale identical in every "
+        "frame. Keep the set, the background, the lighting, and the camera completely "
+        "static. One locked-off framing for the whole clip -- no push-in, pull-back, pan, "
+        "tilt, zoom, reframe, or cut to a second angle inside the beat. Hold every subject's "
+        "on-screen size constant: a figure that opens at one height in the frame stays that "
+        "height unless the action explicitly walks them toward or away from the camera -- "
+        "never grow, shrink, or rescale mid-clip. Nothing transforms, duplicates, changes "
+        "design, or unfolds into a different form. No camera movement, no cuts, no new "
+        "objects, no text, no watermarks. Smooth temporal consistency and natural foot "
+        "contact."
+    ),
+    audio=(" Audio: soft paper rustling and quiet room tone, no music, no speech."),
+    still=("Vertical 9:16 portrait composition, handcrafted folded papercraft, visible scored "
+           "creases and faceted 3D paper forms, soft contact shadows, no text, no watermarks, "
+           "no signature."),
+    sheet=("Handcrafted folded papercraft construction, visible scored creases, faceted 3D "
+           "paper forms, soft contact shadows, plain neutral background, the subject complete "
+           "and centred with nothing cropped, even frontal lighting, no scenery, no text, no "
+           "watermarks, no signature."),
+    model=("Handcrafted folded papercraft construction, visible scored creases, faceted 3D "
+           "paper forms, soft contact shadows, even frontal lighting, " + CHAR_SHEET_LAYOUT),
+    set=("Handcrafted folded papercraft construction, visible scored creases, faceted 3D "
+         "paper architecture receding into depth, even daylight unless the description says "
+         "otherwise, an empty set with no characters, no people and no animals anywhere in "
+         "it, nothing cropped at the edges, no text, no watermarks, no signature."),
+    judge=("folded papercraft with visible scored creases, faceted 3D paper forms, assembled "
+           "constructions sitting in real volume. Not a photograph, not a 3D render, not "
+           "clay, not flat paper-cutout collage"),
+    essence="folded papercraft, visible scored creases, faceted 3D paper forms",
+    opening=("**handcrafted folded papercraft stop motion** — real scored and folded paper "
+             "on a real tabletop, lit by a real lamp, shot on a locked-off camera"),
+    negate="Not papercraft, no folded paper, no scored creases, no faceted paper models",
+    # Neighbouring-genre list: stacked cutout flats are the thing this medium must not
+    # come back as (cutout's avoid names clay; this one names cutout). Melting stays,
+    # because papercraft is still rigid paper.
+    avoid=("smooth plastic 3D, glossy CG render, live-action photograph, photoreal "
+           "skin or hair, flat paper-cutout collage, stacked theater flats, generic "
+           "cartoon without paper creases, melting or liquid morphing, extra limbs, "
+           "extra faces, duplicate characters, text overlays, watermarks, signatures"),
+    physics="""The film is folded paper. Paper is rigid, and here it has volume because it has
+been scored, folded and assembled. Everything you write must be physically buildable on a
+tabletop by a person with a craft knife, a bone folder and glue.
+
+- **Paper does not morph, melt, stretch, or squash.** Shapes never smoothly transform into
+  other shapes. A character changes expression by *swapping a cut face panel* on a folded
+  head, not by the paper flowing.
+- **Forms are faceted 3D constructions**, not stacked flats. A body is folded planes meeting
+  at scored edges; a building has a ridge-fold roof; a limb is a folded tube or a hinged
+  strip. Depth comes from the paper's own volume, never from air between theater flats.
+- **Joints are folded hinges, glued tabs and interlocking slots**, not brass split pins.
+  Name the join. A raised arm is a folded hinge opening, not a flat piece rotating on a pin.
+- **Water, fire, smoke, rain, cloth and hair are folded or accordion-pleated paper** —
+  never fluid simulation, never nested flat crescents sliding past each other (that is
+  cutout). Waves are concertina folds that expand. Fire is three folded flame forms cycling.
+  Rain is folded paper slivers. Say this explicitly in the action lines.
+- **Motion is on twos or threes** — small visible steps between poses, a slight stutter,
+  not glassy interpolation. Name this in the style bible.
+- **Crease lines catch the light.** Every fold is a ridge or a valley you can see. A form
+  with no crease in it reads as a 3D render of paper rather than a photograph of it.""",
+    construction="""That it is folded papercraft stop motion photographed on a
+tabletop. Which papers and which folds: cold-press cardstock scored with a bone folder,
+kraft for structural walls, vellum for windows, gold foil on a folded trim — name the
+actual materials and the actual crease pattern used for the actual elements in *this* film.
+That every form is a faceted 3D construction assembled from folded planes, with visible
+tabs, slots and paper thickness at every edge. That crease lines catch the key light.
+That motion is animated on twos. That all volume comes from folded paper — **no stacked
+theater flats, no digital gradients, no 3D render, no plastic sheen, no airbrushing**.""",
+)
+
+
+# Written from the material outward, not by substituting words into the entries above. The
+# axis where clay opposes both paper media is deformation: paper's grammar is that a shape
+# is swapped for another shape, and clay's grammar is that a shape BECOMES another shape. A
+# clay film written under paper's rules comes out stiff, which is the failure mode that
+# reads as a cheap 3D render -- the exact thing all three media are trying not to look like.
 CLAYMATION = Medium(
     key="claymation",
     name="clay stop-motion",
@@ -638,7 +725,7 @@ specular highlights, no digital gradients, no 3D render, no airbrushing**. That 
 animated on twos, with squash on impact and a settle after every stop.""",
 )
 
-MEDIUMS = {entry.key: entry for entry in (PAPER_CUTOUT, CLAYMATION)}
+MEDIUMS = {entry.key: entry for entry in (PAPER_CUTOUT, PAPER_CRAFT, CLAYMATION)}
 # The medium a board is in when it does not say. It has to be paper cutout and it has to stay
 # that way: every reel written before the bundle existed has no `medium` key, and `Board.medium`
 # reads a missing key as this. A board that never says is byte-identical to what it was.

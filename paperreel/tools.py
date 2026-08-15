@@ -734,11 +734,11 @@ def _asset_tools(llm: llm_mod.LLM) -> list[Tool]:
 
 # ## The style artists
 #
-# Two skills, one tool set. What differs between `style-paper-cutout` and `style-claymation` is
-# the prompt, not what they can do -- both write the style bible, both set the medium, both
-# describe and redraw the designs the film is made of. `crew.style_artist(board)` picks which
-# one runs from `board.medium()`, so the skill and the render are asking for the same material
-# by construction rather than by the director remembering to set both.
+# One style artist per medium. What differs between them is the prompt, not what they can
+# do -- each writes the style bible, sets the medium, and describes and redraws the designs
+# the film is made of. `crew.style_artist(board)` picks which one runs from `board.medium()`,
+# so the skill and the render are asking for the same material by construction rather than
+# by the director remembering to set both.
 
 
 def _style_tools(llm: llm_mod.LLM) -> list[Tool]:
