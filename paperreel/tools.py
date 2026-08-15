@@ -355,7 +355,8 @@ def _script_tools(llm: llm_mod.LLM) -> list[Tool]:
         board = context.need_board()
         develop.developable(board)
         concept = str(board.data.get("concept") or board.data.get("title") or "")
-        draft = develop.reviewed(dict(arguments), concept, log=context.hooks.log)
+        draft = develop.reviewed(dict(arguments), concept, log=context.hooks.log,
+                                 medium_key=board.medium())
         develop.adopt(board, draft)
         context.hooks.changed()
         written = len(board.beats)
@@ -378,7 +379,8 @@ def _script_tools(llm: llm_mod.LLM) -> list[Tool]:
             raise ToolRefused("say what the film is about")
         beats = int(arguments.get("beats") or 4)
         seconds = float(arguments.get("seconds") or config.BEAT_LENGTHS[-1])
-        draft = planner.plan(concept, beats, seconds, log=context.hooks.log)
+        draft = planner.plan(concept, beats, seconds, log=context.hooks.log,
+                             medium_key=board.medium())
         develop.adopt(board, draft)
         context.hooks.changed()
         return (f"planned {len(board.beats)} beats from the brief",
@@ -772,20 +774,23 @@ def _asset_tools(llm: llm_mod.LLM) -> list[Tool]:
 # ## The style artists
 #
 # One style artist per medium. What differs between them is the prompt, not what they can
-# do -- each writes the style bible, sets the medium, and describes and redraws the designs
-# the film is made of. `crew.style_artist(board)` picks which one runs from `board.medium()`,
-# so the skill and the render are asking for the same material by construction rather than
-# by the director remembering to set both.
+# do -- each writes the style bible and describes and redraws the designs the film is made
+# of. `crew.style_artist(board)` picks which one runs from `board.medium()`, so the skill
+# and the render are asking for the same material by construction rather than by the
+# director remembering to set both. They do not switch the medium: the director already
+# chose it, and a style pass that overwrote the pick is how a papercraft reel became
+# paper-cutout the moment extract ran.
 
 
 def _style_tools(llm: llm_mod.LLM) -> list[Tool]:
     def set_medium(context: Context, arguments: dict) -> Outcome:
-        """Say what this film is physically made of.
+        """Confirm the medium the director already chose.
 
         It reaches nine places in a render and the vision review's reject criteria, so it is
         validated here rather than stored as typed -- a typo would fall back to paper while the
         board said something else, which is the one failure that is invisible until the stills
-        come back wrong.
+        come back wrong. An explicit key on the board is the director's pick and is not
+        overwritten from a style pass.
         """
         board = context.need_board()
         wanted = str(arguments.get("medium") or "").strip()
@@ -793,7 +798,17 @@ def _style_tools(llm: llm_mod.LLM) -> list[Tool]:
             raise ToolRefused(f"medium has to be one of {', '.join(config.MEDIUMS)}")
         if wanted == board.medium():
             return f"this reel is already {config.medium(wanted).name}", []
-        board.data["medium"] = wanted
+        # An explicit key is the director's pick from the start screen or the Script
+        # picker. A style artist told "if this reel is not already mine, set it" used
+        # to overwrite that pick -- which is how a papercraft reel became paper-cutout
+        # the moment extract ran. Absent still means the default, and may be confirmed.
+        held = str(board.data.get("medium") or "").strip()
+        if held and held != wanted:
+            raise ToolRefused(
+                f"the director already set this reel to {config.medium(held).name}. "
+                "Change it on the Script stage -- a style pass cannot switch the material."
+            )
+        config.write_medium(board.data, wanted)
         board.save()
         context.hooks.changed()
         return (f"this reel is now {config.medium(wanted).name}",
@@ -821,10 +836,10 @@ def _style_tools(llm: llm_mod.LLM) -> list[Tool]:
     return [
         Tool(spec=llm.tool(
             "set_medium",
-            "Say what this film is physically made of. This is not a description -- it changes "
-            "the words on every video prompt, every still, every design sheet and the review "
-            "that rejects a still for being the wrong material. Set it before writing the "
-            "style bible.",
+            "Confirm what this film is physically made of. The director already chose this "
+            "on the start screen; do not switch it to a different material. It changes the "
+            "words on every video prompt, every still, every design sheet and the review "
+            "that rejects a still for being the wrong material.",
             {"medium": {"type": "string", "enum": list(config.MEDIUMS),
                         "description": "which medium this reel is made in"}},
             ["medium"],

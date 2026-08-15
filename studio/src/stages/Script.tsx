@@ -4,7 +4,7 @@ import { JOIN_LOOK } from "../joins";
 import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 import { TalkItOut, TheBrief } from "./TalkItOut";
-import { MediumPicker } from "./NewReel";
+import { BoardMedium } from "./NewReel";
 import { StagePage, WaitingOn } from "./parts";
 
 /**
@@ -173,21 +173,6 @@ export function Script() {
         </div>
       </div>
     </StagePage>
-  );
-}
-
-/** The reel's medium, patched immediately — it is a chip, not a text field. */
-function BoardMedium() {
-  const studio = useStudio();
-  const board = studio.board!;
-  return (
-    <MediumPicker
-      value={board.medium}
-      options={board.mediums}
-      onChange={(next) =>
-        void studio.guard(() => api.patchBoard(board.slug, { medium: next }))
-      }
-    />
   );
 }
 

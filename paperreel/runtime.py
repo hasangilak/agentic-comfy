@@ -202,7 +202,8 @@ class Turn:
 
 
 def build(name: str, *, llm: llm_mod.LLM | None = None,
-          toolbox: dict[str, Tool] | None = None) -> Agent:
+          toolbox: dict[str, Tool] | None = None,
+          board: board_mod.Board | None = None) -> Agent:
     """Load a skill, resolve its tool names, bind a transport.
 
     The tool names are checked HERE and not in `skills.py`, and the check is the reason this
@@ -210,10 +211,14 @@ def build(name: str, *, llm: llm_mod.LLM | None = None,
     so "the tools this skill asks for all exist" is a validation, and doing it at build time
     means `crew.py --list` catches a typo without a single model call -- and means there is no
     way to name a tool the toolbox does not offer, which is what keeps a render out of reach.
+
+    `board` is only so `{{BRIEF}}` splices this reel's medium rather than the default. A
+    papercraft board built without it is handed the paper-cutout authoring brief, which is
+    how a director's pick still produced a cutout script.
     """
     from . import tools as tools_mod
 
-    skill = skills.load(name)
+    skill = skills.load(name, medium=board.medium() if board is not None else None)
     speaker = llm or llm_mod.provider()
     # The toolbox is built against the provider, not against a module-level default: a tool
     # declaration is written in the provider's own dialect (`llm.tool`), so building it once at

@@ -229,7 +229,7 @@ def _dry_run(args, board: board_mod.Board | None) -> int:
             names = [args.agent] if args.agent else crew.cast_for(
                 crew.next_stage(board) or "script", board)
     for index, name in enumerate(names):
-        agent = runtime.build(name)
+        agent = runtime.build(name, board=board)
         if index:
             print("\n" + "=" * 78 + "\n")
         pictures = (crew.critique.context_pictures(board, phase)

@@ -71,6 +71,28 @@ export function MediumPicker({
 }
 
 /**
+ * The open board's medium, patched immediately — it is a chip, not a text field.
+ *
+ * Lives next to the create-time picker because it is the same chips against a stored
+ * value rather than against React state. Changing it after extract has already run does
+ * not rewrite the style bible; re-run extract so the artist for the new medium does.
+ */
+export function BoardMedium() {
+  const studio = useStudio();
+  const board = studio.board;
+  if (!board) return null;
+  return (
+    <MediumPicker
+      value={board.medium}
+      options={board.mediums}
+      onChange={(next) =>
+        void studio.guard(() => api.patchBoard(board.slug, { medium: next }))
+      }
+    />
+  );
+}
+
+/**
  * The ways a reel begins, as components rather than as a panel.
  *
  * They lived in a 24 rem collapsible in the left rail, which is the wrong size for the one

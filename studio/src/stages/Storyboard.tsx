@@ -8,6 +8,7 @@ import type { Beat, Board, StageEntry, StageKind } from "../types";
 import { useBusy, useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
 import { StagePage, WaitingOn } from "./parts";
+import { BoardMedium } from "./NewReel";
 
 /**
  * Stage two: named roster, then how each shot is framed, then the sheets those shots are of.
@@ -102,6 +103,9 @@ export function Storyboard() {
         )
       }
     >
+      <div className="mb-5">
+        <BoardMedium />
+      </div>
       {atExtractGate ? (
         <ExtractGate board={board} onRerun={() => runPhase("extract")} busy={busy} />
       ) : null}
@@ -455,6 +459,10 @@ function ExtractGate({
           re-run extract
         </button>
       </div>
+      <p className="text-[10px] leading-snug text-zinc-400">
+        The style bible is written for the medium above. After a change, re-run extract so
+        the matching artist rewrites the bible.
+      </p>
       <div className="flex flex-wrap gap-2">
         {board.staging.map((entry) => {
           const bound = board.beats.filter((beat) => (beat.staging ?? []).includes(entry.id)).length;

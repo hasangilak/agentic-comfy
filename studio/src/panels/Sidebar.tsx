@@ -33,6 +33,9 @@ const CONTAINER_LOOK = {
 export function Sidebar() {
   const studio = useStudio();
   const look = CONTAINER_LOOK[studio.container.state];
+  const mediumName =
+    studio.board?.mediums.find((entry) => entry.key === studio.board?.medium)?.name ??
+    "stop-motion";
 
   return (
     // `h-full min-h-0` is what lets the middle scroller actually constrain: without them a
@@ -42,7 +45,7 @@ export function Sidebar() {
         <div className="flex items-center gap-2.5 px-4 py-4">
           <span
             className="flex h-8 w-8 items-center justify-center rounded-xl bg-solid text-[15px]"
-            title="paper-cutout stop motion, one shot at a time"
+            title={`${mediumName}, one shot at a time`}
           >
             🎞
           </span>

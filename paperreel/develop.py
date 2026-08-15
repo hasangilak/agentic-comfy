@@ -530,7 +530,12 @@ def start(message: str, medium: str | None = None) -> board_mod.Board:
         "seconds": config.BEAT_LENGTHS[-1],
         "steps": config.DEFAULT_STEPS,
         "seed": 1101,
-        "chat": [],
+        "chat": [{
+            "role": "studio",
+            "text": (f"This reel is {config.medium(medium).name}. The script, the stills and "
+                     "the clips all have to be that -- the director already chose."),
+            "ops": [{"op": "set_medium", "summary": config.medium(medium).key}],
+        }],
     }
     config.write_medium(data, medium)
     return board_mod.Board.create(
@@ -569,7 +574,8 @@ def history(board: board_mod.Board, limit: int = 20) -> str:
     if not turns:
         return ""
     spoken = "\n".join(
-        f'{"DIRECTOR" if t["role"] == "user" else "YOU"}: {t["text"]}' for t in turns
+        f'{("DIRECTOR" if t["role"] == "user" else "STUDIO" if t["role"] == "studio" else "YOU")}'
+        f': {t["text"]}' for t in turns
     )
     return f"THE INTERVIEW SO FAR:\n{spoken}\n\n"
 
@@ -593,7 +599,10 @@ def turn(board: board_mod.Board, message: str, *,
         {"role": "system", "content": SYSTEM},
         {"role": "user", "content": (
             f"===== THE BRIEF =====\n{brief(concept, board.medium())}\n\n"
-            f"===== THIS STUDIO =====\n{history(board)}DIRECTOR: {message}"
+            f"===== THIS STUDIO =====\n"
+            f"The director has already chosen the medium: {board.look().name}. "
+            "Write for that material. Do not switch it and do not describe a different one.\n\n"
+            f"{history(board)}DIRECTOR: {message}"
         )},
     ]
     assistant = gemini.chat(messages, tools=[ask_tool(), write_tool()])

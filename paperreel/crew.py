@@ -65,8 +65,9 @@ STYLE = "@style"
 # Who works each stage, in the order they work it. Order matters and is not alphabetical:
 #
 #   script      the writer first, because there is nothing to style until there are beats.
-#   storyboard  the style artist first (bible + medium), then mise-en-scene extracts the
-#               roster (names characters and places, mints, binds -- does not draw), then
+#   storyboard  the style artist first (polish the bible for the medium the director
+#               already chose), then mise-en-scene extracts the roster (names characters
+#               and places, mints, binds -- does not draw), then
 #               the storyboarder, because `panels._digest` names the designs a beat binds,
 #               so a panel written before the binding is a panel written about a cast it
 #               could not see -- then character-sheet and set-designer draw those already-
@@ -141,11 +142,13 @@ STYLE_ARTIST: dict[str, str] = {
 # restated them would be a second copy drifting from the first.
 BRIEF_FOR: dict[tuple[str, str], str] = {
     ("script", "script-writer"): "Write this reel's script. Follow the brief, interview included.",
-    ("script", STYLE): ("Set the medium if it is not set, then write this reel's style bible "
-                        "from the script. Do not draw anything yet."),
-    ("storyboard", STYLE): ("Set the medium if needed and polish this reel's style bible. "
-                            "Do not mint or draw designs -- mise-en-scene names the roster, "
-                            "character-sheet and set-designer draw the sheets."),
+    ("script", STYLE): ("The director already chose the medium. Read it, then write this "
+                        "reel's style bible from the script. Do not change the medium. "
+                        "Do not draw anything yet."),
+    ("storyboard", STYLE): ("The director already chose the medium. Read it and polish this "
+                            "reel's style bible. Do not change the medium. Do not mint or "
+                            "draw designs -- mise-en-scene names the roster, character-sheet "
+                            "and set-designer draw the sheets."),
     ("storyboard", "character-sheet"): ("Draw every undrawn character design already on the "
                                         "board. Mise named the roster; settle note and draw "
                                         "from the style bible's exact wording, then "
@@ -483,7 +486,7 @@ def one(name: str, board: board_mod.Board | None, message: str, *,
     `phase` is how mise-en-scène knows which of its jobs this turn is, and which pictures
     to attach: none on extract, sheets on seams/inspect, sheets plus panels on lock.
     """
-    agent = runtime.build(name, llm=llm)
+    agent = runtime.build(name, llm=llm, board=board)
     pictures = (critique.context_pictures(board, phase) if name == "mise-en-scene" else [])
     legend = critique.picture_legend(pictures)
     text = prelude(board) + ((legend + "\n\n") if legend else "")

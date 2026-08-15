@@ -38,6 +38,9 @@ Two things about that shape are decisions rather than conveniences:
 Placeholders are resolved from the constants that already exist. A skill that restated the
 rules of the medium in its own words would be the drift `agent.MEDIUM`'s comment and
 `planner.py`'s docstring both exist to prevent, so `{{MEDIUM}}` splices the one copy in.
+`{{BRIEF}}` is the one placeholder that varies by medium (section 4 physics, section 6(a)
+construction): it is cached per medium, not per board, so a papercraft reel is not handed
+the paper-cutout brief a cache on path alone would keep serving.
 """
 
 from __future__ import annotations
@@ -131,18 +134,23 @@ def names() -> list[str]:
                   if entry.is_dir() and (entry / "SKILL.md").is_file())
 
 
-# Cached on (path, mtime) rather than on the name alone. The whole reason the prompt is a file
-# is so it can be edited against a running studio; a cache keyed on the name would make that
-# need a restart, and no cache at all would re-read and re-render the 20 KB brief on every run.
-_CACHE: dict[Path, tuple[float, Skill]] = {}
+# Cached on (path, mtime, medium) rather than on the name alone. The whole reason the prompt
+# is a file is so it can be edited against a running studio; a cache keyed on the name would
+# make that need a restart, and no cache at all would re-read and re-render the 20 KB brief
+# on every run. Medium is in the key because `{{BRIEF}}` splices that medium's physics -- a
+# cache on path alone handed every reel the paper-cutout brief, which is how a papercraft
+# pick still produced a style-paper-cutout pass.
+_CACHE: dict[tuple[Path, str], tuple[float, Skill]] = {}
 
 
-def load(name: str) -> Skill:
+def load(name: str, *, medium: str | None = None) -> Skill:
     """The skill by that name, read, rendered and validated.
 
-    Tool names are NOT checked here. `skills.py` does not know what a tool is -- `tools.py`
-    imports this module and not the other way round -- so the toolbox check belongs to
-    `runtime.build`, which is the one place a skill and a toolbox meet.
+    `medium` is which physics `{{BRIEF}}` splices in. Absent means the default, same as a
+    board that never named one. Tool names are NOT checked here. `skills.py` does not know
+    what a tool is -- `tools.py` imports this module and not the other way round -- so the
+    toolbox check belongs to `runtime.build`, which is the one place a skill and a toolbox
+    meet.
     """
     clean = (name or "").strip()
     if not clean or "/" in clean or clean.startswith("."):
@@ -151,12 +159,14 @@ def load(name: str) -> Skill:
     if not path.is_file():
         known = ", ".join(names()) or "none"
         raise SkillError(f"there is no skill called {clean!r}. Known: {known}.", status=404)
+    flavour = config.medium(medium).key
     stamp = path.stat().st_mtime
-    cached = _CACHE.get(path)
+    cache_key = (path, flavour)
+    cached = _CACHE.get(cache_key)
     if cached and cached[0] == stamp:
         return cached[1]
-    skill = _parse(path, clean)
-    _CACHE[path] = (stamp, skill)
+    skill = _parse(path, clean, medium=flavour)
+    _CACHE[cache_key] = (stamp, skill)
     return skill
 
 
@@ -214,7 +224,9 @@ def render(body: str, extra: dict[str, str] | None = None) -> str:
     return "".join(out)
 
 
-def _parse(path: Path, expected: str) -> Skill:
+def _parse(path: Path, expected: str, *, medium: str | None = None) -> Skill:
+    from . import planner
+
     text = path.read_text()
     fields, body = _split(path, text)
     for key in _REQUIRED:
@@ -233,7 +245,7 @@ def _parse(path: Path, expected: str) -> Skill:
     return Skill(
         name=str(fields["name"]),
         description=str(fields["description"]),
-        system=render(body).strip(),
+        system=render(body, extra={"BRIEF": planner.template(medium)}).strip(),
         model=str(fields["model"]) if fields.get("model") else None,
         think=bool(fields.get("think") or False),
         temperature=(float(fields["temperature"])
