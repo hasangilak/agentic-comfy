@@ -198,6 +198,9 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
   const [picked, setPicked] = useState("still");
   const [uploading, setUploading] = useState(false);
   const [dropping, setDropping] = useState(false);
+  // Armed for one click, then it disarms itself -- a delete control that stays hot is one
+  // stray click away from throwing away a render. Same gesture as the node's × clip.
+  const [confirmingClip, setConfirmingClip] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const tray = useRef<AddPictureHandle>(null);
 
@@ -220,6 +223,18 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
       ?? assets.find((candidate) => candidate.id !== asset.id);
     setPicked(neighbour?.id ?? "still");
     void studio.guard(() => api.removeRef(board.slug, beat.n, asset.index!));
+  };
+  const isRendering = beat.state === "rendering";
+  const discardClip = () => {
+    if (isRendering) return;
+    if (!confirmingClip) {
+      setConfirmingClip(true);
+      window.setTimeout(() => setConfirmingClip(false), 4000);
+      return;
+    }
+    setConfirmingClip(false);
+    setPicked("still");
+    void studio.guard(() => api.discardClip(board.slug, beat.n));
   };
   const isBridge = beat.source === "bridge";
   const carrying = beat.source === "reference" && beat.carry;
@@ -448,9 +463,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     <div className="mt-1 w-14 truncate text-[9px] text-zinc-600">{asset.label}</div>
                   </button>
                   {asset.kind === "picture" && asset.index !== undefined ? (
-                    /* Unconfirmed, matching the node's. The arm-then-confirm on a rendered clip
-                       exists because that clip cost money; copying it here would teach the hand
-                       to double-click destructive controls generally. */
+                    /* Unconfirmed, matching the node's. Pictures did not cost a GPU render. */
                     <button
                       onClick={() => removePicture(asset)}
                       title={`remove ${asset.label} — the pictures after it are renumbered`}
@@ -458,6 +471,27 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                         text-zinc-700 hover:text-red-600 group-hover:block"
                     >
                       ×
+                    </button>
+                  ) : null}
+                  {asset.kind === "video" && asset.id === "video" ? (
+                    <button
+                      onClick={discardClip}
+                      disabled={isRendering}
+                      title={
+                        isRendering
+                          ? "this scene is rendering; cancel the job first"
+                          : confirmingClip
+                            ? "click again to discard — the clip moves to the reel's .discarded folder"
+                            : "discard this take — click twice, it cost money"
+                      }
+                      className={`absolute right-1 top-1 rounded bg-black/80 px-1 text-[10px]
+                        disabled:cursor-not-allowed disabled:opacity-30 ${
+                          confirmingClip
+                            ? "text-red-600"
+                            : "hidden text-zinc-700 hover:text-red-600 group-hover:block"
+                        }`}
+                    >
+                      {confirmingClip ? "?" : "×"}
                     </button>
                   ) : null}
                 </div>
@@ -593,13 +627,32 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                     </Button>
                   ) : null}
                   {current.kind === "video" && current.id === "video" ? (
-                    <a
-                      href={current.url ?? undefined}
-                      download
-                      className="ml-auto text-[10px] text-live hover:text-green-700"
-                    >
-                      ↓ clip
-                    </a>
+                    <>
+                      <a
+                        href={current.url ?? undefined}
+                        download
+                        className="ml-auto text-[10px] text-live hover:text-green-700"
+                        title="download this scene's rendered clip"
+                      >
+                        ↓ clip
+                      </a>
+                      <button
+                        onClick={discardClip}
+                        disabled={isRendering}
+                        className={`text-[10px] disabled:cursor-not-allowed disabled:opacity-30 ${
+                          confirmingClip ? "text-red-600" : "text-zinc-400 hover:text-red-600"
+                        }`}
+                        title={
+                          isRendering
+                            ? "this scene is rendering; cancel the job first"
+                            : confirmingClip
+                              ? "click again to discard — the clip moves to the reel's .discarded folder"
+                              : "not happy with this take? discard it and the scene goes back to ready"
+                        }
+                      >
+                        {confirmingClip ? "discard?" : "× clip"}
+                      </button>
+                    </>
                   ) : null}
                 </div>
 

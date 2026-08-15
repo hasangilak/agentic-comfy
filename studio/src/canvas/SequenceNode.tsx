@@ -5,6 +5,7 @@ import { videoPictures } from "../beat";
 import type { Beat, Source } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Badge, STATE_LOOK, inputClass } from "../ui";
+import { AddPicture, type AddPictureHandle } from "./AddPicture";
 import { Panel } from "./Panel";
 import { Poses } from "./Poses";
 import { CameraChips } from "./CameraChips";
@@ -60,6 +61,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
   // them is how a picture of the cast ends up as the frame the shot opens on. The media area and
   // the "opening still" row use `picker`; the picture strip has its own.
   const picker = useRef<HTMLInputElement>(null);
+  const tray = useRef<AddPictureHandle>(null);
   const look = STATE_LOOK[beat.state];
   const renderSelected = studio.renderSelection.includes(beat.n);
   const canSelectForRender = !["planned", "needs_asset", "rendering"].includes(beat.state);
@@ -94,6 +96,11 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
         label: `picture ${i + 1}`,
         token: null,
       }));
+  // Uploads only: auto slots (the still, the cast, bound sheets) are not added or removed here.
+  // Shown on every join so a picture that landed while this was a cut can still be taken off.
+  const extras = isReference
+    ? pictures.filter((picture) => picture.index !== null)
+    : stranded;
   const carrying = isReference && beat.carry;
 
   const action = useDraft(beat.action, (next) =>
@@ -405,10 +412,10 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
       ) : null}
 
       <div className="space-y-2 p-2.5">
-        {/* The still, the pictures it is drawn from and the conversation about them all
-            moved to the Assets stage, where there is room to look at a picture and to see what
-            it was actually conditioned on. What is left here is the fact and the way there: the
-            canvas is about the chain, and a 240px card was never where a still got judged. */}
+        {/* The still is judged on Assets, at a size where you can see it. What stays here is
+            the fact and the way there — plus the pictures you add yourself, because those
+            move the join and number the prompt, and hiding them behind another stage is how
+            a director on this canvas cannot condition a shot. */}
         <button
             onClick={() => studio.goStage("assets")}
             className="nodrag flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left
@@ -429,15 +436,93 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                 ? `${isBridge ? "closing" : "opening"} still` +
                   ((beat.poses?.length ?? 0) > 1
                     ? ` · ${beat.poses.length} poses`
-                    : refs.length
-                      ? ` · ${refs.length} picture${refs.length === 1 ? "" : "s"}`
-                      : "")
+                    : "")
                 : beat.source === "chain"
                   ? `continues from beat ${beat.n - 1}`
                   : `needs ${isBridge ? "the still it lands on" : "an opening still"}`}
             </span>
             <span className="shrink-0 text-zinc-400">→</span>
           </button>
+
+        {/* Shown on every join, not only the reference one. Adding a picture is how a scene
+            moves ONTO that join, so hiding the control until it was already there left a
+            director on a keyframe cut with no picture UI on this canvas at all. `AddPicture`
+            says what the move costs before it happens. Notes and redraws stay in the
+            expanded scene — a 240px card can add and remove, it cannot judge. */}
+        <div
+          className="space-y-1"
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            tray.current?.offer(event.dataTransfer?.files);
+          }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+              references {isReference ? pictures.length : refs.length}/{board.max_refs}
+              {beat.still_refs ? (
+                <span
+                  className="text-zinc-400"
+                  title={
+                    `the first ${beat.still_refs} also condition this scene's own still, not ` +
+                    "just the clip — so the frame it opens on is drawn from the same pictures"
+                  }
+                >
+                  {" "}
+                  · {beat.still_refs} in the still
+                </span>
+              ) : null}
+              {stranded.length ? (
+                <span
+                  className="text-warm"
+                  title={
+                    `this scene is on the ${beat.source} join, where reference pictures reach ` +
+                    "neither the still nor the clip. Move it back to the reference join, or " +
+                    "remove them"
+                  }
+                >
+                  {" "}
+                  · not used on this join
+                </span>
+              ) : null}
+            </span>
+            <div className="ml-auto">
+              <AddPicture ref={tray} beat={beat} />
+            </div>
+          </div>
+          {extras.length ? (
+            <div className="nodrag nowheel flex gap-1 overflow-x-auto">
+              {extras.map((picture, index) => (
+                <div key={picture.id ?? picture.url ?? index} className="group relative shrink-0">
+                  {picture.url ? (
+                    <img
+                      src={picture.url}
+                      alt=""
+                      title={picture.note || picture.label}
+                      className="h-16 w-10 rounded border border-edge bg-ink object-cover"
+                    />
+                  ) : (
+                    <div className="h-16 w-10 rounded border border-dashed border-edge bg-ink" />
+                  )}
+                  {picture.index === null ? null : (
+                    <button
+                      onClick={() => removeRef(picture.index!)}
+                      title={`remove ${picture.label} — the rest are renumbered`}
+                      className="absolute right-0 top-0 hidden rounded bg-black/70 px-1
+                        text-[10px] text-zinc-700 hover:text-red-600 group-hover:block"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         {/* Film-medium poses above graphite planning sketches: these reach H3, the panels
             do not. Absent until there is more than the opening still. */}
