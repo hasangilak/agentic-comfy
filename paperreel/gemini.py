@@ -297,10 +297,14 @@ def _thinking(think: bool) -> dict:
 
     The measurement that set this on the local model still holds in shape if not in seconds:
     reasoning is not free, and an unambiguous board edit does not need any. Here it is also
-    money -- thought tokens are billed as output -- so everything is `minimal` except the
+    money -- thought tokens are billed as output -- so everything is `low` except the
     planning pair, which asks for it (see `config.PLAN_THINK`).
+
+    `low` rather than `minimal`: gemini-3.7-flash 400s on `minimal` ("Thinking level MINIMAL
+    is not supported for this model"). `low` is the cheapest level it accepts; 3.5/3.6-flash
+    still take `minimal`, but this pipeline's default is 3.7 and `low` is legal on all of them.
     """
-    return {"thinkingLevel": "high" if think else "minimal"}
+    return {"thinkingLevel": "high" if think else "low"}
 
 
 def chat(messages: list[dict], *, tools: list[dict] | None = None,

@@ -477,9 +477,10 @@ and `staging.converse`.
 
 Things that are the way they are because they were measured, not assumed:
 
-- **`think` is passed explicitly on every call, and defaults to off** — `minimal` rather than
-  the model's own default. Thought tokens are billed as output and an unambiguous board edit
-  needs none; only the planning pair asks for `high` (`config.PLAN_THINK`).
+- **`think` is passed explicitly on every call, and defaults to off** — `low` rather than
+  the model's own default (`medium` on 3.7-flash). Thought tokens are billed as output and an
+  unambiguous board edit needs none; only the planning pair asks for `high` (`config.PLAN_THINK`).
+  `minimal` 400s on gemini-3.7-flash, so it is not the floor.
 - **An assistant turn goes back to the API as the parts the model returned**, kept on the
   message as `_parts`. Gemini 3 signs its reasoning (`thoughtSignature`) and checks that
   signature on the next turn, so a reconstructed text-only assistant turn breaks the tool loop

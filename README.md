@@ -644,9 +644,9 @@ Knobs, all with `PAPERREEL_` prefixes: `TEXT_MODEL`, `VISION_MODEL`, `GEMINI_API
 the model, which resamples it anyway), `PLAN_THINK`, `PLAN_REVIEW`, `STILL_REVIEW`,
 `STILL_ATTEMPTS`.
 
-Reasoning is `minimal` everywhere except the planning pair. Thought tokens are billed as output
-and an unambiguous board edit needs none of them; writing a script is the one place the quality
-is worth both the tokens and the wall clock.
+Reasoning is `low` everywhere except the planning pair. (`minimal` 400s on gemini-3.7-flash.)
+Thought tokens are billed as output and an unambiguous board edit needs none of them; writing a
+script is the one place the quality is worth both the tokens and the wall clock.
 
 ## Layout
 

@@ -410,8 +410,9 @@ VISION_MODEL = os.environ.get("PAPERREEL_VISION_MODEL", TEXT_MODEL)
 LLM_TEMPERATURE = float(os.environ.get("PAPERREEL_LLM_TEMPERATURE", "0.3"))
 PLAN_TEMPERATURE = float(os.environ.get("PAPERREEL_PLAN_TEMPERATURE", "0.8"))
 # Reasoning costs output tokens and wall clock, and an unambiguous board edit needs none of
-# it. So `gemini.chat` sends thinkingLevel `minimal` everywhere except writing the script,
-# which is the one call whose quality is worth both.
+# it. So `gemini.chat` sends thinkingLevel `low` everywhere except writing the script,
+# which is the one call whose quality is worth both. (`minimal` is cheaper on 3.5/3.6-flash
+# but gemini-3.7-flash 400s on it.)
 PLAN_THINK = os.environ.get("PAPERREEL_PLAN_THINK", "1") == "1"
 # Long because the script review generates a whole corrected script with reasoning on; short
 # calls come back in seconds and never approach it.
