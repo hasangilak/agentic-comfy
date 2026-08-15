@@ -10,7 +10,7 @@ Modal via ComfyUI. **Papercut Studio** (`image/`, a separate project with its ow
 renders the opening stills through Gemini. paperreel calls it over HTTP; see
 "The two projects" below.
 
-Everything that is words runs on **one Gemini model** — `gemini-3.6-flash` over Google's API
+Everything that is words runs on **one Gemini model** — `gemini-3.7-flash` over Google's API
 — and everything that is a still runs through the same API next door, on the same
 `X-GOOG-API-KEY`. Words, stills and video are all metered; only the ffmpeg work is free. See
 "The language model" below. There is no local model and no Ollama anywhere in this repo.
@@ -154,7 +154,7 @@ a batch you cannot watch is the thing that stage exists to fix.
 
 ```
 Google API               paperreel  this repo            Modal
-  gemini-3.6-flash       ──▶   script, board ops,   ──▶   MiniMax-H3
+  gemini-3.7-flash       ──▶   script, board ops,   ──▶   MiniMax-H3
   vision · tools · think        caption, still review      the expensive stage
                                      │        ▲
 image/  Papercut Studio               ▼        │ the still, looked at

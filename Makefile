@@ -19,7 +19,7 @@ STAMP := .make/uv.stamp
 # The model that writes the scripts, edits the board and looks at the stills. Only used for
 # what `make run` prints; config.TEXT_MODEL is the one that decides, so keep them in step or
 # override both (PAPERREEL_TEXT_MODEL / TEXT_MODEL=...).
-TEXT_MODEL ?= gemini-3.6-flash
+TEXT_MODEL ?= gemini-3.7-flash
 
 .DEFAULT_GOAL := help
 .PHONY: help install build run backend frontend serve stop images studio \

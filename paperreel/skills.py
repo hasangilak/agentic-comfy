@@ -12,7 +12,7 @@ A file is:
     ---
     name: storyboarder
     description: Designs the cast and sets, then sketches a panel per shot.
-    model: gemini-3.6-flash
+    model: gemini-3.7-flash
     think: false
     temperature: 0.4
     max_rounds: 12

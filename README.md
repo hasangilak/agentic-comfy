@@ -620,7 +620,7 @@ Other measurements worth keeping:
 
 ### Gemini, for the words and the pictures
 
-One model does everything that is words: `gemini-3.6-flash` over Google's API, with vision,
+One model does everything that is words: `gemini-3.7-flash` over Google's API, with vision,
 tool calling and a thinking level, which is what lets a single model write the script, drive
 the board through tool calls and look at the stills. The stills come from Gemini Nano Banana
 next door, through the same endpoint and the same credential — set `X-GOOG-API-KEY` in `.env`

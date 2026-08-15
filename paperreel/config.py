@@ -399,9 +399,9 @@ GOOGLE_API_KEY = (os.environ.get("X-GOOG-API-KEY")
                   or os.environ.get("GOOGLE_API_KEY") or "")
 # Flash rather than Pro: every call here is either a short board edit or a look at one
 # picture, and the one call whose quality is worth more (the script) buys it with reasoning
-# instead (PLAN_THINK). 3.6-flash has vision, tool calling and a thinking level, which is
+# instead (PLAN_THINK). 3.7-flash has vision, tool calling and a thinking level, which is
 # what lets a single model drive the whole pipeline.
-TEXT_MODEL = os.environ.get("PAPERREEL_TEXT_MODEL", "gemini-3.6-flash")
+TEXT_MODEL = os.environ.get("PAPERREEL_TEXT_MODEL", "gemini-3.7-flash")
 # Vision is a separate name only so the picture calls can be pointed at a different model --
 # a bigger one when cast drift is being chased, a cheaper one when it is not.
 VISION_MODEL = os.environ.get("PAPERREEL_VISION_MODEL", TEXT_MODEL)
