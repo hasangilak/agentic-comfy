@@ -1469,9 +1469,11 @@ class Board:
             return []
         found: list[tuple[Path, str]] = []
         total = len(poses)
-        travel = self.is_travel(self.beat(n))
+        beat = self.beat(n)
+        travel = self.is_travel(beat)
+        action = (beat.get("action") or "").strip()
         for index, path in enumerate(poses, start=1):
-            found.append((path, config.pose_role(index, total, travel=travel)))
+            found.append((path, config.pose_role(index, total, travel=travel, action=action)))
         if total == 1 and not self.still_identity_sheets(n):
             cast = self.reference_for(n)
             if cast is not None:

@@ -349,17 +349,22 @@ REF_ROLE_PANEL_FRAME = (
 # Poses 2..k of a stop-motion sequence. Pose 1 keeps REF_ROLE_OPENING, because that is still
 # where the clip begins; these are the in-betweens the video model interpolates through so a
 # ten-second transform cannot drop the puppet and invent a new one mid-clip.
+#
+# `{phase}` is `pose_phase` -- the same sentence the pose was DRAWN from. ref2va has no
+# per-image text socket, so the role sentence in the prompt IS the picture's caption, and
+# "at this moment of the action" with no moment named left the model to guess which picture
+# was which increment.
 REF_ROLE_POSE = (
     "stop-motion pose {i} of {k} of this shot: the same locked-off take, the same puppets "
-    "and set, the subject here at this moment of the action -- not a different camera, not "
+    "and set, the subject at this moment -- {phase} -- not a different camera, not "
     "a different character"
 )
 # Lateral travel: the set is the same pieces in a different place in the frame. Without this
 # H3 reads background shift as a new camera and either cuts or freezes the garden.
 REF_ROLE_POSE_TRAVEL = (
     "stop-motion pose {i} of {k} of this shot: the same locked-off take and the same puppets, "
-    "the set pulled this far through the travel -- not a different camera, not a different "
-    "character, not a walk-cycle on a frozen set"
+    "the set pulled this far through the travel -- {phase} -- not a different camera, not a "
+    "different character, not a walk-cycle on a frozen set"
 )
 # "match" scales each reference down to the generation's pixel area; "max" uses the reference
 # pipeline's 2048px short edge for better identity fidelity. Reference tokens ride through
@@ -1414,12 +1419,19 @@ def craft_for(look: Medium, travel: bool = False) -> str:
     return look.craft[:mark] + TRAVEL_CRAFT_HOLD
 
 
-def pose_role(index: int, total: int, *, travel: bool = False) -> str:
-    """What `<Picture N>` is, when that picture is a stop-motion pose of this shot."""
+def pose_role(index: int, total: int, *, travel: bool = False, action: str = "") -> str:
+    """What `<Picture N>` is, when that picture is a stop-motion pose of this shot.
+
+    `action` is the beat's action line, and it fills the role's `{phase}` with the same
+    `pose_phase` sentence the pose was drawn from -- so the video model is told what moment
+    each picture shows, not just that it is one of a sequence. Roles are hashed off
+    `pictures_for`, so this wording marks a sequence beat edited; that is correct (the
+    prompt the render would get changed) rather than an accident.
+    """
     if index <= 1:
         return REF_ROLE_OPENING
     template = REF_ROLE_POSE_TRAVEL if travel else REF_ROLE_POSE
-    return template.format(i=index, k=total)
+    return template.format(i=index, k=total, phase=pose_phase(index, total, action))
 
 
 def frame_count(seconds: float) -> int:
