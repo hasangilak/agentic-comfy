@@ -308,6 +308,10 @@ def draw(board: board_mod.Board, n: int, *,
         style=config.panel_style(board.medium()),
         aspect=config.PANEL_ASPECT,
         label=f"panel {n}",
+        # The film's avoid-list names "cartoon without paper texture", and a graphite
+        # sketch is that on purpose. Sending it would push the panel back toward the
+        # medium the style suffix is there to negate.
+        negative="",
         gemini_model=config.PANEL_MODEL,
         gemini_image_size=config.PANEL_IMAGE_SIZE,
         log=log,

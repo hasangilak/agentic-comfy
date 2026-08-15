@@ -149,7 +149,14 @@ export const DEFAULT_STYLE =
   'layered construction paper collage, visible cut paper edges, paper fiber texture, ' +
   'soft drop shadows between the layers, handcrafted papercraft diorama, flat lay, soft even studio light'
 
-export const DEFAULT_NEGATIVE = ''
+// Standalone default for this UI. paperreel sends its own from `Medium.avoid` per scene
+// (and a clay board must not inherit the paper list). Keep the two in the same register:
+// specific neighbouring genres, no "ugly"/"low quality", no "no paper fibers" double negatives.
+export const DEFAULT_NEGATIVE =
+  'smooth plastic 3D, glossy CG render, live-action photograph, photoreal skin or hair, ' +
+  'flat vector illustration, generic cartoon without paper texture, melting or liquid ' +
+  'morphing, extra limbs, extra faces, duplicate characters, text overlays, watermarks, ' +
+  'signatures'
 
 /**
  * Phase description injected into each frame so the scene reads as motion, not stills.

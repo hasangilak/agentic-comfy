@@ -402,7 +402,7 @@ MAX_STILL_REFS = int(os.environ.get("PAPERREEL_MAX_STILL_REFS", "4"))
 # "paper" -- and it is reasoned, not measured. Nothing has been rendered in it yet.
 @dataclass(frozen=True)
 class Medium:
-    """One medium's words, in the fourteen places a render or a review asks for them."""
+    """One medium's words, in the fifteen places a render or a review asks for them."""
 
     key: str
     # What the prompts call it, e.g. "paper-cutout stop-motion". Spliced into six system
@@ -433,6 +433,17 @@ class Medium:
     essence: str
     # What a storyboard panel must NOT look like, so a sketch is never mistaken for the shot.
     negate: str
+    # What both renderers must not produce. Gemini image models have no negative-prompt
+    # field (Imagen on Vertex does; Nano Banana does not -- a `negativePrompt` parameter
+    # 400s), so Papercut appends `Avoid: {avoid}` via the scene's `negativePrompt`. H3 has
+    # no negative socket either: MiniMax's own papercraft skill and the fal H3 guide both
+    # say to write the exclusions as a closing block in the prompt, and they are unusually
+    # effective there when they name a specific failure (plastic 3D, liquid morphs, extra
+    # people) rather than a vibe ("ugly", "low quality"). One string, two transports,
+    # because two copies of the same list drift. Comma-separated and specific; "no paper
+    # fibers" is a double negative Gemini reads as "omit the grain", so the absences stay
+    # on the positive suffixes and only the neighbouring genres go here.
+    avoid: str
     # The brief's opening sentence about what the films are made of, after the em dash.
     opening: str
     # Section 4 of the authoring brief: the physics a beat has to obey to look real.
@@ -503,6 +514,16 @@ PAPER_CUTOUT = Medium(
     opening=("**handcrafted layered paper-cutout stop motion** — real paper on a real "
              "tabletop, lit by a real lamp, shot on a locked-off camera"),
     negate="Not paper cutout, no paper-cutout layers, no paper grain, no collage",
+    # MiniMax's papercraft-stop-motion-explainer skill, STEP 18, minus the items that
+    # fight this pipeline (high-speed camera orbit is already banned by `craft`; "no
+    # paper fibers" is the double-negative trap above) and minus the explainer-only
+    # ones (educational labels). Identity extras (duplicate characters, extra limbs)
+    # are the H3 same-face guide: a reference anchors the subject, the text has to
+    # forbid a second copy or the model invents one.
+    avoid=("smooth plastic 3D, glossy CG render, live-action photograph, photoreal "
+           "skin or hair, flat vector illustration, generic cartoon without paper "
+           "texture, melting or liquid morphing, extra limbs, extra faces, duplicate "
+           "characters, text overlays, watermarks, signatures"),
     physics="""The film is paper. Paper is rigid, flat, and hinged. Everything you write must be
 physically buildable on a tabletop by a person with a craft knife.
 
@@ -579,6 +600,14 @@ CLAYMATION = Medium(
     opening=("**handcrafted plasticine clay stop motion** — real clay on a real tabletop, "
              "lit by a real lamp, shot on a locked-off camera"),
     negate="Not clay, no plasticine, no sculpted forms, no photographic texture",
+    # Same neighbouring-genre list as paper, with the two swaps the material needs:
+    # paper-cutout collage is the thing this medium must not come back as, and
+    # "melting or liquid morphing" is omitted because squash-and-stretch IS clay.
+    # Specular plastic is the cheap-CGI failure `construction` already names.
+    avoid=("smooth plastic 3D CGI, glossy specular highlights, live-action photograph, "
+           "paper-cutout collage, flat vector illustration, generic cartoon without "
+           "clay texture, extra limbs, extra faces, duplicate characters, text "
+           "overlays, watermarks, signatures"),
     physics="""The film is clay. Clay is soft, heavy, and continuous. Everything you write must be
 physically buildable on a tabletop by a person with their hands and a set of sculpting tools.
 
@@ -939,6 +968,12 @@ ARRIVE_ON_LAST = (
 IDENTITY_PREFIX = (
     "The characters and the set are already designed and must not be reinterpreted: "
 )
+# Closes the video prompt. H3 has no negative-prompt socket -- MiniMax's papercraft
+# skill and the fal H3 guide both put the exclusions last, as a block, and they land
+# when they name a failure rather than a mood. Same prefix Papercut's Gemini transport
+# uses (`Avoid: `), so one `Medium.avoid` string is what both models hear. Fingerprints
+# do not hash the scaffold, so adding this does not mark existing clips stale.
+AVOID_PREFIX = "Avoid: "
 # The beat's own scene line. The style bible says what the production looks like everywhere;
 # this says where THIS shot is and at what scale, which is the part that differs between
 # beats and the part the model otherwise has to guess at from one still. Labelled rather
@@ -1351,6 +1386,10 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     parts.append(look.craft)
     if not mute:
         parts.append(look.audio)
+    # Last, matching the fal H3 "limits" block: what must not appear, after what must.
+    # The still path sends the same string as Papercut's `negativePrompt`; see `Medium.avoid`.
+    if look.avoid:
+        parts.append(AVOID_PREFIX + look.avoid.rstrip(".") + ". ")
     return "".join(parts)
 
 

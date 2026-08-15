@@ -511,12 +511,14 @@ picks one. Before it, every string that named paper was a module-level global �
 reached a render and one of them, the vision review's, *rejected* a still for not being paper.
 So a board whose style bible said clay was fighting its own reviewer.
 
-A `Medium` carries fourteen fields, which is the honest count of how many places a medium is
+A `Medium` carries fifteen fields, which is the honest count of how many places a medium is
 named: `shot` (every video prompt's opening clause), `surface` (the material words in the
 reference paragraph), `craft`, `audio`, `still` / `sheet` / `model` / `set` (the four image
 suffixes — still, prop sheet, character model sheet, set sheet),
 `judge` (what the review holds a still to), `essence` (the parenthetical four chat prompts use
-for "not yours to overrule"), `negate` (what a storyboard panel must NOT look like), `name`,
+for "not yours to overrule"), `negate` (what a storyboard panel must NOT look like), `avoid`
+(what both renderers must not produce — H3 hears it as the closing `Avoid:` block, Gemini as
+Papercut's `negativePrompt`; neither model has a real negative socket), `name`,
 `opening`, `physics` and `construction` (the brief's two medium-bound sections).
 
 **Two media ship: `paper-cutout` and `claymation`, and they are not translations of each
@@ -1104,7 +1106,7 @@ blocked, the blocking and the clay audio reaching the video prompt, then three l
 
 So what is NOT known is everything about the *conversations and the pictures*. Specifically:
 
-- **Nothing has been rendered in clay.** `CLAYMATION`'s fourteen fields are reasoned from
+- **Nothing has been rendered in clay.** `CLAYMATION`'s fifteen fields are reasoned from
   `pictures.py`'s measured lessons and from what the two materials physically do, not from a
   render. The claim most likely to be wrong is that `judge` rejects the right things: a reviewer
   told to reject anything that is not "sculpted plasticine with visible thumbprints" may reject

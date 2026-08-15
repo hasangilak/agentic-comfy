@@ -245,7 +245,8 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
                 style: str | None = None, gemini_model: str | None = None,
                 gemini_image_size: str | None = None,
                 vary_seeds: bool | None = None,
-                duration: float | None = None) -> dict:
+                duration: float | None = None,
+                negative: str | None = None) -> dict:
     """One Papercut scene describing a run of stills.
 
     Papercut composes `continuity clause (when conditioned) + frame beat + scene style`. The
@@ -278,6 +279,13 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
     frame whatever the beat text says. That is right for a still, which is supposed to contain
     the cast; it is how a prop sheet asked for "a single iron-grey club" came back as the fox the
     bible describes.
+
+    `negative` is the same `Medium.avoid` string the video prompt closes with. Gemini has no
+    negative-prompt field, so the image server appends `Avoid: …` to the composed prompt
+    (`image/server/gemini.ts`). Defaulted to the board's medium so a still, a sheet and a
+    picture all refuse the same neighbouring genres; an explicit empty string is how a
+    storyboard panel opts out -- those negatives name "cartoon without paper texture", and a
+    graphite sketch is exactly that on purpose.
     """
     body: dict = {
         "title": f"{board.data.get('title') or board.slug} · stills",
@@ -285,7 +293,7 @@ def _scene_body(board: board_mod.Board, beats: list[int], pictures: Pictures,
         "duration": float(len(beats)) if duration is None else float(duration),
         "frameCount": len(beats),
         "style": style_for(board) if style is None else style,
-        "negativePrompt": "",
+        "negativePrompt": board.look().avoid if negative is None else negative,
         "aspectId": aspect or config.PAPERCUT_ASPECT,
         "steps": config.PAPERCUT_STEPS,
         "seed": int(board.data.get("seed") or 0) if seed is None else int(seed),
@@ -378,6 +386,7 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
                   gemini_image_size: str | None = None,
                   vary_seeds: bool | None = None,
                   duration: float | None = None,
+                  negative: str | None = None,
                   label: Callable[[int], str] | None = None) -> list[int]:
     """Create, render and collect one scene. Returns the beats whose frames landed.
 
@@ -393,7 +402,7 @@ def _render_scene(client: httpx.Client, board: board_mod.Board, beats: list[int]
     created = client.post("/api/scenes", json=_scene_body(
         board, beats, pictures, seed, texts=texts, aspect=aspect, consistency=consistency,
         style=style, gemini_model=gemini_model, gemini_image_size=gemini_image_size,
-        vary_seeds=vary_seeds, duration=duration))
+        vary_seeds=vary_seeds, duration=duration, negative=negative))
     created.raise_for_status()
     scene_id = created.json()["id"]
     # Explicit frame indices, because Papercut clamps a scene to a minimum of two frames --
@@ -611,7 +620,8 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
          gemini_image_size: str | None = None,
          style: str | None = None,
          aspect: str | None = None,
-         label: str | None = None) -> bool:
+         label: str | None = None,
+         negative: str | None = None) -> bool:
     """Render one picture that is not a beat's still, straight into `out_path`.
 
     Deliberately not routed through `generate`: `_runs` groups beats by `still_pictures` and
@@ -641,6 +651,9 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
     at reel level: a set sheet needs the opposite suffix (it is nothing but scenery) and the
     reel's own vertical shape, and it has no beat to be named after. Defaulted rather than made
     required so a reference-picture draw composes the byte-identical scene it always did.
+
+    `negative` defaults to the board's medium, same as a still. Pass `""` for a storyboard
+    panel: those negatives name the neighbouring cartoon the sketch is supposed to be.
     """
     reported = health(url)
     if reported is None:
@@ -668,6 +681,7 @@ def draw(board: board_mod.Board, n: int, *, pictures: Pictures, text: str, out_p
             # The medium, and NOT the board's style bible -- see `_scene_body`. A prop sheet
             # shares the film's material with it, not the cast.
             style=style or board.look().sheet,
+            negative=negative,
             label=lambda _n: named,
         )
     return bool(made)
