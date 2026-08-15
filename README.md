@@ -29,7 +29,7 @@ concept ─Gemini─▶ ┐
 ```bash
 # X-GOOG-API-KEY=... in .env                          # the script, the stills, one key
 make login                                             # once — uvx modal setup
-make models                                            # once, ~59 GiB into a Volume
+make models                                            # once, ~177 GiB into a Volume
 ```
 
 The download is separate on purpose: it lands in a persistent Volume, so cold starts
@@ -523,8 +523,8 @@ pictures are left alone.
 
 A beat is either **5 s or 10 s** — two buttons, no stepper (see the measured numbers for
 why). Editing a beat marks it `edited` and everything chained below it `follows a change`,
-and the render button re-prices itself. It renders **only what's dirty**, so fixing one beat in
-a four-beat reel costs $0.28 rather than $1.13. Clips attach to their nodes as each beat
+and the render button re-prices itself. It renders **only what's dirty**, so fixing one beat
+does not re-pay for the ones already on disk. Clips attach to their nodes as each beat
 finishes, so beat 1 is watchable while beat 4 is still sampling.
 
 The model can rewrite, re-time, reorder, add and remove beats, ask the image server for the
@@ -586,7 +586,8 @@ uv run reel.py --ref cast.png --ref set.png    # reference mode, up to 9, no key
 
 ## Measured numbers
 
-All on RTX PRO 6000, 768×1344, 8 steps, chained beats.
+All on RTX PRO 6000, quantized weights, 768×1344, 8 steps, chained beats.
+BF16 on B200 has not been timed; the table is the old card.
 
 | Beats × length | Container-sec | Cost | $/s of video | Status |
 | --- | --- | --- | --- | --- |
@@ -610,10 +611,10 @@ Other measurements worth keeping:
   flat paper art.
 - **Model load:** ~22 s, paid **once per container**. Rendering N beats in one warm
   container instead of N separate runs is the single biggest structural saving.
-- **B200 is not worth it:** 1.19× faster in steady state but 2.06× the rate — the same
-  batch cost $0.80 against $0.42 on the RTX PRO 6000. The quantization is tuned for
-  `sm_120` and single-stream diffusion never touches B200's extra bandwidth. Only
-  revisit it for clip lengths that need >96 GB.
+- **B200 is required** for unpruned BF16 (~115 GB resident). The 1.19× / 2.06×
+  comparison was the quantized job on this card against the RTX PRO 6000, and is
+  why the cheap card was chosen then. It does not apply to this stack. Wall-clock
+  on BF16/B200 is unmeasured. Escape hatch is B300 (288 GB), not 4×H200.
 - **Parallelism does not save money.** Billing is per container-second, so 4 containers
   for T costs the same as 1 for 4T — and *more*, since each container repays the model
   load. Chaining is serial by construction anyway. Parallelism is a latency tool, not a
@@ -684,8 +685,8 @@ minimax_h3.py           alternative: full-precision BF16 on 4×H200 via SGLang
 is on disk rather than stored. Hand-edit the JSON, drop in your own PNG, or run
 `storyboard.py`, and the canvas reflects it — the CLI and the studio cannot drift apart.
 
-`minimax_h3.py` is an unrelated, lossless path — faster per clip but roughly 8× the
-hourly rate. Kept for reference; the pipeline above does not use it.
+`minimax_h3.py` is the faster 4×H200 SGLang path. It speaks `/v1/videos`; the pipeline
+above talks ComfyUI, so it is unused.
 
 ## Known gaps
 

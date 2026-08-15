@@ -36,7 +36,7 @@ make stop         # kill every server running in either project
 make build        # npm --prefix studio run build  (tsc -b && vite build — this is the typecheck)
 
 make login        # uvx modal setup                        one-time, touches Modal
-make models       # ~59 GiB of weights into a Modal Volume one-time, never needs re-running
+make models       # ~177 GiB of weights into a Modal Volume one-time, never needs re-running
 make deploy       # deploy the GPU app (free until a request arrives)
 make stop-app     # stop the GPU app now
 ```
@@ -59,7 +59,8 @@ declare their dependencies inline (PEP 723). Modal is always `uvx modal ...`.
 Rendering is only reachable from `storyboard.py --render` / `--all`, `reel.py`, or the
 studio's render button. Planning, asset generation, uploads and compositing are free.
 
-Never run a render to "verify" a change. A 4×10 s reel costs ~$1.13.
+Never run a render to "verify" a change. A 4×10 s reel on the old quantized card
+cost ~$1.13; BF16 on B200 is unmeasured and higher.
 
 **Words and images are both metered, on one key.** The language model and the stills both go
 through Gemini with `X-GOOG-API-KEY` from `.env`. A turn is cents and a still is cents against
@@ -98,7 +99,7 @@ paperreel/skills/       one directory per agent, each holding its SKILL.md
 paperreel/jobs.py       one worker thread, one job queue, one event stream
 paperreel/api.py        FastAPI routes + SSE
 paperreel/media.py      ffmpeg: cutout, compose, fit, last-frame, tail, stitch
-comfyui_minimax_h3.py   the Modal GPU app (ComfyUI on RTX-PRO-6000)
+comfyui_minimax_h3.py   the Modal GPU app (ComfyUI on B200)
 studio/src/             React 19 + @xyflow/react canvas, Tailwind 4, Vite
 studio/src/route.ts     the ONLY place that reads or writes window.location
 studio/src/stages/      the four stage pages; the canvas is one of them
@@ -881,7 +882,9 @@ uses in the same `.env`), then `GEMINI_API_KEY`, then `GOOGLE_API_KEY`.
 - **Generation is 768×1344**, the closest multiple-of-32 vertical to ~1 MP; delivery scales to
   1080×1920 in `media.py`.
 - **8 steps** is the measured sweet spot; 20 costs ~70% more.
-- **B200 is not worth it** — 1.19× faster, 2.06× the rate. Only revisit above 96 GB.
+- **B200 is required** — unpruned BF16 is ~115 GB resident and does not fit on 96 GB.
+  The old "1.19× faster, 2.06× the rate" figure was the quantized job on this card;
+  wall-clock on BF16/B200 is unmeasured. Escape hatch is B300 (288 GB), not 4×H200.
 - **Parallelism saves nothing** — billing is per container-second and each container repays
   the ~22 s model load. Batch into one warm container.
 - Cost estimates are wall-clock × `config.RATE_PER_SEC`, not Modal's billing API, and exclude

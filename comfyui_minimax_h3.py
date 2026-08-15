@@ -1,18 +1,17 @@
 # # MiniMax-H3 on ComfyUI, single GPU
 #
-# The cheap path. ComfyUI's native H3 support (0.30.0+) prunes the modulation
-# weights into lookup tables and quantizes the rest to int8 / NVFP4, taking the
-# pipeline from 123.6 GB of VRAM down to ~42.5 GB. That fits on ONE GPU, so this
-# runs at roughly a sixth of the 4x H200 hourly rate -- at the cost of speed and
-# some quality, since the weights are lossily quantized.
+# Unpruned BF16 DiT + BF16 Qwen3-VL-32B encoder. ~123.6 GB of weights, one DiT
+# resident at a time (~115 GB with encoder and VAEs). That is the same checkpoint
+# MiniMax released, repacked as ComfyUI single-files -- no pruning, no int8, no
+# NVFP4. It needs a 180 GB card.
 #
 #   uvx modal setup
-#   uvx modal run   comfyui_minimax_h3.py::download_models   # once, ~40 GiB
+#   uvx modal run   comfyui_minimax_h3.py::download_models   # once, ~177 GiB
 #   uvx modal serve comfyui_minimax_h3.py                    # interactive UI
 #   uvx modal deploy comfyui_minimax_h3.py                   # persistent URL
 #
-# Compare with minimax_h3.py, which serves the full BF16/FP32 pipeline on 4x H200
-# via SGLang. That one is faster and lossless; this one is cheap.
+# minimax_h3.py is the faster 4x H200 SGLang path. It speaks /v1/videos;
+# paperreel's graph client cannot, so this file is the one the studio uses.
 
 import os
 import subprocess
@@ -26,25 +25,17 @@ PUBLIC_ENDPOINT = os.environ.get("PAPERREEL_PUBLIC") == "1"
 
 # ## GPU choice
 #
-# RTX PRO 6000 Blackwell: 96 GB VRAM at $0.000842/GPU-sec, the cheapest card on
-# Modal with enough memory *and* the right architecture. It matters that it's
-# Blackwell -- the NVFP4 text encoder below needs sm_120 to run natively.
-#
-# Modal does not offer the RTX 5090. This is the closest equivalent and has 3x
-# the VRAM, which is why we can skip the aggressive layerwise-offload recipe the
-# 5090 needs.
-GPU = "RTX-PRO-6000"
-# Measured against B200 on an identical 4x124-frame, 8-step batch: B200 rendered a
-# steady-state beat in 75s vs 89s here (1.19x faster) but costs 2.06x per second,
-# so the same batch came to $0.80 on B200 against $0.42 here. The quantization is
-# tuned for sm_120 and a single-stream diffusion job never touches B200's extra
-# bandwidth or NVLink. Only revisit B200 if clip length needs its 180 GB.
+# B200: 180 GB at $0.001736/GPU-sec, the cheapest Modal card that holds unpruned
+# BF16. 96 GB cannot. A fl2va/ref2va swap that keeps both DiTs even briefly peaks
+# near 177 GB -- that is the OOM risk, and why this is not an RTX PRO 6000 job.
+# Escape hatch is B300 (288 GB, CUDA 13.1+), not 4x H200. Wall-clock on this
+# stack is unmeasured; do not quote the old quantized RTX PRO 6000 timings.
+GPU = "B200"
 
 # ## Model files
 #
-# The ComfyUI-repacked, quantized weights. `pruned_int8_convrot` is the
-# diffusion model with modulation-weight pruning plus int8 convolutions;
-# `nvfp4_awq` is the 32B Qwen3-VL text encoder in 4-bit.
+# ComfyUI-repacked unpruned BF16 of MiniMaxAI/MiniMax-H3. Same weights as the
+# official checkpoint, one file per piece.
 #
 # Both diffusion checkpoints ship, because H3 splits the tasks between them:
 #
@@ -54,20 +45,18 @@ GPU = "RTX-PRO-6000"
 #
 # Only one is resident at a time -- ComfyUI loads whatever the queued graph names and evicts
 # the other -- so the second checkpoint costs Volume space and one model swap per switch,
-# not VRAM. A reel that never uses references never loads it.
+# not VRAM. A reel that never uses references never loads it. Resident is one DiT
+# plus the encoder and VAEs (~115 GB).
 MODEL_REPO = "Comfy-Org/MiniMax-H3"
 MODEL_FILES = [
     # (repo path, ComfyUI models/ subdirectory)
-    ("diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "diffusion_models"),
-    ("diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors", "diffusion_models"),
-    ("text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "text_encoders"),
+    ("diffusion_models/minimax_h3_fl2va_bf16.safetensors", "diffusion_models"),
+    ("diffusion_models/minimax_h3_ref2va_bf16.safetensors", "diffusion_models"),
+    ("text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors", "text_encoders"),
     ("vae/minimax_h3_video_vae_fp16.safetensors", "vae"),
     ("vae/minimax_h3_audio_vae_fp32.safetensors", "vae"),
 ]
-# ~59.1 GiB total (19.5 GiB of it the second checkpoint). On a non-Blackwell card
-# (L40S, A100) NVFP4 has no hardware support -- swap the text encoder for
-# qwen3vl_32b_minimax_h3_int8_convrot (25.3 GiB), which pushes the total to ~70 GiB and
-# needs an 80 GB card.
+# ~177 GiB total (61.7 GiB of it the second checkpoint).
 
 COMFYUI_VERSION = "0.30.0"  # first stable release with native H3 nodes
 PYTORCH_VERSION = "2.11.0+cu130"
@@ -82,6 +71,40 @@ PORT = 8000
 MINUTES = 60
 
 LOCAL_ROOT = Path(__file__).parent
+
+
+def _load_dotenv(path: Path) -> None:
+    """Same setdefault rule as paperreel.config: a shell export wins."""
+    try:
+        text = path.read_text()
+    except OSError:
+        return
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.removeprefix("export ").lstrip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key, value = key.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv(LOCAL_ROOT / ".env")
+
+
+def _hf_secrets() -> list:
+    # huggingface_hub runs in the remote container, which does not inherit the
+    # laptop's env. A token is rate-limit headroom for a 177 GiB public pull,
+    # not gated access -- Comfy-Org/MiniMax-H3 is public either way.
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    if not token:
+        return []
+    return [modal.Secret.from_dict({"HF_TOKEN": token})]
+
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -120,22 +143,29 @@ app = modal.App("comfyui-minimax-h3")
 # ## Download the weights
 #
 # Into a Volume, once. Keeping this out of the server's startup path means cold
-# starts don't re-pay for 40 GiB of transfer.
+# starts don't re-pay for 177 GiB of transfer.
 
 
 @app.function(
     image=image,
     volumes={CACHE_PATH: cache_vol},
-    timeout=2 * 60 * MINUTES,
-    cpu=8,
+    timeout=6 * 60 * MINUTES,
+    cpu=16,
+    secrets=_hf_secrets(),
 )
 def download_models():
     from huggingface_hub import hf_hub_download
 
+    if os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN"):
+        print("huggingface: authenticated")
+    else:
+        print("huggingface: anonymous -- put HF_TOKEN=hf_... in .env for higher rate limits")
     for repo_path, _ in MODEL_FILES:
         path = hf_hub_download(MODEL_REPO, repo_path)
         print(f"cached {repo_path} -> {path}")
-    cache_vol.commit()
+        # Commit per file so a laptop sleep does not throw away a 62 GiB pull
+        # that already finished. huggingface_hub resumes the rest.
+        cache_vol.commit()
 
 
 def link_models():
@@ -167,13 +197,14 @@ def link_models():
     image=image,
     gpu=GPU,
     cpu=8,
-    memory=65536,
+    memory=131072,
+    secrets=_hf_secrets(),
     volumes={
         CACHE_PATH: cache_vol,
         COMFY_OUTPUT_PATH: output_vol,
     },
     port=PORT,
-    startup_timeout=10 * MINUTES,
+    startup_timeout=20 * MINUTES,
     scaledown_window=5 * MINUTES,
     # ComfyUI holds one workflow's models in VRAM; serialize requests per replica
     # and add replicas for concurrent users.

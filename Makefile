@@ -37,7 +37,7 @@ help:
 	@echo
 	@echo "one-time, touches Modal:"
 	@echo "make login     uvx modal setup"
-	@echo "make models    download ~59 GiB of weights into a Modal Volume (needed once)"
+	@echo "make models    download ~177 GiB of weights into a Modal Volume (needed once; detaches)"
 	@echo "make deploy    deploy the GPU app (free until a request arrives)"
 	@echo "make stop-app  stop the GPU app now"
 
@@ -132,8 +132,10 @@ login:
 	uvx modal setup
 
 # Lands in a persistent Volume, so cold starts never re-pay for it. Never needs re-running.
+# --detach: a 177 GiB pull outlives the laptop. Without it, closing the terminal
+# (or a sleep) cancels the job -- that is the APP_STATE_STOPPED failure.
 models:
-	uvx modal run comfyui_minimax_h3.py::download_models
+	uvx modal run --detach comfyui_minimax_h3.py::download_models
 
 deploy:
 	uvx modal deploy comfyui_minimax_h3.py

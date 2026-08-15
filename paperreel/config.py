@@ -65,7 +65,8 @@ FPS = 24
 
 # ## Clip length
 #
-# The node snaps `length` onto a 17k+5 grid. Measured on RTX PRO 6000 at 8 steps:
+# The node snaps `length` onto a 17k+5 grid. Measured on RTX PRO 6000 at 8 steps
+# with quantized weights (the card this stack no longer uses):
 #
 #   124 frames (5.2s) -> 115s render, $0.024 per second of video   [proven]
 #   243 frames (10.1s) -> 252s render, $0.028 per second of video  [proven]
@@ -205,18 +206,19 @@ def write_temperature(data: dict, value) -> None:
 # ## Billing
 #
 # Modal list rates. A container is billed for GPU + requested cores + requested
-# memory for its whole lifetime, so counting GPU alone understates by ~29%.
+# memory for its whole lifetime, so counting GPU alone understates.
 # Keep in sync with the @app.server decorator in comfyui_minimax_h3.py.
 #
-# Measured on an identical 4x124-frame, 8-step batch:
-#   RTX PRO 6000  382 container-seconds  $0.42
-#   B200          357 container-seconds  $0.80   (1.19x faster, 2.06x the rate)
-# B200 is only worth it if a clip needs more than 96 GB.
-GPU_RATE_PER_SEC = 0.000842
+# B200 is required: unpruned BF16 is ~115 GB resident and does not fit on 96 GB.
+# Wall-clock on BF16/B200 is unmeasured; SECONDS_PER_FRAME still uses the old
+# 8-step quantized RTX PRO 6000 fit, so the canvas quotes B200 rates against old
+# durations and will read low. Do not invent new timings. Do not run a render to
+# verify.
+GPU_RATE_PER_SEC = 0.001736
 CPU_RATE_PER_CORE_SEC = 0.0000131
 MEM_RATE_PER_GIB_SEC = 0.00000222
 CONTAINER_CORES = 8
-CONTAINER_GIB = 64
+CONTAINER_GIB = 128
 RATE_PER_SEC = (
     GPU_RATE_PER_SEC
     + CPU_RATE_PER_CORE_SEC * CONTAINER_CORES
@@ -226,7 +228,8 @@ RATE_PER_SEC = (
 # ## Predicting render time
 #
 # Fitted through the two proven measurements of steady-state per-beat render time on
-# RTX PRO 6000 at 8 steps:
+# RTX PRO 6000 at 8 steps, quantized weights. BF16 on B200 has not been timed;
+# these numbers are kept so the canvas still has a curve rather than a guess.
 #
 #   124 frames -> 89s     (382 container-seconds for 4 beats, minus overhead)
 #   243 frames -> 259s    (1036 container-seconds for 4 beats, minus overhead)
@@ -276,13 +279,13 @@ PUBLIC_ENDPOINT = os.environ.get("PAPERREEL_PUBLIC") == "1"
 #
 # The keyframe continuations do NOT move: chain and bridge hand over the previous clip's true
 # last frame, which ref2va has no socket for at all. So a normal reel now alternates
-# checkpoints, and they are 19.5 GiB each -- kept on the Volume, which costs disk, not VRAM.
+# checkpoints, and they are 61.7 GiB each -- kept on the Volume, which costs disk, not VRAM.
 # ComfyUI loads whichever the graph asks for and evicts the other, so a batch pays one model
 # swap per switch. Rendering in beat order keeps that to one swap per shot boundary, which is
 # what the batch already does for chaining's sake.
-UNET = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
-UNET_REF = "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
-CLIP = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+UNET = "minimax_h3_fl2va_bf16.safetensors"
+UNET_REF = "minimax_h3_ref2va_bf16.safetensors"
+CLIP = "qwen3vl_32b_minimax_h3_bf16.safetensors"
 VIDEO_VAE = "minimax_h3_video_vae_fp16.safetensors"
 AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
 
