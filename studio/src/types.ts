@@ -161,6 +161,15 @@ export interface Beat {
    */
   staging_text: string;
   staging_still_text: string;
+  /**
+   * Bound designs this still was not handed as pictures. Empty when everything fitted.
+   * `staging_still_text` is the prose the model is told; this is the names the canvas shows.
+   */
+  still_overflow: { id: string; name: string; kind: StageKind }[];
+  /** Where each bound sheet sits in a locally composed still. Fractions of the frame. */
+  place: Record<string, { x: number; y: number; scale: number }>;
+  /** Local stop-motion assembled from sheets, when it exists. Not an H3 clip. */
+  assemble: string | null;
   /** Whether this beat's still is wired as the composition it opens on. */
   opens_on: boolean;
   /**
@@ -373,6 +382,10 @@ export interface Job {
     | "panel_write"
     /** Draw storyboard panels and rebuild the sheet. `detail.beats` is null for "all of them". */
     | "panel_draw"
+    /** Assemble a still from bound sheets. Local, free. `detail.beat` is the scene. */
+    | "compose"
+    /** Hold-on-twos from the same sheets. `detail.beats` is one scene or a stitch. */
+    | "assemble"
     | "caption"
     /** A whole crew run: several agents across several stages. `detail.plan` is its cast list. */
     | "crew"

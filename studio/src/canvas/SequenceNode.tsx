@@ -32,15 +32,13 @@ const JOIN_HELP: Record<Source, string> = {
     "frame: continuity plus a composition you chose. Needs one still. Click to make it a " +
     "clean cut instead",
   reference:
-    "a clean cut, and the normal one: this scene opens on its own still — a stop-motion " +
-    "sequence of poses filling the nine image sockets — and the previous clip is held as " +
-    "<Video 1> once that sequence exists. Tick carry to make the video a continuation instead " +
-    "of identity. Click for a cut whose opening frame is exact instead",
+    "a clean cut: this scene opens CLOSE to its own still — the still is conditioning, " +
+    "not a keyframe, so the opening is near rather than identical, and the cast is held " +
+    "through the whole clip. Click for a cut whose opening frame IS this still, pixel for pixel",
   asset:
-    "a clean cut whose opening frame is EXACT — the still is handed over as a keyframe, so the " +
-    "clip begins on it pixel for pixel. Nothing else is supplied, so the cast is not re-asserted " +
-    "for the rest of the take. Worth it when the first frame has to land precisely. Click to " +
-    "carry the previous take on unbroken instead",
+    "a clean cut whose opening frame IS this still — handed as a keyframe, pixel for pixel. " +
+    "Nothing else is supplied, so the cast is not re-asserted after frame zero. Worth it when " +
+    "the first frame has to land precisely. Click to carry the previous take on unbroken instead",
 };
 
 /**
@@ -528,9 +526,9 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             beat.n === 1
               ? isReference
                 ? "the first scene cannot continue from anything, so it is one of the two cuts. " +
-                  "Click for a cut whose opening frame is exact instead"
+                  "Click for a cut whose opening frame IS this still, pixel for pixel"
                 : "the first scene cannot continue from anything, so it is one of the two cuts. " +
-                  "Click for the normal cut, which also holds the cast for the whole clip"
+                  "Click for the normal cut: opens close to this still, and holds the cast for the clip"
               : JOIN_HELP[beat.source]
           }
         >
@@ -542,7 +540,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
                 : beat.hold_video
                   ? `cut · holds beat ${beat.n - 1} as identity`
                 : beat.opens_on
-                  ? "cut · opens on this still"
+                  ? "cut · opens close to this still"
                   : "cut · no opening still yet"}{" "}
               · {pictures.length || "no"} picture{pictures.length === 1 ? "" : "s"}
             </>
@@ -558,7 +556,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             </>
           ) : (
             <>
-              <span className="text-warm">✂</span> cut · opens on this still exactly
+              <span className="text-warm">✂</span> cut · opens on this still, pixel for pixel
             </>
           )}
         </button>

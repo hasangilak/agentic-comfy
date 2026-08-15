@@ -21,13 +21,13 @@ export const JOIN_LOOK: Record<Source, { short: string; tone: string; hint: stri
     hint: "continues from the previous clip AND has to land on this scene's own still",
   },
   reference: {
-    short: "◈ cut",
+    short: "◈ cut, close",
     tone: "text-warm",
-    hint: "a clean cut: opens on its own still, with the cast held through the whole clip",
+    hint: "a clean cut: opens close to its own still (conditioning, not a keyframe), so the cast holds through the clip",
   },
   asset: {
     short: "◈ cut, exact",
     tone: "text-warm",
-    hint: "a clean cut whose first frame is this scene's still, pixel for pixel",
+    hint: "a clean cut whose first frame IS this scene's still, pixel for pixel",
   },
 };

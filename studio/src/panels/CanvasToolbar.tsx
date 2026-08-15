@@ -74,6 +74,9 @@ export function CanvasToolbar() {
     ? selectedEstimate?.predicted_seconds
     : board.pending_cost.predicted_seconds;
   const canRender = renderCount > 0 && !busy;
+  const assemblable = board.beats.filter((beat) =>
+    (beat.staging ?? []).some((id) => board.staging.find((entry) => entry.id === id)?.sheet),
+  );
 
   const cameraTargets = selected.length
     ? board.beats.filter((beat) => selected.includes(beat.n))
@@ -118,6 +121,26 @@ export function CanvasToolbar() {
         <span className="text-zinc-200">|</span>
 
         {job ? <JobStrip job={job} /> : null}
+
+        {assemblable.length ? (
+          <Button
+            tone="ghost"
+            onClick={() =>
+              void studio.guard(() =>
+                api.assembleReel(
+                  board.slug,
+                  selected.length
+                    ? selected.filter((n) => assemblable.some((beat) => beat.n === n))
+                    : assemblable.map((beat) => beat.n),
+                ),
+              )
+            }
+            disabled={busy}
+            title="hold-on-twos from bound sheets, locally — no GPU, not a substitute for a walk cycle"
+          >
+            wobble locally
+          </Button>
+        ) : null}
 
         {canRender ? (
           <>

@@ -132,6 +132,18 @@ export const api = {
   assets: (slug: string, beats?: number[], gemini?: GeminiOptions) =>
     post<{ job: Job }>(`/api/reels/${slug}/assets`, { beats, ...gemini }).then((r) => r.job),
 
+  /** Assemble a still from bound design sheets. Local, free, no Gemini. */
+  composeStill: (slug: string, n: number) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/compose`).then((r) => r.job),
+
+  /** Hold-on-twos stop-motion from the same sheets. Free, no GPU. */
+  assembleBeat: (slug: string, n: number) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/assemble`).then((r) => r.job),
+
+  /** Assemble the named beats (or every scene that can) and stitch them. Free, no GPU. */
+  assembleReel: (slug: string, beats?: number[]) =>
+    post<{ job: Job }>(`/api/reels/${slug}/assemble`, beats ? { beats } : {}).then((r) => r.job),
+
   /**
    * Talk about one beat's still. The model is shown the picture itself alongside everything it
    * is drawn from, rewrites that beat's `asset_prompt`, and usually renders it again through

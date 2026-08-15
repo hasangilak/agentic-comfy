@@ -434,7 +434,11 @@ function ShotRow({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12px] text-zinc-800">scene {beat.n}</span>
         <span className="block truncate text-[10px] text-zinc-400">
-          {defining ? "defines the look" : JOIN_LOOK[beat.source].short}
+          {defining
+            ? "defines the look"
+            : beat.still_overflow?.length
+              ? `${JOIN_LOOK[beat.source].short} · ${beat.still_overflow.map((e) => e.name).join(", ")} as words`
+              : JOIN_LOOK[beat.source].short}
         </span>
       </span>
       {beat.asset ? (
@@ -499,9 +503,17 @@ function Still({
     const beats = detail.beats;
     return !Array.isArray(beats) || beats.includes(beat.n);
   });
+  const composing = useBusy("compose", (detail) => detail.beat === beat.n);
+  const assembling = useBusy("assemble", (detail) => {
+    const beats = detail.beats;
+    return !Array.isArray(beats) || beats.includes(beat.n);
+  });
   const drawn = stillPictures(beat, board.staging ?? []);
   const offline = studio.stillsBackend !== "papercut";
   const rewritten = twiceRewritten(beat.asset_chat ?? []);
+  const canCompose = (beat.staging ?? []).some(
+    (id) => board.staging.find((entry) => entry.id === id)?.sheet,
+  );
 
   return (
     <div className="space-y-3">
@@ -518,6 +530,22 @@ function Still({
           </div>
         )}
       </div>
+
+      {beat.assemble ? (
+        <div className="space-y-1.5">
+          <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+            local assemble · no GPU
+          </p>
+          <video
+            src={beat.assemble}
+            className="max-h-48 w-full rounded-xl bg-ink object-contain"
+            controls
+            muted
+            loop
+            playsInline
+          />
+        </div>
+      ) : null}
 
       {(beat.poses?.length ?? 0) > 1 ? (
         <div className="space-y-1.5">
@@ -551,6 +579,20 @@ function Still({
           This scene defines the look. Its still becomes the reel's cast reference, and every
           other still is then matched against it — so it is drawn and judged on its own, before
           the rest of the batch.
+        </p>
+      ) : null}
+
+      {(beat.still_overflow ?? []).length ? (
+        <p className="rounded-xl border border-warm/30 bg-warm/5 px-3 py-2 text-[10px] leading-relaxed text-warm">
+          {beat.still_overflow.map((entry) => entry.name).join(", ")}{" "}
+          {beat.still_overflow.length === 1 ? "reaches" : "reach"} the still as words — the{" "}
+          {board.max_still_refs}-slot cap kept the puppets.
+        </p>
+      ) : null}
+      {(beat.refs ?? []).length ? (
+        <p className="text-[10px] leading-relaxed text-zinc-400">
+          The reviewer is shown the cast sheets, not this scene's uploads, so a prop those
+          uploads would defend cannot speak for itself here.
         </p>
       ) : null}
 
@@ -603,6 +645,26 @@ function Still({
           />
         </div>
       )}
+      {canCompose ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            tone="ghost"
+            onClick={() => void studio.guard(() => api.composeStill(board.slug, beat.n))}
+            disabled={composing || assembling}
+            title="place the bound sheets into this still, locally — no Gemini"
+          >
+            {composing ? "assembling…" : "✂ assemble from sheets"}
+          </Button>
+          <Button
+            tone="ghost"
+            onClick={() => void studio.guard(() => api.assembleBeat(board.slug, beat.n))}
+            disabled={composing || assembling}
+            title="hold-on-twos from the same sheets, locally — no GPU"
+          >
+            {assembling ? "wobbling…" : "wobble this scene"}
+          </Button>
+        </div>
+      ) : null}
 
       {rewritten ? (
         <p className="text-[10px] leading-relaxed text-stale">

@@ -129,6 +129,6 @@ export function stillsAllowed(board: Board): boolean {
 export const STAGE_JOBS: Record<Stage, string[]> = {
   script: ["develop", "plan", "chat", "revise", "caption", "crew", "agent"],
   storyboard: ["panel_write", "panel_draw", "stage_draw", "stage_chat", "chat", "crew", "agent"],
-  assets: ["asset", "still_chat", "ref_draw", "ref_chat", "crew", "agent"],
-  studio: ["render", "chat", "crew", "agent"],
+  assets: ["asset", "still_chat", "ref_draw", "ref_chat", "compose", "assemble", "crew", "agent"],
+  studio: ["render", "assemble", "chat", "crew", "agent"],
 };
