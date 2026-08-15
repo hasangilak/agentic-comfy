@@ -47,6 +47,8 @@ export function useStudioState() {
   const [stagingOpen, setStagingOpen] = useState(false);
   const [stagingPick, setStagingPick] = useState<string | null>(null);
   const [authOk, setAuthOk] = useState(true);
+  // Until /api/status answers. Must match paperreel.config.RATE_PER_SEC (B200 + 8 cores + 128 GiB).
+  const [ratePerSecond, setRatePerSecond] = useState(0.00212496);
   // The two local services this studio orchestrates, and both can simply not be running.
   // Optimistic defaults: the copy that depends on them is a warning, and flashing "the image
   // server is down" for the few hundred milliseconds before /api/status answers would train
@@ -297,6 +299,7 @@ export function useStudioState() {
     try {
       const status = await api.status();
       setAuthOk(status.auth);
+      if (status.rate_per_second > 0) setRatePerSecond(status.rate_per_second);
       setStillsBackend(status.stills?.backend ?? "none");
       setModel({
         model: status.language?.model ?? "",
@@ -348,7 +351,7 @@ export function useStudioState() {
       : container.live_seconds + (now - stampedAt.current) / 1000;
   const sessionCost =
     container.session_cost +
-    (container.state === "cold" ? 0 : ((now - stampedAt.current) / 1000) * 0.001089);
+    (container.state === "cold" ? 0 : ((now - stampedAt.current) / 1000) * ratePerSecond);
 
   const guard = useCallback(async (work: () => Promise<unknown>) => {
     try {

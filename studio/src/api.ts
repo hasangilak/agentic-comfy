@@ -414,6 +414,8 @@ export const api = {
     call<{
       auth: boolean;
       backend: string;
+      /** GPU + CPU + memory. Same value as `config.RATE_PER_SEC`; the live ticker uses this. */
+      rate_per_second: number;
       /** "none" means the image server is not running, so stills have to be uploads. */
       stills: { backend: "papercut" | "none"; papercut_url: string };
       /** The local model. Without it there is no script, no conversation and no caption. */

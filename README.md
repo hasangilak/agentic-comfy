@@ -784,13 +784,15 @@ above talks ComfyUI, so it is unused.
   two 1.5 MB stills all measured the same, and the same calls through `curl` were seconds. So
   the flat minute is something about this machine's network path, not about the model, and
   none of the per-call timings here should be read as the API's speed.
-- **Container may be over-provisioned** at 8 cores / 64 GiB — that's 23% of the bill
-  and was never measured against actual usage.
+- **Container may be over-provisioned** at 8 cores / 128 GiB — host RAM is sized
+  to stage the BF16 files, and was never measured against actual usage.
 - **The studio's per-step progress is unverified against a live render.** ComfyUI's `/ws`
   through Modal's auth proxy has not been exercised yet; if it fails, the phase strip and
   per-beat timing still work from `/history` polling, only the `step 5/8` detail is lost.
-- **Cost readouts are estimates**, derived from wall clock × $0.001089/s rather than
-  Modal's billing API, and they exclude the scale-down tail. Expect them to read slightly low.
+- **Cost readouts are estimates**, derived from wall clock × `config.RATE_PER_SEC`
+  (B200 + 8 cores + 128 GiB, published as `/api/status.rate_per_second`) rather than
+  Modal's billing API, and they exclude the scale-down tail. Wall-clock is still the
+  old quantized fit, so quotes read low.
 
 ## License
 

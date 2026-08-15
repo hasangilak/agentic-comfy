@@ -224,6 +224,7 @@ RATE_PER_SEC = (
     + CPU_RATE_PER_CORE_SEC * CONTAINER_CORES
     + MEM_RATE_PER_GIB_SEC * CONTAINER_GIB
 )
+# Published as /api/status.rate_per_second so the studio's live ticker cannot drift.
 
 # ## Predicting render time
 #

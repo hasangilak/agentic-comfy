@@ -993,7 +993,7 @@ back and asks the model to run section 11's self-check, rather than restating th
 ## Known gaps
 
 Listed in `README.md` under "Known gaps" — the CLI can still request 15 s beats, cross-scene
-consistency is unmeasured, the container may be over-provisioned at 8 cores / 64 GiB, and the
+consistency is unmeasured, the container may be over-provisioned at 8 cores / 128 GiB, and the
 studio's per-step WebSocket progress has never been exercised against a live render.
 
 **A still drawn from more than one picture is timed, not judged.** The cap, the notes clause and
