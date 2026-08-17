@@ -1,0 +1,22 @@
+{
+  "beats": [],
+  "chat": [
+    {
+      "ops": [
+        {
+          "op": "set_medium",
+          "summary": "paper-craft"
+        }
+      ],
+      "role": "studio",
+      "text": "This reel is papercraft stop-motion. The script, the stills and the clips all have to be that -- the director already chose."
+    }
+  ],
+  "concept": "a frog and a turtle in a pond having a philosophical conversation about life",
+  "medium": "paper-craft",
+  "seconds": 10.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "",
+  "title": "a frog and a turtle in a pond having a philosophical convers"
+}
