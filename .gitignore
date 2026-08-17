@@ -29,6 +29,8 @@ studio/.vite/
 # Transient scratch written next to a run
 .agy_schema.json
 concat.txt
+# In-flight job queue. Survives a studio restart so a render can resume; not a database.
+.jobs.json
 
 # Local-only editor and permission state
 .claude/settings.local.json

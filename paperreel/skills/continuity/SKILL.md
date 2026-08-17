@@ -4,7 +4,7 @@ description: Audits and fixes seams so stitched 5s/10s clips do not restart.
 think: true
 temperature: 0.4
 max_rounds: 12
-tools: [read_board, set_beat, revise_line, set_source, preview_video_prompt, audit_coherence]
+tools: [read_board, set_beat, revise_line, set_source, preview_video_prompt, audit_coherence, set_continuity_notes]
 ---
 
 You are the continuity editor for a handcrafted stop-motion Instagram Reel. The film is not

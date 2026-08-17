@@ -470,6 +470,101 @@ LLM_PROVIDER = os.environ.get("PAPERREEL_LLM_PROVIDER", "gemini")
 # guess sized to an eight-beat reel drawn once -- not a measurement, and the first real run
 # is what should replace this number.
 CREW_STILL_BUDGET = int(os.environ.get("PAPERREEL_CREW_STILL_BUDGET", "72"))
+# Model rounds across one crew run, counted in runtime.run. AGENT_MAX_ROUNDS is per agent;
+# a storyboard cast is nine members and each can take its own cap, so the still budget is
+# not a bound on words. Zero means no cap. Two hundred is a guess sized to one ungated
+# storyboard-then-assets run, not a measurement.
+CREW_GEMINI_BUDGET = int(os.environ.get("PAPERREEL_CREW_GEMINI_BUDGET", "200"))
+# Estimated Modal dollars a render may quote before the API 409s. Zero means no cap --
+# the studio's confirm dialog is still the human gate, and a default here would 409 every
+# existing reel the first time someone pressed render. A board may set its own cap in
+# `render_budget`; this env is the floor only when that key is present and this is > 0.
+RENDER_BUDGET_USD = float(os.environ.get("PAPERREEL_RENDER_BUDGET", "0") or 0)
+# How many beats `board_digest` spells out in full. A 40-beat film in the format the
+# 6-beat reel used is how the writer blew its window on history it could not use.
+# Under this count the digest is byte-identical to what it was.
+DIGEST_BEAT_DETAIL = int(os.environ.get("PAPERREEL_DIGEST_BEAT_DETAIL", "12"))
+# Queued GPU jobs, so a studio restart can resume a render. Not a second database --
+# the board is still the source of truth for what is finished; this file is only the
+# queue the in-process worker used to forget.
+JOBS_PATH = Path(os.environ.get("PAPERREEL_JOBS") or (ROOT / ".jobs.json"))
+
+# ## Authoring envelope
+#
+# `reel` is the product this brief was written for: 20–60s, one Instagram deliverable.
+# `film` keeps the same 5s/10s beats and the same 20s shot ceiling, and changes only the
+# length envelope and the act grouping so a multi-minute board has somewhere to live.
+# Absent means reel, stored by being absent -- the medium rule, applied to duration.
+ENVELOPE_REEL = "reel"
+ENVELOPE_FILM = "film"
+ENVELOPES = (ENVELOPE_REEL, ENVELOPE_FILM)
+DEFAULT_ENVELOPE = ENVELOPE_REEL
+
+LENGTH_REEL = (
+    "Length is chosen by the director (commonly 20–60 seconds); every beat is still "
+    "either 5s or 10s."
+)
+LENGTH_FILM = (
+    "Length is chosen by the director (commonly 2–10 minutes). Every beat is still "
+    "either 5s or 10s; no shot longer than 20 seconds. Group beats into named acts so a "
+    "fresh context window can orient from the act list rather than from forty scene lines. "
+    "The film is N clips stitched, not one generation."
+)
+DURATION_REEL = """   - `4 × 5s` — 20s. Short test reel; four quick beats.
+   - `2 × 10s` — 20s. Two held beats; useful for trying a long take cheaply.
+   - `6 × 5s` — 30s. Brisk, montage-leaning.
+   - `8 × 5s` — 40s. Eight quick beats. Busiest, most cutting energy, hardest to keep
+     from feeling like a montage.
+   - `4 × 10s` — 40s. Four long held beats. Slow, contemplative, most film-like, least
+     room for plot.
+   - `2 × 10s + 4 × 5s` — 40s, six beats. A slow open and a slow close around a quick
+     middle. The default when the director says "you choose".
+   - `1 × 10s + 6 × 5s` — 40s, seven beats. One held moment, otherwise brisk.
+   - `3 × 10s + 2 × 5s` — 40s, five beats. Very slow, with two accents.
+   - `6 × 10s` — 60s. Six held beats; room for a longer arc, more expensive to render.
+   - Or any other combination of 5s and 10s — or "you choose", in which case you pick
+     `2 × 10s + 4 × 5s` and say why in one line."""
+DURATION_FILM = """   - `12 × 10s` — 2 min. A short film; about two or three acts.
+   - `18 × 10s` — 3 min. Room for a turn.
+   - `24 × 10s` — 4 min. A chaptered short; name the acts.
+   - `36 × 10s` — 6 min. Mixed 5s beats are fine; keep any one setup at or under 20s.
+   - `6 × (4 × 10s)` — 4 min in six acts of four held beats. The default when the
+     director says "you choose" on a film.
+   - Or any other combination of 5s and 10s that sums to the runtime they named.
+     Group the beats into named acts on the board (`acts`), not as prose in the bible."""
+
+
+def envelope(key: str | None = None) -> str:
+    """One authoring envelope by key, falling back rather than raising.
+
+    Same judgement as `medium`: the key arrives from a hand-editable board and can predate
+    a rename. An unknown value renders as the reel envelope rather than refusing to write.
+    """
+    wanted = (key or "").strip() or DEFAULT_ENVELOPE
+    return wanted if wanted in ENVELOPES else DEFAULT_ENVELOPE
+
+
+def write_envelope(data: dict, key: str | None) -> None:
+    """Persist an envelope the way the digest expects: absent means the reel.
+
+    A reel's document stays byte-identical to one that never named an envelope, which is
+    what keeps every board written before this out of a new code path it did not ask for.
+    `None` is a no-op so a create path that did not send one leaves the document alone.
+    """
+    if key is None:
+        return
+    resolved = envelope(key)
+    if resolved == DEFAULT_ENVELOPE:
+        data.pop("envelope", None)
+    else:
+        data["envelope"] = resolved
+
+
+def length_copy(key: str | None = None) -> tuple[str, str]:
+    """The two brief seams that change with envelope: opening length, duration menu."""
+    if envelope(key) == ENVELOPE_FILM:
+        return LENGTH_FILM, DURATION_FILM
+    return LENGTH_REEL, DURATION_REEL
 
 # ## Reviewing its own work
 #

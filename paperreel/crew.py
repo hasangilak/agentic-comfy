@@ -529,7 +529,10 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
 
     A member that fails does not take the stage with it. These are separate specialists and the
     storyboard is still worth having when the design pass fell over; what would be lost by
-    stopping is every member after the one that broke.
+    stopping is every member after the one that broke. The cursor is a different question:
+    a phase whose members all 429'd is not done, and stamping it done is how a billing miss
+    looked like extract/panels/sheets/seams/lock had all finished. Later members still run;
+    `done` only advances for phases that actually answered.
     """
     if name not in STAGE_CAST:
         raise ValueError(f"no stage called {name!r}. Stages: {', '.join(STAGES)}")
@@ -546,7 +549,9 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
         slices = STAGE_PHASES[name]
     shared = state if state is not None else {}
     turns: list[runtime.Turn] = []
+    failed_phases: list[str] = []
     for phase_id, roles in slices:
+        phase_failed = False
         for role in roles:
             if hooks.stopping():
                 hooks.say("[crew] cancelled")
@@ -566,15 +571,26 @@ def stage(name: str, board: board_mod.Board, *, note: str = "",
                                  phase=phase_id))
             except (skills.SkillError, llm_mod.LLMError) as failed:
                 # Logged and stepped over rather than raised. See the docstring: the rest of the
-                # cast is still worth running, and the job log is where a director looks.
+                # cast is still worth running, and the job log is where a director looks. The
+                # phase is not stamped done -- that is how a 429 looked like the roster existed.
+                phase_failed = True
                 hooks.say(f"[crew] {who} failed: {failed}")
                 trace = collector if collector is not None else hooks.track()
                 trace.note("agent_failed", agent=who, status="failed", summary=str(failed))
             board = board_mod.Board.load(board.slug)
+        if phase_failed:
+            failed_phases.append(phase_id)
         if hooks.stopping():
             break
     if not hooks.stopping():
-        if phase == "inspect" and critique.failing(board):
+        if failed_phases:
+            first = failed_phases[0]
+            reopen_phase(board, first)
+            hooks.say(
+                f"[crew] {first} failed; awaiting {first} again "
+                f"({len(failed_phases)} phase(s) did not finish)"
+            )
+        elif phase == "inspect" and critique.failing(board):
             # The back-edge: standing failures are the asset-maker's work, so the gate moves
             # back to stills rather than declaring the stage finished over them. Gated only --
             # an ungated run keeps burning through, which is what ungated means.
@@ -609,6 +625,7 @@ def run_phase(board: board_mod.Board, phase: str | None = None, *, note: str = "
 
 def start(concept: str, *, beats: int = 4, seconds: float = config.BEAT_LENGTHS[-1],
           medium: str | None = None,
+          envelope: str | None = None,
           hooks: runtime.Hooks = runtime.Hooks(),
           llm: llm_mod.LLM | None = None) -> board_mod.Board:
     """Mint a board from a concept and run the script stage on it.
@@ -623,7 +640,7 @@ def start(concept: str, *, beats: int = 4, seconds: float = config.BEAT_LENGTHS[
     film. Only when non-default, so a paper reel's document is byte-identical to what it was.
     `develop.start` is the one write: the studio's talk-it-through path uses the same function.
     """
-    board = develop.start(concept, medium=medium)
+    board = develop.start(concept, medium=medium, envelope=envelope)
     hooks.say(f"[crew] new reel {board.slug} in {board.look().name}")
     hooks.changed()
     stage("script", board,

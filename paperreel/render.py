@@ -46,6 +46,15 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
     if not ordered:
         return {"beats": [], "cost": 0.0}
 
+    cap = board.render_budget()
+    if cap is not None:
+        quote = board.cost_of(ordered)
+        if quote["predicted_cost"] > cap:
+            raise ValueError(
+                f"this render is quoted at ${quote['predicted_cost']:.2f}, which exceeds "
+                f"this reel's ${cap:.2f} cap"
+            )
+
     steps = board.steps()
     frames = {
         n: config.frame_count(seconds if seconds is not None else board.seconds_for(board.beat(n)))
@@ -130,6 +139,13 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                 for index, n in enumerate(ordered, start=1):
                     if job.cancelling:
                         break
+                    # Resume: a restart re-queues the same beat list, and beats that already
+                    # match their fingerprint must not be paid for again. Drafts always
+                    # re-render -- the override is the point of a draft.
+                    if seconds is None and board.states()[n] == board_mod.RENDERED:
+                        runner.log(job, f"[skip] beat {n} already rendered")
+                        rendered.append(n)
+                        continue
                     beat = board.beat(n)
                     current["beat"] = n
                     runner.update(
@@ -418,12 +434,35 @@ def _record(board: board_mod.Board, n: int, elapsed: float, frames: int, steps: 
 
 
 def _stitch(board: board_mod.Board, runner: Runner, job: Job):
-    """Assemble the deliverable, but only when every beat actually has a clip."""
-    clips = [board.video_path(b["n"]) for b in board.ordered_beats()]
-    missing = [p.name for p in clips if not p.exists()]
+    """Assemble the deliverable, but only when every beat actually has a clip.
+
+    A board with named acts stitches each act to its own chapter file, then those into
+    the master. A reel that never named an act is one stitch -- the file it always wrote.
+    """
+    mute = bool(board.data.get("mute"))
+    chapters = board.chapters()
+    missing: list[str] = []
+    groups: list[tuple[str, list]] = []
+    for name, numbers in chapters:
+        clips = [board.video_path(n) for n in numbers]
+        gone = [path.name for path in clips if not path.exists()]
+        if gone:
+            missing.extend(gone)
+            continue
+        groups.append((name, clips))
     if missing:
         runner.log(job, f"[stitch] skipped: still missing {', '.join(missing)}")
         return None
-    reel = media.stitch(clips, board.reel_path, mute=bool(board.data.get("mute")))
-    runner.log(job, f"[stitch] {len(clips)} clips -> {reel.name}")
+    if len(groups) == 1:
+        reel = media.stitch(groups[0][1], board.reel_path, mute=mute)
+        runner.log(job, f"[stitch] {len(groups[0][1])} clips -> {reel.name}")
+        return reel
+    chapter_files = []
+    for name, clips in groups:
+        path = board.chapter_path(name)
+        media.stitch(clips, path, mute=mute)
+        chapter_files.append(path)
+        runner.log(job, f"[stitch] act {name}: {len(clips)} clips -> {path.name}")
+    reel = media.stitch(chapter_files, board.reel_path, mute=mute)
+    runner.log(job, f"[stitch] {len(chapter_files)} chapters -> {reel.name}")
     return reel

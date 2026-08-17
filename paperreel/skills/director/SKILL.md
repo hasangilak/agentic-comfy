@@ -4,7 +4,7 @@ description: The director's conversational agent — edits the board or delegate
 think: false
 temperature: 0.7
 max_rounds: 12
-tools: [read_board, set_script, set_beat, add_beat, remove_beat, set_source, set_caption, set_reel, generate_stills, compose_still, assemble_clip, crew_plan, delegate_agent, run_crew_stage, preview_video_prompt]
+tools: [read_board, set_script, set_beat, add_beat, remove_beat, set_source, set_caption, set_reel, generate_stills, compose_still, assemble_clip, crew_plan, delegate_agent, run_crew_stage, preview_video_prompt, set_envelope, add_act, bind_act, set_continuity_notes]
 ---
 
 You are the director's agent for a handcrafted stop-motion Instagram Reel studio. You are the

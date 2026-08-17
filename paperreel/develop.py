@@ -132,9 +132,10 @@ class DevelopError(RuntimeError):
         self.status = status
 
 
-def brief(concept: str, medium_key: str | None = None) -> str:
+def brief(concept: str, medium_key: str | None = None,
+          envelope: str | None = None) -> str:
     """The authoring prompt exactly as a human would paste it, interview included."""
-    return planner.template(medium_key).replace("<<<CONCEPT>>>", concept.strip())
+    return planner.template(medium_key, envelope).replace("<<<CONCEPT>>>", concept.strip())
 
 
 def write_tool() -> dict:
@@ -506,7 +507,8 @@ def _hold_for_answers(board: board_mod.Board, message: str, raw_answers) -> dict
     return {"reply": reply, "written": False, "questions": questions}
 
 
-def start(message: str, medium: str | None = None) -> board_mod.Board:
+def start(message: str, medium: str | None = None,
+          envelope: str | None = None) -> board_mod.Board:
     """The empty board a conversation begins on.
 
     Named from the first thing said rather than from a title, because there is no title yet,
@@ -538,6 +540,7 @@ def start(message: str, medium: str | None = None) -> board_mod.Board:
         }],
     }
     config.write_medium(data, medium)
+    config.write_envelope(data, envelope)
     return board_mod.Board.create(
         script.free_slug(board_mod.slugify(concept)),
         data,
@@ -598,7 +601,7 @@ def turn(board: board_mod.Board, message: str, *,
     messages = [
         {"role": "system", "content": SYSTEM},
         {"role": "user", "content": (
-            f"===== THE BRIEF =====\n{brief(concept, board.medium())}\n\n"
+            f"===== THE BRIEF =====\n{brief(concept, board.medium(), board.envelope())}\n\n"
             f"===== THIS STUDIO =====\n"
             f"The director has already chosen the medium: {board.look().name}. "
             "Write for that material. Do not switch it and do not describe a different one.\n\n"
@@ -663,7 +666,8 @@ def turn(board: board_mod.Board, message: str, *,
 
 
 def reviewed(draft: dict, concept: str, *, log: Callable[[str], None],
-             medium_key: str | None = None) -> dict:
+             medium_key: str | None = None,
+             envelope: str | None = None) -> dict:
     """The draft, marked against the brief's own section 11.
 
     `planner.review` is shown only the fields it may touch (`planner._as_json`), and `seconds`
@@ -677,7 +681,7 @@ def reviewed(draft: dict, concept: str, *, log: Callable[[str], None],
         raise gemini.GeminiError("the model called write_script with no beats in it.")
     if not config.PLAN_REVIEW:
         return numbered
-    checked = planner.review(numbered, brief(concept, medium_key), log=log,
+    checked = planner.review(numbered, brief(concept, medium_key, envelope), log=log,
                              settled=SETTLED_BY_INTERVIEW)
     for beat, seconds in zip(checked.get("beats") or [], lengths):
         beat["seconds"] = seconds

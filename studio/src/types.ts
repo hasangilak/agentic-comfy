@@ -72,6 +72,8 @@ export interface Beat {
    * marks the beat stale.
    */
   blocking: string;
+  /** Named act this beat belongs to, or empty. Harness grouping, not a render input. */
+  act: string;
   /**
    * Locked-off camera angle for this take. Always one of the five the board publishes in
    * `cameras` — absent on disk means `eye`, so the chips have something to highlight on a
@@ -309,6 +311,15 @@ export interface Board {
   medium: string;
   /** Every medium that ships, for the picker. `key` is what PATCH takes. */
   mediums: { key: string; name: string }[];
+  /** Authoring envelope. Absent on disk means a reel; this is resolved. */
+  envelope: "reel" | "film";
+  envelopes: Array<"reel" | "film">;
+  /** Named acts. Empty means the reel is one implicit chapter. */
+  acts: { id: string; title: string; note: string }[];
+  /** Rolling "what is true of this world" note. Empty when none. */
+  continuity_notes: string;
+  /** Optional dollar cap for a render of this board. Null means no cap. */
+  render_budget: number | null;
   /**
    * Phase cursor for the gated crew. Workflow state only — not a fingerprint. Null when the
    * board never ran a gated phase; the UI then starts at the first phase of the current stage.

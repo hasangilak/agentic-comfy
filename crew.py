@@ -60,6 +60,8 @@ def main() -> int:
                         help="how long each beat runs, when starting from a concept")
     parser.add_argument("--medium", choices=list(config.MEDIUMS),
                         help="what the film is made of; only meaningful with --concept")
+    parser.add_argument("--envelope", choices=list(config.ENVELOPES),
+                        help="reel (20–60s) or film (2–10 min); only meaningful with --concept")
     parser.add_argument("--where", action="store_true",
                         help="print which stage the board is waiting on, and exit")
     parser.add_argument("--list", action="store_true", dest="listing",
@@ -127,7 +129,7 @@ def main() -> int:
 
     if args.concept:
         board = crew.start(args.concept, beats=args.beats, seconds=args.seconds,
-                           medium=args.medium, hooks=hooks)
+                           medium=args.medium, envelope=args.envelope, hooks=hooks)
         print(f"\nreel: {board.slug}")
         if args.stage == "script" or args.phase == "script":
             return 0

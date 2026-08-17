@@ -1768,6 +1768,130 @@ class Board:
         key = self.medium()
         return "" if key == config.DEFAULT_MEDIUM else f"medium:{key}"
 
+    def envelope(self) -> str:
+        """Authoring envelope. Absent means a reel, and must keep meaning it.
+
+        Same representation as medium: a board that never named one and a board set back to
+        reel are the same document. Not in any fingerprint -- it changes the brief, not the
+        clip, and putting it in the hash would re-price every existing reel the first time
+        someone stored the default.
+        """
+        return config.envelope(self.data.get("envelope"))
+
+    def render_budget(self) -> float | None:
+        """Optional dollar cap for a render of this board. None means no cap.
+
+        The studio still confirms before spend. This is the API refusing a quote that
+        already exceeds what the director set, not a second money wall on the crew.
+        """
+        raw = self.data.get("render_budget")
+        if raw is None or raw == "":
+            return None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
+    def continuity_notes(self) -> str:
+        """What is true of this world as of the last continuity pass. Empty if none.
+
+        The Anthropic progress-file pattern applied to film: a fresh context window reads
+        this instead of reconstructing plot from forty action lines. Not in any fingerprint
+        -- it is a harness note, not a render input.
+        """
+        return str(self.data.get("continuity_notes") or "").strip()
+
+    def acts(self) -> list[dict]:
+        """Named act groupings. Empty means the reel is one implicit act.
+
+        Each entry is `{id, title, note}`. Beats point at an id via `beat["act"]`. An
+        unknown or missing id is fine -- those beats belong to no named act and still
+        render. Not in any fingerprint.
+        """
+        raw = self.data.get("acts")
+        if not isinstance(raw, list):
+            return []
+        found = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            act_id = str(entry.get("id") or "").strip()
+            if not act_id:
+                continue
+            found.append({
+                "id": act_id,
+                "title": str(entry.get("title") or act_id).strip() or act_id,
+                "note": str(entry.get("note") or "").strip(),
+            })
+        return found
+
+    def act_of(self, beat: dict) -> dict | None:
+        """The named act this beat belongs to, or None."""
+        wanted = str(beat.get("act") or "").strip()
+        if not wanted:
+            return None
+        for entry in self.acts():
+            if entry["id"] == wanted:
+                return entry
+        return None
+
+    def add_act(self, title: str, *, note: str = "") -> dict:
+        """Mint a named act. Id is random hex, same as a reference picture."""
+        import secrets
+
+        taken = {entry["id"] for entry in self.acts()}
+        while True:
+            act_id = secrets.token_hex(3)
+            if act_id not in taken:
+                break
+        entry = {"id": act_id, "title": title.strip() or act_id, "note": note.strip()}
+        bucket = self.data.setdefault("acts", [])
+        if not isinstance(bucket, list):
+            bucket = []
+            self.data["acts"] = bucket
+        bucket.append(entry)
+        return entry
+
+    def bind_act(self, n: int, act_id: str | None) -> None:
+        """Point a beat at a named act, or clear the binding."""
+        beat = self.beat(n)
+        wanted = (act_id or "").strip()
+        if not wanted:
+            beat.pop("act", None)
+            return
+        known = {entry["id"] for entry in self.acts()}
+        if wanted not in known:
+            raise KeyError(f"no act {wanted!r} on {self.slug}")
+        beat["act"] = wanted
+
+    def chapters(self) -> list[tuple[str, list[int]]]:
+        """Beat numbers grouped for chapter stitch.
+
+        Named acts that have at least one bound beat become a chapter, in act order, then
+        any unbound beats as a trailing chapter named after the reel. A board that never
+        named an act is one group -- the stitch it already did.
+        """
+        ordered = self.ordered_beats()
+        if not self.acts():
+            return [(self.slug, [beat["n"] for beat in ordered])]
+        used: set[int] = set()
+        groups: list[tuple[str, list[int]]] = []
+        for entry in self.acts():
+            numbers = [beat["n"] for beat in ordered if str(beat.get("act") or "") == entry["id"]]
+            if numbers:
+                groups.append((entry["id"], numbers))
+                used.update(numbers)
+        leftover = [beat["n"] for beat in ordered if beat["n"] not in used]
+        if leftover:
+            groups.append((self.slug, leftover))
+        return groups or [(self.slug, [beat["n"] for beat in ordered])]
+
+    def chapter_path(self, name: str) -> Path:
+        """Where a named act's stitched file lands. The master stays `reel_path`."""
+        safe = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "act"
+        return self.workdir / f"{self.slug}_{safe}_{config.REEL_WIDTH}x{config.REEL_HEIGHT}.mp4"
+
     def frame_ids_for(self, beat: dict) -> FrameIds:
         """Content hashes of the images this beat is conditioned on, as things stand now.
 
@@ -2060,6 +2184,9 @@ class Board:
                 # the shot is framed and this says what is standing in it. Unlike the panel, it
                 # reaches the video prompt and is in both fingerprints, conditionally.
                 "blocking": beat.get("blocking", ""),
+                # Named act this beat belongs to, or empty. Harness grouping, not a render
+                # input -- editing it marks nothing stale.
+                "act": str(beat.get("act") or ""),
                 # The locked-off angle for this take. Always one of the five, resolved --
                 # absent on disk means eye, so the chips have something to highlight on a
                 # board that never named one. Unlike the panel, it reaches both renderers.
@@ -2243,6 +2370,13 @@ class Board:
             "medium": self.medium(),
             "mediums": [{"key": entry.key, "name": entry.name}
                         for entry in config.MEDIUMS.values()],
+            # Authoring envelope. Derived through `envelope()` so a board that never named
+            # one publishes `reel` rather than an empty string. Not a fingerprint.
+            "envelope": self.envelope(),
+            "envelopes": list(config.ENVELOPES),
+            "acts": self.acts(),
+            "continuity_notes": self.continuity_notes(),
+            "render_budget": self.render_budget(),
             # Phase cursor for the gated crew. Workflow state only -- like chat, not like a
             # fingerprint -- so editing it re-prices nothing. Absent on boards that never ran
             # a gated phase; the studio treats that as "start at the first phase of next_stage".

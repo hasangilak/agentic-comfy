@@ -88,6 +88,20 @@ def parse_medium(body: dict) -> str | None:
     return wanted
 
 
+def parse_envelope(body: dict) -> str | None:
+    """An authoring envelope the request named, or None when it named nothing.
+
+    Same shape as `parse_medium`: validated, absent means leave the document alone, the
+    default is stored by being absent.
+    """
+    if "envelope" not in body:
+        return None
+    wanted = str(body.get("envelope") or "").strip()
+    if wanted not in config.ENVELOPES:
+        raise HTTPException(422, f"envelope must be one of {', '.join(config.ENVELOPES)}")
+    return wanted
+
+
 def rendering_now(slug: str) -> set[int]:
     """Beats the active job is mid-way through, so the canvas can show them spinning."""
     active = runner.active()
@@ -161,6 +175,7 @@ def handle_plan(job: Job, run: Runner) -> dict:
     run.log(job, f'[plan] {detail["beats"]} beats x {detail["seconds"]:.0f}s via {config.TEXT_MODEL}')
     board = agent.create(detail["concept"], detail["beats"], detail["seconds"],
                          medium_key=detail.get("medium"),
+                         envelope=detail.get("envelope"),
                          log=lambda line: run.log(job, line))
     job.slug = board.slug  # the slug only exists once the title does
     run.log(job, f'[plan] "{board.data.get("title")}" -> {board.slug}')
@@ -523,6 +538,8 @@ for kind, handler in (
 ):
     runner.register(kind, handler)
 
+runner.restore()
+
 
 # ## Reels
 
@@ -541,12 +558,14 @@ def create_reel(body: dict = Body(...)) -> dict:
     seconds = config.snap_seconds(body.get("seconds") or config.BEAT_LENGTHS[-1])
     job = runner.submit("plan", board_mod.slugify(concept),
                         {"concept": concept, "beats": beats, "seconds": seconds,
-                         "medium": parse_medium(body)})
+                         "medium": parse_medium(body),
+                         "envelope": parse_envelope(body)})
     return {"job": job.to_json()}
 
 
 @app.get("/api/brief")
-def authoring_brief(medium: str | None = Query(None)) -> dict:
+def authoring_brief(medium: str | None = Query(None),
+                    envelope: str | None = Query(None)) -> dict:
     """The script-authoring prompt itself, so the studio can show what it is interviewing about.
 
     Costs nothing and calls nothing. It exists because the alternative -- paraphrasing the rules
@@ -559,8 +578,11 @@ def authoring_brief(medium: str | None = Query(None)) -> dict:
     key = (medium or "").strip() or None
     if key is not None and key not in config.MEDIUMS:
         raise HTTPException(422, f"medium must be one of {', '.join(config.MEDIUMS)}")
+    length = (envelope or "").strip() or None
+    if length is not None and length not in config.ENVELOPES:
+        raise HTTPException(422, f"envelope must be one of {', '.join(config.ENVELOPES)}")
     try:
-        return {"markdown": planner.template(key)}
+        return {"markdown": planner.template(key, length)}
     except planner.NoTemplate as missing:
         raise HTTPException(404, str(missing))
 
@@ -576,7 +598,9 @@ def develop_reel(body: dict = Body(...)) -> dict:
     the first message rather than living in a tab until it is worth keeping.
     """
     try:
-        board = develop.start(str(body.get("message") or ""), medium=parse_medium(body))
+        board = develop.start(str(body.get("message") or ""),
+                              medium=parse_medium(body),
+                              envelope=parse_envelope(body))
     except develop.DevelopError as refused:
         raise HTTPException(refused.status, str(refused))
     job = runner.submit("develop", board.slug, {"message": str(body.get("message") or "")})
@@ -679,6 +703,27 @@ def patch_reel(slug: str, body: dict = Body(...)) -> dict:
         # representation is what keeps "a board that never named a medium" and "a board set back
         # to the default" the same board -- and keeps a document clean of a key that says nothing.
         config.write_medium(board.data, parse_medium(body))
+    if "envelope" in body:
+        config.write_envelope(board.data, parse_envelope(body))
+    if "continuity_notes" in body:
+        notes = str(body.get("continuity_notes") or "").strip()
+        if notes:
+            board.data["continuity_notes"] = notes
+        else:
+            board.data.pop("continuity_notes", None)
+    if "render_budget" in body:
+        raw = body.get("render_budget")
+        if raw is None or raw == "":
+            board.data.pop("render_budget", None)
+        else:
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                raise HTTPException(422, "render_budget must be a number")
+            if value <= 0:
+                board.data.pop("render_budget", None)
+            else:
+                board.data["render_budget"] = value
     if "manual_stills" in body:
         board.data["manual_stills"] = bool(body["manual_stills"])
     board.save()
@@ -751,6 +796,11 @@ def patch_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
             board.set_camera(n, config.parse_camera(body["camera"]))
         except ValueError as error:
             raise HTTPException(422, str(error))
+    if "act" in body:
+        try:
+            board.bind_act(n, str(body.get("act") or "").strip() or None)
+        except KeyError as missing:
+            raise HTTPException(422, str(missing))
     if "source" in body:
         if body["source"] not in board_mod.SOURCES:
             raise HTTPException(422, f"source must be one of {', '.join(board_mod.SOURCES)}")
@@ -1836,14 +1886,21 @@ def start_render(slug: str, body: dict = Body(default={})) -> dict:
         beats = board.cascade(body.get("beats") or board.pending())
     if not beats:
         raise HTTPException(422, "nothing to render")
+    estimate = (
+        board.cost_of_at(beats, config.DRAFT_SECONDS) if draft else board.cost_of(beats)
+    )
+    cap = board.render_budget()
+    if cap is not None and estimate["predicted_cost"] > cap:
+        raise HTTPException(
+            409,
+            f"this render is quoted at ${estimate['predicted_cost']:.2f}, which exceeds "
+            f"this reel's ${cap:.2f} cap",
+        )
     job = runner.submit("render", slug, {
         "beats": beats,
         "draft": draft,
         "seconds": config.DRAFT_SECONDS if draft else None,
     })
-    estimate = (
-        board.cost_of_at(beats, config.DRAFT_SECONDS) if draft else board.cost_of(beats)
-    )
     return {"job": job.to_json(), "estimate": estimate}
 
 

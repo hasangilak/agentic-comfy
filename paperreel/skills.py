@@ -135,23 +135,24 @@ def names() -> list[str]:
                   if entry.is_dir() and (entry / "SKILL.md").is_file())
 
 
-# Cached on (path, mtime, medium) rather than on the name alone. The whole reason the prompt
-# is a file is so it can be edited against a running studio; a cache keyed on the name would
-# make that need a restart, and no cache at all would re-read and re-render the 20 KB brief
-# on every run. Medium is in the key because `{{BRIEF}}` splices that medium's physics -- a
-# cache on path alone handed every reel the paper-cutout brief, which is how a papercraft
-# pick still produced a style-paper-cutout pass.
-_CACHE: dict[tuple[Path, str], tuple[float, Skill]] = {}
+# Cached on (path, mtime, medium, envelope) rather than on the name alone. The whole reason
+# the prompt is a file is so it can be edited against a running studio; a cache keyed on the
+# name would make that need a restart, and no cache at all would re-read and re-render the
+# 20 KB brief on every run. Medium is in the key because `{{BRIEF}}` splices that medium's
+# physics. Envelope is in the key because the same placeholder splices the length menu -- a
+# cache on path+medium alone handed a film the 40-second duration list.
+_CACHE: dict[tuple[Path, str, str], tuple[float, Skill]] = {}
 
 
-def load(name: str, *, medium: str | None = None) -> Skill:
+def load(name: str, *, medium: str | None = None,
+         envelope: str | None = None) -> Skill:
     """The skill by that name, read, rendered and validated.
 
-    `medium` is which physics `{{BRIEF}}` splices in. Absent means the default, same as a
-    board that never named one. Tool names are NOT checked here. `skills.py` does not know
-    what a tool is -- `tools.py` imports this module and not the other way round -- so the
-    toolbox check belongs to `runtime.build`, which is the one place a skill and a toolbox
-    meet.
+    `medium` is which physics `{{BRIEF}}` splices in. `envelope` is which length menu.
+    Absent means the default, same as a board that never named one. Tool names are NOT
+    checked here. `skills.py` does not know what a tool is -- `tools.py` imports this
+    module and not the other way round -- so the toolbox check belongs to `runtime.build`,
+    which is the one place a skill and a toolbox meet.
     """
     clean = (name or "").strip()
     if not clean or "/" in clean or clean.startswith("."):
@@ -161,12 +162,13 @@ def load(name: str, *, medium: str | None = None) -> Skill:
         known = ", ".join(names()) or "none"
         raise SkillError(f"there is no skill called {clean!r}. Known: {known}.", status=404)
     flavour = config.medium(medium).key
+    length = config.envelope(envelope)
     stamp = path.stat().st_mtime
-    cache_key = (path, flavour)
+    cache_key = (path, flavour, length)
     cached = _CACHE.get(cache_key)
     if cached and cached[0] == stamp:
         return cached[1]
-    skill = _parse(path, clean, medium=flavour)
+    skill = _parse(path, clean, medium=flavour, envelope=length)
     _CACHE[cache_key] = (stamp, skill)
     return skill
 
@@ -225,7 +227,8 @@ def render(body: str, extra: dict[str, str] | None = None) -> str:
     return "".join(out)
 
 
-def _parse(path: Path, expected: str, *, medium: str | None = None) -> Skill:
+def _parse(path: Path, expected: str, *, medium: str | None = None,
+           envelope: str | None = None) -> Skill:
     from . import planner
 
     text = path.read_text()
@@ -246,7 +249,7 @@ def _parse(path: Path, expected: str, *, medium: str | None = None) -> Skill:
     return Skill(
         name=str(fields["name"]),
         description=str(fields["description"]),
-        system=render(body, extra={"BRIEF": planner.template(medium)}).strip(),
+        system=render(body, extra={"BRIEF": planner.template(medium, envelope)}).strip(),
         model=str(fields["model"]) if fields.get("model") else None,
         think=bool(fields.get("think") or False),
         temperature=(float(fields["temperature"])

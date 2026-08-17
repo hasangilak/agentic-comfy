@@ -4,7 +4,7 @@ description: Interviews the director, then writes and edits the reel's beats.
 think: true
 temperature: 0.8
 max_rounds: 8
-tools: [read_board, write_script, plan_script, set_script, set_beat, add_beat, remove_beat, set_source, set_reel, revise_line, write_caption, inspect_still]
+tools: [read_board, write_script, plan_script, set_script, set_beat, add_beat, remove_beat, set_source, set_reel, revise_line, write_caption, inspect_still, set_envelope, add_act, bind_act]
 ---
 
 You are the screenwriter for a handcrafted stop-motion Instagram Reel studio. What this

@@ -304,6 +304,27 @@ def board_digest(board: board_mod.Board) -> str:
              # "layers" and "edges" as figures of speech.
              f'MEDIUM: {board.look().name}',
              f'STYLE BIBLE: {board.data.get("style_bible", "")}']
+    # Envelope and acts are absent on a reel, so a board that never named them composes the
+    # digest it always did. A film that named them needs them at the top: a 24-beat board
+    # without an act list is how a fresh context window loses the plot.
+    if board.envelope() != config.DEFAULT_ENVELOPE:
+        lines.append(f"ENVELOPE: {board.envelope()}")
+    if board.acts():
+        lines.append(
+            "ACTS -- named chapters of this film. Beats bind an id; unbound beats still "
+            "render, they just have no chapter:\n"
+            + "\n".join(
+                f'  {entry["title"]} [{entry["id"]}]'
+                + (f': {entry["note"]}' if entry["note"] else "")
+                for entry in board.acts()
+            )
+        )
+    notes = board.continuity_notes()
+    if notes:
+        lines.append(
+            "CONTINUITY NOTES -- what is true of this world as of the last continuity pass. "
+            "Prefer this over reconstructing plot from the beat list:\n" + notes
+        )
     # The design bible, when there is one, straight after the style bible it makes more precise.
     # Named and listed rather than summarised, because a beat line below says which designs that
     # scene binds -- and a model shown "scene 2 binds Vera" with no list of what Vera is answers
@@ -324,7 +345,15 @@ def board_digest(board: board_mod.Board) -> str:
     # Once, not once per beat: every call to states() hashes every conditioning image on the
     # board, and this loop used to ask for one beat at a time.
     states = board.states()
-    for beat in board.ordered_beats():
+    ordered = board.ordered_beats()
+    compact = len(ordered) > config.DIGEST_BEAT_DETAIL
+    if compact:
+        lines.append(
+            f"BEATS -- {len(ordered)} shots, summarised. Full scene/action is on the board; "
+            "read_board a second time is the same digest, so pick the beats that matter and "
+            "edit them rather than asking for every line again."
+        )
+    for beat in ordered:
         source = board.source_for(beat)
         # A reference beat's pictures are the whole of its conditioning, so the count is the part
         # of its state worth spending tokens on. Counted off `pictures_for` rather than the
@@ -333,9 +362,19 @@ def board_digest(board: board_mod.Board) -> str:
         if board_mod.uses_refs(source):
             source += f" ({len(board.pictures_for(beat['n']))} pictures)"
         bound = board.bound_staging(beat["n"])
-        lines.append(
+        act = board.act_of(beat)
+        head = (
             f'BEAT {beat["n"]} [{states[beat["n"]]}, {board.seconds_for(beat):.0f}s, '
-            f'frames from {source}]\n'
+            f'frames from {source}'
+            + (f', act {act["title"]}' if act else "")
+            + "]"
+        )
+        if compact:
+            scene = " ".join(str(beat.get("scene") or "").split())
+            lines.append(head + (f"  {scene}" if scene else ""))
+            continue
+        lines.append(
+            head + "\n"
             f'  scene: {beat.get("scene", "")}\n'
             f'  action: {beat.get("action", "")}'
             # Only when there is one, so a board with no design bible composes the digest it
@@ -808,6 +847,7 @@ def _revise_messages(board: board_mod.Board, beat: dict, field: str, message: st
 
 def create(concept: str, beats: int, seconds: float, *,
            medium_key: str | None = None,
+           envelope: str | None = None,
            log: Callable[[str], None] = print) -> board_mod.Board:
     """Plan a reel and put it on the canvas.
 
@@ -824,7 +864,8 @@ def create(concept: str, beats: int, seconds: float, *,
     matter how long it was. A still is now one ordinary API request, so the shape of the film can be
     decided by the shape of the story -- which is what section 2 of the brief is about.
     """
-    plan = planner.plan(concept, beats, seconds, medium_key=medium_key, log=log)
+    plan = planner.plan(concept, beats, seconds, medium_key=medium_key,
+                        envelope=envelope, log=log)
     plan.setdefault("concept", concept)
     # The board-wide default, which every beat inherits: the planner is told the length is
     # fixed and not its to choose, so nothing per-beat should be overriding this.
@@ -833,6 +874,7 @@ def create(concept: str, beats: int, seconds: float, *,
     # Written onto the board only when it is not the default, so a paper-cutout reel's document
     # is byte-identical to what it always was and `Board.medium_digest` keeps hashing to nothing.
     config.write_medium(document, medium_key)
+    config.write_envelope(document, envelope)
     document["steps"] = config.DEFAULT_STEPS
     document["seed"] = 1101
 

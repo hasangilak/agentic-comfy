@@ -172,7 +172,7 @@ class NoTemplate(RuntimeError):
     """The authoring prompt is missing, and there is deliberately no fallback copy of it."""
 
 
-def template(medium_key: str | None = None) -> str:
+def template(medium_key: str | None = None, envelope: str | None = None) -> str:
     """The brief, without the note to the human about where to paste it.
 
     Everything above the first horizontal rule is instructions for the operator ("paste
@@ -180,10 +180,11 @@ def template(medium_key: str | None = None) -> str:
 
     Three of its passages are medium-bound and live in `config.MEDIUMS` rather than in the file:
     the opening sentence about what the films are made of, section 4 (the physics), and section
-    6(a) (the construction the style bible must lock down). Everything else -- the interview, the
-    joins, the duration budget the director chose, the anti-slop rules, the output format, the self-check -- is
-    pipeline and is word-for-word correct in any medium, which is why the file was forked at
-    three seams rather than copied.
+    6(a) (the construction the style bible must lock down). Two more -- the opening length
+    sentence and the duration menu in section 0 -- fork on the authoring envelope (`reel` vs
+    `film`) the same way, so a 4-minute board is not handed a 40-second menu. Everything else
+    is pipeline and is word-for-word correct in any medium, which is why the file was forked
+    at seams rather than copied.
 
     Those three are not a find-and-replace of "paper" for "clay". Paper's whole grammar is that a
     shape is SWAPPED for another shape and clay's is that a shape BECOMES one, so section 4
@@ -199,17 +200,20 @@ def template(medium_key: str | None = None) -> str:
         ) from missing
     _, _, body = text.partition("\n---\n")
     look = config.medium(medium_key)
+    length, duration = config.length_copy(envelope)
     return ((body or text)
             .replace("<<<OPENING>>>", look.opening)
             .replace("<<<PHYSICS>>>", look.physics)
             .replace("<<<CONSTRUCTION>>>", look.construction)
+            .replace("<<<LENGTH>>>", length)
+            .replace("<<<DURATION>>>", duration)
             .strip())
 
 
 def brief(concept: str, beats: int, seconds: float,
-          medium_key: str | None = None) -> str:
+          medium_key: str | None = None, envelope: str | None = None) -> str:
     """The authoring prompt with the interview answered and the concept filled in."""
-    body = template(medium_key).replace("<<<CONCEPT>>>", concept.strip())
+    body = template(medium_key, envelope).replace("<<<CONCEPT>>>", concept.strip())
     answers = ANSWERS.format(
         beats=beats, seconds=f"{seconds:.0f}", total=f"{beats * seconds:.0f}",
         plural="" if beats == 1 else "s",
@@ -254,6 +258,7 @@ final. Write the script now and return the JSON on this turn.
 
 def plan(concept: str, beats: int, seconds: float, *,
          medium_key: str | None = None,
+         envelope: str | None = None,
          log: Callable[[str], None] = print) -> dict:
     """A script from a one-line concept: draft, then review.
 
@@ -261,7 +266,7 @@ def plan(concept: str, beats: int, seconds: float, *,
     visible: the model is editing words the user never saw, and a silent rewrite of a draft
     is indistinguishable from a model that writes well.
     """
-    instructions = brief(concept, beats, seconds, medium_key)
+    instructions = brief(concept, beats, seconds, medium_key, envelope)
     log(f"[plan] briefing {config.TEXT_MODEL} from {TEMPLATE_PATH.name}")
     draft = numbered(gemini.structured(
         [{"role": "user", "content": instructions}], PLAN_SCHEMA,

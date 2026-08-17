@@ -259,6 +259,63 @@ def _run_generate_stills(context: Context, arguments: dict) -> Outcome:
     return outcome, [{"op": "generate_stills", "summary": f"rendered stills for {taken}"}]
 
 
+def _run_set_envelope(context: Context, arguments: dict) -> Outcome:
+    board = context.need_board()
+    wanted = str(arguments.get("envelope") or "").strip()
+    if wanted not in config.ENVELOPES:
+        raise ToolRefused(f"envelope has to be one of {', '.join(config.ENVELOPES)}")
+    if wanted == board.envelope():
+        return f"this board is already a {wanted}", []
+    config.write_envelope(board.data, wanted)
+    board.save()
+    context.hooks.changed()
+    return (f"this board is now a {wanted}",
+            [{"op": "set_envelope", "summary": f"envelope: {wanted}"}])
+
+
+def _run_add_act(context: Context, arguments: dict) -> Outcome:
+    board = context.need_board()
+    title = " ".join(str(arguments.get("title") or "").split())
+    if not title:
+        raise ToolRefused("give the act a short title")
+    note = " ".join(str(arguments.get("note") or "").split())
+    entry = board.add_act(title, note=note)
+    board.save()
+    context.hooks.changed()
+    return (f"act {entry['title']} is {entry['id']}",
+            [{"op": "add_act", "summary": f"act {entry['id']}: {entry['title']}"}])
+
+
+def _run_bind_act(context: Context, arguments: dict) -> Outcome:
+    board = context.need_board()
+    n = _beat_number(board, arguments)
+    act_id = str(arguments.get("id") or "").strip() or None
+    try:
+        board.bind_act(n, act_id)
+    except KeyError as missing:
+        raise ToolRefused(str(missing)) from missing
+    board.save()
+    context.hooks.changed()
+    if act_id:
+        return (f"beat {n} is in act {act_id}",
+                [{"op": "bind_act", "n": n, "summary": f"beat {n} -> {act_id}"}])
+    return (f"beat {n} is in no named act",
+            [{"op": "bind_act", "n": n, "summary": f"beat {n} unbound"}])
+
+
+def _run_set_continuity(context: Context, arguments: dict) -> Outcome:
+    board = context.need_board()
+    notes = str(arguments.get("notes") or "").strip()
+    if notes:
+        board.data["continuity_notes"] = notes
+    else:
+        board.data.pop("continuity_notes", None)
+    board.save()
+    context.hooks.changed()
+    return ("continuity notes updated" if notes else "continuity notes cleared",
+            [{"op": "set_continuity_notes", "summary": "updated continuity notes"}])
+
+
 # ## Shared
 
 
@@ -339,6 +396,54 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             },
             ["n"],
         ), run=preview_video_prompt),
+        Tool(spec=llm.tool(
+            "set_envelope",
+            "Set whether this board is a short Instagram reel or a longer film. reel is "
+            "the default and is stored by being absent. film keeps 5s/10s beats and the "
+            "20s shot ceiling, and changes the authoring brief's length menu and lets "
+            "beats group into named acts. Does not re-price a render.",
+            {
+                "envelope": {
+                    "type": "string",
+                    "enum": list(config.ENVELOPES),
+                    "description": "reel (20–60s) or film (2–10 min)",
+                },
+            },
+            ["envelope"],
+        ), run=_run_set_envelope),
+        Tool(spec=llm.tool(
+            "add_act",
+            "Mint a named act (a chapter of beats). Returns the id to bind beats with. "
+            "A board with no acts is one implicit reel. Does not re-price a render.",
+            {
+                "title": {"type": "string", "description": "short name for the act"},
+                "note": {"type": "string",
+                         "description": "optional: what this act is for, one sentence"},
+            },
+            ["title"],
+        ), run=_run_add_act),
+        Tool(spec=llm.tool(
+            "bind_act",
+            "Point one beat at a named act, or clear the binding. The id comes from "
+            "add_act. Unbound beats still render.",
+            {
+                "n": {"type": "integer", "description": "which beat, 1-based"},
+                "id": {"type": "string",
+                       "description": "act id, or empty to clear"},
+            },
+            ["n"],
+        ), run=_run_bind_act),
+        Tool(spec=llm.tool(
+            "set_continuity_notes",
+            "Replace the rolling 'what is true of this world' note a fresh context "
+            "window reads first. Plot and end-states, not looks. Does not re-price a "
+            "render.",
+            {
+                "notes": {"type": "string",
+                          "description": "what is true as of now, a short paragraph"},
+            },
+            ["notes"],
+        ), run=_run_set_continuity),
     ]
 
 
@@ -358,7 +463,7 @@ def _script_tools(llm: llm_mod.LLM) -> list[Tool]:
         develop.developable(board)
         concept = str(board.data.get("concept") or board.data.get("title") or "")
         draft = develop.reviewed(dict(arguments), concept, log=context.hooks.log,
-                                 medium_key=board.medium())
+                                 medium_key=board.medium(), envelope=board.envelope())
         develop.adopt(board, draft)
         context.hooks.changed()
         written = len(board.beats)
@@ -382,7 +487,7 @@ def _script_tools(llm: llm_mod.LLM) -> list[Tool]:
         beats = int(arguments.get("beats") or 4)
         seconds = float(arguments.get("seconds") or config.BEAT_LENGTHS[-1])
         draft = planner.plan(concept, beats, seconds, log=context.hooks.log,
-                             medium_key=board.medium())
+                             medium_key=board.medium(), envelope=board.envelope())
         develop.adopt(board, draft)
         context.hooks.changed()
         return (f"planned {len(board.beats)} beats from the brief",

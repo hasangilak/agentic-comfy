@@ -218,7 +218,11 @@ def build(name: str, *, llm: llm_mod.LLM | None = None,
     """
     from . import tools as tools_mod
 
-    skill = skills.load(name, medium=board.medium() if board is not None else None)
+    skill = skills.load(
+        name,
+        medium=board.medium() if board is not None else None,
+        envelope=board.envelope() if board is not None else None,
+    )
     speaker = llm or llm_mod.provider()
     # The toolbox is built against the provider, not against a module-level default: a tool
     # declaration is written in the provider's own dialect (`llm.tool`), so building it once at
@@ -272,9 +276,18 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
         # decide between rounds, and the justification is already written three times in this
         # repo (`stills.converse`, `pictures.converse`, `staging.converse`): with only one
         # shape of answer available, a loop spends a round trip deciding to produce it.
+        spent = int(context.state.get("gemini_rounds") or 0)
+        if config.CREW_GEMINI_BUDGET and spent >= config.CREW_GEMINI_BUDGET:
+            hooks.say(
+                f"[{skill.name}] stopped: this run has used {spent} model rounds "
+                f"(budget {config.CREW_GEMINI_BUDGET})"
+            )
+            return Turn(reply="", ops=[], rounds=0, stopped="budget", data=None,
+                        board=context.board, agent=skill.name, activity=trace.events)
         data = agent.llm.structured(
             [{"role": "system", "content": skill.system}, question],
             skill.schema, think=skill.think, temperature=skill.temperature, model=skill.model)
+        context.state["gemini_rounds"] = spent + 1
         return Turn(reply="", ops=[], rounds=1, stopped="answered", data=data,
                     board=context.board, agent=skill.name, activity=trace.events)
 
@@ -287,10 +300,19 @@ def run(agent: Agent, message: str, *, board: board_mod.Board | None = None,
     stopped = "answered"
     rounds = 0
     for rounds in range(1, skill.max_rounds + 1):
+        spent = int(context.state.get("gemini_rounds") or 0)
+        if config.CREW_GEMINI_BUDGET and spent >= config.CREW_GEMINI_BUDGET:
+            hooks.say(
+                f"[{skill.name}] stopped: this run has used {spent} model rounds "
+                f"(budget {config.CREW_GEMINI_BUDGET})"
+            )
+            stopped = "budget"
+            break
         hooks.doing(f"{skill.name} · round {rounds}")
         trace.note("round", agent=skill.name, summary=f"round {rounds}")
         assistant = agent.llm.chat(messages, tools=agent.declarations, think=skill.think,
                                    temperature=skill.temperature, model=skill.model)
+        context.state["gemini_rounds"] = spent + 1
         spoken = str(assistant.get("content") or "").strip()
         if spoken:
             reply = spoken

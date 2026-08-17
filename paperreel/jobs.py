@@ -13,6 +13,7 @@ would under-report the cost.
 from __future__ import annotations
 
 import itertools
+import json
 import queue
 import threading
 import time
@@ -164,6 +165,7 @@ class Runner:
         self.order.append(job.id)
         self._queue.put(job.id)
         self.publish_job(job)
+        self.persist()
         return job
 
     def cancel(self, job_id: str) -> Job:
@@ -177,6 +179,7 @@ class Runner:
             job.cancelling = True
             job.log.append("[cancel] requested")
         self.publish_job(job)
+        self.persist()
         return job
 
     def active(self) -> Job | None:
@@ -265,6 +268,79 @@ class Runner:
             self.publish_job(job)
             self.publish_board(job.slug)
             self.publish_container()
+            self.persist()
+
+
+    def persist(self) -> None:
+        """Write in-flight GPU jobs to disk so a restart can resume them.
+
+        Only `render` is restored. A crew phase that died mid-run left whatever it had
+        already saved on the board, and the gate is where a director restarts it --
+        re-queueing extract would mint a second roster. The board, not this file, is
+        still the database.
+        """
+        payload = []
+        with self._lock:
+            for job_id in self.order:
+                job = self.jobs.get(job_id)
+                if job is None or job.kind != "render":
+                    continue
+                if job.state not in ("queued", "running"):
+                    continue
+                payload.append({
+                    "id": job.id,
+                    "kind": job.kind,
+                    "slug": job.slug,
+                    "detail": job.detail,
+                    "queued_at": job.queued_at,
+                    "was": job.state,
+                })
+        path = config.JOBS_PATH
+        try:
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(payload, indent=2))
+            tmp.replace(path)
+        except OSError:
+            pass
+
+    def restore(self) -> int:
+        """Re-queue persisted render jobs. Call after handlers are registered.
+
+        A job that was running is queued again; `render.render` skips beats already
+        RENDERED, which is the resume. A slug whose board is gone is dropped.
+        """
+        path = config.JOBS_PATH
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return 0
+        if not isinstance(payload, list):
+            return 0
+        restored = 0
+        for item in payload:
+            if not isinstance(item, dict) or item.get("kind") != "render":
+                continue
+            job_id = str(item.get("id") or "")
+            slug = str(item.get("slug") or "")
+            if not job_id or not slug or job_id in self.jobs:
+                continue
+            from . import board as board_mod
+            if not (board_mod.reels_dir() / slug / "storyboard.json").is_file():
+                continue
+            job = Job(
+                id=job_id,
+                kind="render",
+                slug=slug,
+                detail=item.get("detail") or {},
+                queued_at=float(item.get("queued_at") or time.time()),
+            )
+            self.jobs[job.id] = job
+            self.order.append(job.id)
+            self._queue.put(job.id)
+            restored += 1
+        if restored:
+            self.publish({"type": "jobs_restored", "count": restored})
+        return restored
 
 
 runner = Runner()
