@@ -18,8 +18,9 @@ Everything that is words runs on **one Gemini model** — `gemini-3.7-flash` ove
 Two front ends drive paperreel: `storyboard.py` / `reel.py` (CLI) and a local FastAPI + React
 node canvas ("the studio").
 
-`README.md` is the design document — it explains *why* most of the constants and joins are
-what they are. Read it before changing render behaviour, prompt scaffolding, or costs.
+[ARCHITECTURE.md](ARCHITECTURE.md) is the design document — it explains *why* most of the
+constants and joins are what they are. Read it before changing render behaviour, prompt
+scaffolding, or costs. [README.md](README.md) is setup and how to run.
 
 ## Commands
 
@@ -1005,7 +1006,7 @@ back and asks the model to run section 11's self-check, rather than restating th
 
 ## Known gaps
 
-Listed in `README.md` under "Known gaps" — the CLI can still request 15 s beats, cross-scene
+Listed in [ARCHITECTURE.md](ARCHITECTURE.md) under "Known gaps" — the CLI can still request 15 s beats, cross-scene
 consistency is unmeasured, the container may be over-provisioned at 8 cores / 128 GiB, and the
 studio's per-step WebSocket progress has never been exercised against a live render.
 
