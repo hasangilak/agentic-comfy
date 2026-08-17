@@ -690,6 +690,11 @@ above talks ComfyUI, so it is unused.
 
 ## Known gaps
 
+- **The crew has reached a live Gemini once, and it was a 429.** `--stage storyboard` on a
+  scripted fixture (2026-08-17) failed every specialist with prepay credits depleted. The skip
+  path then stamped the whole storyboard `done` with no roster or panels written. That cursor
+  lie is closed: a failed phase is reopened, and `make harness` asserts it with a stub. A
+  successful live cast still needs credits. `make harness` itself calls no model.
 - **The CLI can still ask for 15 s beats**, which have failed once on this card. The studio
   cannot — `config.BEAT_LENGTHS` caps it at 243 frames — but `storyboard.py --seconds 15`
   bypasses that and only logs a warning.

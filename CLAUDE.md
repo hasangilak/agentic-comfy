@@ -34,6 +34,7 @@ make backend      # studio.py only
 make frontend     # vite only
 make stop         # kill every server running in either project
 make build        # npm --prefix studio run build  (tsc -b && vite build — this is the typecheck)
+make harness      # golden-board eval: skills, next_stage, fingerprints, job restore. Calls no model.
 
 make login        # uvx modal setup                        one-time, touches Modal
 make models       # ~177 GiB of weights into a Modal Volume one-time, never needs re-running
@@ -41,14 +42,14 @@ make deploy       # deploy the GPU app (free until a request arrives)
 make stop-app     # stop the GPU app now
 ```
 
-There is no test suite and no linter config. `npm --prefix studio run build` is the only
-static check (TypeScript); Python has none. The image project has its own `make typecheck`.
+There is no linter config. `npm --prefix studio run build` is the TypeScript check.
+`make harness` (`uv run evals/harness.py`) is the Python one: it loads every skill, checks
+`next_stage` on three golden boards, dry-runs the next phase unsent, and asserts that envelope /
+acts / continuity notes leave fingerprints byte-identical. It calls no model and spends no GPU.
 
-What passes for a Python check is `uv run crew.py --list`: it loads all three `SKILL.md`
-files, renders every placeholder off disk, resolves every tool name against the toolbox and
-builds every declaration. Frontmatter faults, unknown placeholders, missing tools and
-unresolvable schema paths all fail there, for nothing. `--dry-run` prints the exact prompt and
-tool declarations that would be sent; `--where` prints which stage a board is waiting on.
+`uv run crew.py --list` is the cheaper subset: frontmatter, placeholders, tool names, schema
+paths. `--dry-run` prints the exact prompt and tool declarations that would be sent; `--where`
+prints which stage a board is waiting on.
 
 Python is always run through `uv run` — `studio.py`, `storyboard.py` and `reel.py` each
 declare their dependencies inline (PEP 723). Modal is always `uvx modal ...`.
@@ -550,9 +551,17 @@ the key when set back to paper. One representation, so "a board that never named
 the fingerprint it had. Verified: 9 boards on disk, 0 drift, and 384 prompt shapes byte-identical
 to what `build_prompt` produced before.
 
+**The film envelope is that rule applied to duration.** Absent means a reel. `envelope`, named
+`acts`, `continuity_notes` and `render_budget` are digest-visible when set and never in a
+fingerprint -- they change the brief, the chapter stitch and the quoted cap, not a beat's clip
+hash. Putting any of them in `own_fingerprint` would re-price every existing reel. `make harness`
+is the sensor for that promise. Queued GPU jobs survive a studio restart in `.jobs.json`; only
+`render` is restored, and already-`RENDERED` beats are skipped.
+
 `prompts/40s-stop-motion-script.md` (renamed from `40s-paper-cutout-script.md`) is forked at
-three seams — `<<<OPENING>>>`, `<<<PHYSICS>>>`, `<<<CONSTRUCTION>>>` — resolved by
-`planner.template(medium_key)`. The other ~88% is pipeline and is word-for-word correct in any
+five seams — `<<<OPENING>>>`, `<<<PHYSICS>>>`, `<<<CONSTRUCTION>>>`, plus `<<<LENGTH>>>` /
+`<<<DURATION>>>` for the reel vs film envelope — resolved by
+`planner.template(medium_key, envelope)`. The other ~88% is pipeline and is word-for-word correct in any
 medium. **`agent.MEDIUM` is misnamed and needs no changes at all**: read it and it is entirely
 the four joins, 5 s or 10 s, one thing moves, the camera never moves.
 
@@ -610,7 +619,10 @@ the roster by looking at the panels next to them.
 **Members do not pass messages; the board is the passing.** Each runs in turn and reads what the
 one before left, which is why no agent is handed another's output and why the board is reloaded
 between them. A member that fails is logged and stepped over — these are separate specialists,
-and the storyboard is still worth having when the design pass fell over.
+and the storyboard is still worth having when the design pass fell over. The phase cursor does
+not advance for a phase that failed: a 429 that stamped extract/panels/sheets/seams/lock `done`
+is how a billing miss looked like the roster existed (measured 2026-08-17). `reopen_phase` on
+the first failed phase is the sensor; later members still run.
 
 **A role is not a job; a stage plus a role is** (`crew._is_check`). The style artist and the
 script writer MAKE on their own stages and CHECK on the assets stage, so the same skill name
@@ -657,10 +669,11 @@ point that cannot reach the video pipeline. The dependency list is where that is
 The invariant is one grep, written into
 `tools.py`'s docstring so it survives.
 
-The one guard this layer *adds* rather than inherits is `config.CREW_STILL_BUDGET` (24), counted
+The one guard this layer *adds* rather than inherits is `config.CREW_STILL_BUDGET` (72), counted
 in `Context.state` across every stage of a run. `max_rounds` bounds turns and not money, and
 `generate_stills` is the one metered tool in the toolbox. **That number is a guess, not a
-measurement** — the first real run should replace it.
+measurement** — the first real run should replace it. `CREW_GEMINI_BUDGET` (200 rounds, 0 = no
+cap) is the same idea for words: a storyboard cast is nine members, each with its own round cap.
 
 **A skill is `paperreel/skills/<name>/SKILL.md`** — flat frontmatter plus a markdown body, read
 per run and cached on `(path, mtime)` so a prompt can be edited against a running `studio.py`.
@@ -1124,16 +1137,20 @@ reasoned rather than seen:
 one measured run took minutes for the writing turn on this machine's network path. Do not tune a
 timeout against it.
 
-**No agent in the crew has reached a live model, and neither has claymation.** What is
-exercised is everything around them, end to end and for nothing: all six skills load, render and
-build; the 27-tool toolbox constructs; `next_stage` agrees with `resolveStage` on all nine boards
-on disk; every new route answers (`GET /api/agents`, `GET .../crew`, unknown agent 404, empty
-message 422, bad stage 422, bad lens 404, bad medium 422); `import paperreel.api` still works;
-**9 boards show 0 fingerprint drift and 384 paper-cutout prompt shapes are byte-identical** to
-what `build_prompt` produced before the bundle; and a clay board was driven through two full
-casts against a stub provider — the medium set, the bible written, a design minted, a beat
-blocked, the blocking and the clay audio reaching the video prompt, then three lenses filing
-`pass` / `fail` / `pass` into the beat's transcript with a suggested fix.
+**The crew has reached a live Gemini once, and it was a 429.** 2026-08-17 `--stage storyboard`
+on a copy of `evals/harness/golden-scripted`: all nine specialists hit `gemini-3.7-flash` and
+failed with prepay credits depleted. No sheet, panel or roster was written. The skip-on-failure
+path then stamped every storyboard phase `done`. That cannot recur: `crew.stage` reopens the
+first failed phase, and `make harness` has a stub that asserts it. Claymation still has not
+reached a live model. What is exercised around the crew, end to end and for nothing: all skills
+load, render and build; the toolbox constructs; `next_stage` agrees with `resolveStage` on the
+golden boards; every new route answers (`GET /api/agents`, `GET .../crew`, unknown agent 404,
+empty message 422, bad stage 422, bad lens 404, bad medium 422); `import paperreel.api` still
+works; **fingerprints stay byte-identical** when envelope / acts / notes are named then cleared;
+and a clay board was driven through two full casts against a stub provider — the medium set, the
+bible written, a design minted, a beat blocked, the blocking and the clay audio reaching the
+video prompt, then three lenses filing `pass` / `fail` / `pass` into the beat's transcript with
+a suggested fix.
 
 So what is NOT known is everything about the *conversations and the pictures*. Specifically:
 
@@ -1145,13 +1162,14 @@ So what is NOT known is everything about the *conversations and the pictures*. S
 - **`blocking` has never been in a paid render.** Whether a separate "In frame:" clause improves
   a shot or just gives the model one more thing to draw into the frame is unmeasured, and the
   slot's position (after staging, before scene) is reasoned from `SCENE_PREFIX`'s comment.
-- **Whether a cast beats one agent is the whole claim and it is untested.** Three specialists in
-  sequence cost three turns where one agent costs one; the argument is that the one agent
-  answers about whichever concern it noticed first, and nobody has watched either happen.
+- **Whether a cast beats one agent is the whole claim and it is untested on a successful
+  conversation.** Three specialists in sequence cost three turns where one agent costs one; the
+  argument is that the one agent answers about whichever concern it noticed first, and nobody has
+  watched either happen. The one live crew run died on a 429 before any specialist wrote.
 - **The cross-check's false-fail rate is unknown.** Three reviewers each told "pass a still that
   is right" will still find something. If they fail everything, the verdicts become noise and the
   bound to report-only is what stops that being expensive.
-- **`CREW_STILL_BUDGET` (24) is a guess and has never fired.**
+- **`CREW_STILL_BUDGET` (72) is a guess and has never fired.** Counted in pose-frames, not beats: a reference cut draws up to nine stop-motion poses, so a per-beat cap of 24 ran out on the third scene.
 - **The script-writer's system prompt is 35 KB**, nearly all of it the brief, carried through
   every round of history where `develop.turn` pays for it once. No mitigation short of prompt
   caching; `max_rounds: 8` is the lever.
@@ -1160,5 +1178,6 @@ So what is NOT known is everything about the *conversations and the pictures*. S
   PyYAML later is one function.
 
 `uv run crew.py --dry-run` prints every prompt of the next stage without sending one, which is
-where to look before spending anything. The cheapest first real run is
-`--stage storyboard` on a board that already has a script.
+where to look before spending anything. `make harness` is the free regression. The cheapest
+first real run is `--stage storyboard` on a board that already has a script, once Gemini credits
+are not depleted.
