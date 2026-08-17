@@ -34,7 +34,7 @@ help:
 	@echo "make images    Papercut Studio's render server on :$(IMAGE_PORT) -- where stills come from"
 	@echo "make studio    an alias for make run"
 	@echo "make stop      kill every server either project has running"
-	@echo "make harness   golden-board eval: --list, --where, fingerprints. Calls no model."
+	@echo "make harness   golden-board eval: skills, next_stage, fingerprints, skip-cursor. Calls no model."
 	@echo
 	@echo "one-time, touches Modal:"
 	@echo "make login     uvx modal setup"

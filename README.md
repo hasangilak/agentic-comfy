@@ -24,6 +24,56 @@ concept ─Gemini─▶ ┐
                                         stitch ──▶ 1080×1920 H.264/AAC
 ```
 
+## The harness
+
+Paperreel is a **domain-specific agent harness** for a 20–60s Instagram reel, not a
+generic coding agent with a video plugin.
+
+**Agent = Gemini + this repo.** The model reasons. The harness is everything else that lets
+it act for many steps without repeating a measured mistake: `SKILL.md` casts, two tool loops
+(`agent.turn` for studio chat, `runtime.run` for the crew), a domain toolbox that wraps
+modules which already existed, `reels/<slug>/storyboard.json` as the only database, fingerprints
+and join 409s as computational sensors, reviews as inferential sensors, `jobs.Runner` as serial
+execution, and a structural GPU money wall — `paperreel/tools.py` does not import `render`,
+`pipeline`, `comfy` or `modal`, so a skill file cannot name a paid clip.
+
+When the agent fails, the environment is changed so that failure cannot recur (prompt order,
+numeric enums, thought signatures, fingerprint rules, a crew phase that 429s is not stamped
+`done`). That is harness engineering. LangGraph and a checkpointer would be a second store of
+the same state, which is the drift the board design exists to prevent.
+
+None of this changes what a reel renders. The crew still stops before the GPU.
+
+### Free checks (no model, no GPU)
+
+```bash
+make harness                              # golden boards, fingerprints, skip-cursor stub
+uv run crew.py --list                     # skills, tools, schemas
+uv run crew.py --name <slug> --where      # which phase is waiting, who works it
+uv run crew.py --name <slug> --dry-run    # next phase's prompts, unsent
+```
+
+`CREW_STILL_BUDGET` is **72 pose-frames**, not 24. Counted that way because a reference cut
+draws up to nine stop-motion poses; a per-beat cap of 24 ran out on the third scene.
+
+### Live crew dry-run checklist
+
+Do these in order. Stop before GPU. Words and stills are cents; a clip is dollars.
+
+1. `make harness` is green.
+2. Copy `evals/harness/golden-scripted/storyboard.json` into `reels/<slug>/` (a board that
+   already has a script, no panels).
+3. `--where` prints storyboard / extract awaiting.
+4. `--dry-run` prints the extract prompts. Read them. Nothing is sent.
+5. `--stage storyboard` is the first live spend. `--stage assets` only if storyboard actually
+   wrote panels and sheets.
+6. Record which sensors fired (`evals/harness/live-run.json` is the 2026-08-17 429). Do not
+   run `storyboard.py --render` or the studio render button to "verify".
+
+A successful live cast still needs Gemini credits. The one live run reached the API and died
+on empty prepay before any specialist wrote. Long-video surfaces (acts, film envelope, chapter
+stitch) wait on that successful run; a reel that never named them is unchanged.
+
 ## Setup
 
 ```bash
@@ -666,10 +716,15 @@ paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/script.py     adopting a script written outside the studio
 paperreel/pipeline.py   app lifecycle + chained batch rendering
 paperreel/board.py      the board document; state derived from disk
-paperreel/agent.py      the tool loop -> board operations
+paperreel/agent.py      the studio chat tool loop -> board operations
+paperreel/runtime.py    the crew tool loop: prompt and toolbox handed in
+paperreel/skills.py     SKILL.md -> a system prompt and its settings
+paperreel/crew.py       three stages, each a cast; next_stage; no GPU stage
+paperreel/tools.py      what the agents can do, over modules that already exist
 paperreel/jobs.py       one worker, one container, one event stream
 paperreel/render.py     rendering with per-beat telemetry
 paperreel/api.py        HTTP + SSE for the studio
+evals/harness.py        golden-board eval; make harness; calls no model
 comfyui_minimax_h3.py   the Modal GPU app
 studio.py               the studio server
 studio/                 React + TypeScript + React Flow canvas
