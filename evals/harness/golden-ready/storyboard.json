@@ -1,0 +1,43 @@
+{
+  "beats": [
+    {
+      "n": 1,
+      "panel": "Wide, eye-level, locked-off. Frog on a pad, lower third.",
+      "scene": "A lily pond at dusk, wide, locked-off.",
+      "action": "A paper frog sits on a pad. He does not move.",
+      "source": "reference",
+      "seconds": 10.0
+    },
+    {
+      "n": 2,
+      "panel": "Same wide. No camera move.",
+      "scene": "A lily pond at dusk, wide, locked-off.",
+      "action": "Continuing: the frog's mouth opens a fraction. Nothing else moves.",
+      "source": "reference",
+      "seconds": 5.0
+    },
+    {
+      "n": 3,
+      "panel": "Extreme close-up, eye-level, locked-off.",
+      "scene": "Close on a turtle's eye, locked-off.",
+      "action": "The turtle blinks once, slowly.",
+      "source": "reference",
+      "seconds": 5.0
+    },
+    {
+      "n": 4,
+      "panel": "Medium, slightly high, locked-off.",
+      "scene": "The pond from the bank, medium, locked-off.",
+      "action": "Both sit still. A ripple dies.",
+      "source": "reference",
+      "seconds": 10.0
+    }
+  ],
+  "concept": "a frog and a turtle at a pond, panels written, stills are the director's",
+  "manual_stills": true,
+  "seconds": 10.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "Layered paper cutout. Frog is moss-green, turtle is iron-grey. Pond is stacked blue tissue.",
+  "title": "golden-ready"
+}

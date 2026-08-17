@@ -23,7 +23,7 @@ TEXT_MODEL ?= gemini-3.7-flash
 
 .DEFAULT_GOAL := help
 .PHONY: help install build run backend frontend serve stop images studio \
-        login models deploy stop-app clean
+        login models deploy stop-app clean harness
 
 help:
 	@echo "make install   npm dependencies + resolve the uv environment"
@@ -34,6 +34,7 @@ help:
 	@echo "make images    Papercut Studio's render server on :$(IMAGE_PORT) -- where stills come from"
 	@echo "make studio    an alias for make run"
 	@echo "make stop      kill every server either project has running"
+	@echo "make harness   golden-board eval: --list, --where, fingerprints. Calls no model."
 	@echo
 	@echo "one-time, touches Modal:"
 	@echo "make login     uvx modal setup"
@@ -142,6 +143,11 @@ deploy:
 
 stop-app:
 	uvx modal app stop comfyui-minimax-h3 --yes
+
+# Free. Loads every skill, checks next_stage on golden boards, asserts fingerprints
+# on a reel that never named an envelope stay byte-identical. Calls no model.
+harness:
+	uv run evals/harness.py
 
 clean:
 	rm -rf $(STUDIO)/dist $(STUDIO)/.vite $(STUDIO)/tsconfig.tsbuildinfo .make

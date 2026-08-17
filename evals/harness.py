@@ -1,0 +1,262 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pillow", "httpx", "numpy", "scipy"]
+# ///
+"""Golden-board eval for the crew harness. Calls no model and spends no GPU.
+
+    uv run evals/harness.py
+    make harness
+
+Loads every skill (placeholders, tools, schemas), checks `next_stage` on three fixture
+boards, dry-runs the next phase's prompt without sending it, asserts that naming then clearing
+an envelope / act leaves fingerprints byte-identical, restores a persisted render job, and
+asserts that an ungated stage whose every member 429s does not stamp phases done.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from paperreel import agent, board as board_mod, config, crew, llm as llm_mod, runtime, skills
+
+
+FIXTURES = Path(__file__).resolve().parent / "harness"
+
+EXPECT_STAGE = {
+    "golden-draft": "script",
+    "golden-scripted": "storyboard",
+    "golden-ready": None,
+}
+
+
+def load_fixture(name: str) -> board_mod.Board:
+    path = FIXTURES / name / "storyboard.json"
+    return board_mod.Board(slug=name, path=path, data=json.loads(path.read_text()))
+
+
+def fail(message: str) -> None:
+    print(f"FAIL  {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def check_skills() -> None:
+    rows = skills.catalogue()
+    if not rows:
+        fail(f"no skills in {skills.directory()}")
+    bad = [row for row in rows if "error" in row]
+    if bad:
+        fail("; ".join(f"{row['name']}: {row['error']}" for row in bad))
+    for row in rows:
+        runtime.build(row["name"])
+    print(f"ok    {len(rows)} skills load and build")
+
+
+def check_stages() -> None:
+    for name, expected in EXPECT_STAGE.items():
+        board = load_fixture(name)
+        got = crew.next_stage(board)
+        if got != expected:
+            fail(f"{name}: next_stage is {got!r}, expected {expected!r}")
+        summary = crew.plan_summary(board)
+        if summary["stage"] != expected:
+            fail(f"{name}: plan_summary.stage is {summary['stage']!r}, expected {expected!r}")
+        print(f"ok    {name}: waiting on {got or 'nothing (render only)'}")
+
+
+def check_dry_run() -> None:
+    board = load_fixture("golden-scripted")
+    phase = crew.awaiting_phase(board) or "extract"
+    names = crew.cast_for_phase(phase, board)
+    for name in names:
+        built = runtime.build(name, board=board)
+        text = runtime.preview(built, "dry-run", prelude=crew.prelude(board))
+        if "{{" in built.skill.system:
+            fail(f"{name}: unresolved placeholder in system prompt")
+        if "THE BOARD AS IT IS RIGHT NOW" not in text:
+            fail(f"{name}: dry-run prompt is missing the board prelude")
+    print(f"ok    dry-run {phase} ({', '.join(names)}) prints, unsent")
+
+
+def check_fingerprints() -> None:
+    board = load_fixture("golden-scripted")
+    beat = board.beat(1)
+    before = board.own_fingerprint(beat)
+    render_before = board.render_fingerprint(beat)
+    digest_before = agent.board_digest(board)
+
+    config.write_envelope(board.data, config.DEFAULT_ENVELOPE)
+    if board.own_fingerprint(beat) != before or board.render_fingerprint(beat) != render_before:
+        fail("writing envelope=reel changed a fingerprint")
+    config.write_envelope(board.data, config.ENVELOPE_FILM)
+    if board.own_fingerprint(beat) != before or board.render_fingerprint(beat) != render_before:
+        fail("writing envelope=film changed a fingerprint -- it must not, it is not a render input")
+    config.write_envelope(board.data, config.DEFAULT_ENVELOPE)
+
+    entry = board.add_act("Open")
+    board.bind_act(1, entry["id"])
+    board.data["continuity_notes"] = "the frog has not yet spoken"
+    if board.own_fingerprint(beat) != before or board.render_fingerprint(beat) != render_before:
+        fail("acts / continuity notes changed a fingerprint")
+    if agent.board_digest(board) == digest_before:
+        fail("a board with acts should change the digest even though fingerprints stay put")
+    board.bind_act(1, None)
+    board.data.pop("acts", None)
+    board.data.pop("continuity_notes", None)
+    if board.own_fingerprint(beat) != before:
+        fail("clearing acts did not restore the fingerprint")
+    if agent.board_digest(board) != digest_before:
+        fail("clearing acts/notes did not restore the digest")
+    print("ok    envelope/acts/notes are digest-visible and fingerprint-invisible")
+
+
+def check_compact_digest() -> None:
+    board = load_fixture("golden-scripted")
+    data = copy.deepcopy(board.data)
+    for index in range(5, config.DIGEST_BEAT_DETAIL + 2):
+        data["beats"].append({
+            "n": index,
+            "scene": f"Beat {index} pond, locked-off.",
+            "action": "Nothing moves.",
+            "source": "reference",
+            "seconds": 5.0,
+        })
+    fat = board_mod.Board(slug=board.slug, path=board.path, data=data)
+    digest = agent.board_digest(fat)
+    if "summarised" not in digest:
+        fail("a board past DIGEST_BEAT_DETAIL did not compact")
+    if "  scene:" in digest:
+        fail("a compacted digest still spelled every scene line")
+    print(f"ok    digest compacts at {config.DIGEST_BEAT_DETAIL + 1} beats")
+
+
+class DeadLLM:
+    """Raises on every model call. `tool` still has to speak Gemini's dialect so build works."""
+
+    def chat(self, *args, **kwargs):
+        raise llm_mod.LLMError("credits depleted (eval stub)")
+
+    def structured(self, *args, **kwargs):
+        raise llm_mod.LLMError("credits depleted (eval stub)")
+
+    def text(self, *args, **kwargs):
+        raise llm_mod.LLMError("credits depleted (eval stub)")
+
+    def tool(self, *args, **kwargs):
+        from paperreel import gemini
+        return gemini.tool(*args, **kwargs)
+
+    def calls_of(self, message):
+        return []
+
+    def answered(self, message, results):
+        return []
+
+    def encode(self, path):
+        return ""
+
+    def health(self):
+        return None
+
+    def available(self):
+        return False
+
+
+def check_failed_phase_not_done() -> None:
+    """A 429 must not stamp extract/panels/sheets/seams/lock done. Measured 2026-08-17."""
+    slug = "evals-harness-fail"
+    dest = board_mod.reels_dir() / slug
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy(FIXTURES / "golden-scripted" / "storyboard.json", dest / "storyboard.json")
+    try:
+        board = board_mod.Board.load(slug)
+        crew.stage("storyboard", board, llm=DeadLLM(), hooks=runtime.Hooks())
+        board = board_mod.Board.load(slug)
+        record = crew.crew_record(board)
+        if record["done"]:
+            fail(f"a stage whose every member failed was marked done: {record['done']}")
+        if record["awaiting"] != "extract":
+            fail(f"awaiting is {record['awaiting']!r}, expected extract")
+        if crew.next_stage(board) != "storyboard":
+            fail("next_stage moved off storyboard after a failed ungated run")
+        print("ok    a failed ungated stage does not stamp phases done")
+    finally:
+        shutil.rmtree(dest, ignore_errors=True)
+
+
+def check_jobs_persist() -> None:
+    import time
+
+    from paperreel.jobs import Runner
+
+    tmp = Path(tempfile.mkdtemp(prefix="paperreel-harness-"))
+    original = config.JOBS_PATH
+    config.JOBS_PATH = tmp / ".jobs.json"
+    slug = "evals-harness-persist"
+    dest = board_mod.reels_dir() / slug
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy(FIXTURES / "golden-scripted" / "storyboard.json", dest / "storyboard.json")
+    try:
+        config.JOBS_PATH.write_text(json.dumps([{
+            "id": "deadbeefcafe",
+            "kind": "render",
+            "slug": slug,
+            "detail": {"beats": [1]},
+            "queued_at": time.time(),
+            "was": "queued",
+        }]))
+        run = Runner()
+        run.register("render", lambda job, _runner: {"ok": True})
+        n = run.restore()
+        if n != 1:
+            fail(f"restore returned {n}, expected 1")
+        if "deadbeefcafe" not in run.jobs:
+            fail("restored runner is missing the render job")
+        print("ok    render jobs persist and restore")
+    finally:
+        config.JOBS_PATH = original
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def check_brief_envelope() -> None:
+    from paperreel import planner
+
+    reel = planner.template(None, config.ENVELOPE_REEL)
+    film = planner.template(None, config.ENVELOPE_FILM)
+    if "<<<LENGTH>>>" in reel or "<<<DURATION>>>" in reel:
+        fail("reel brief still has unresolved length seams")
+    if "20–60 seconds" not in reel:
+        fail("reel brief lost its 20–60s envelope")
+    if "2–10 minutes" not in film:
+        fail("film brief lost its 2–10 min envelope")
+    if "4 × 5s" not in reel:
+        fail("reel duration menu missing")
+    if "12 × 10s" not in film:
+        fail("film duration menu missing")
+    print("ok    brief forks on envelope")
+
+
+def main() -> int:
+    check_skills()
+    check_stages()
+    check_dry_run()
+    check_fingerprints()
+    check_compact_digest()
+    check_brief_envelope()
+    check_jobs_persist()
+    check_failed_phase_not_done()
+    print("harness eval: all checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

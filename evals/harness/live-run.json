@@ -1,0 +1,42 @@
+{
+  "date": "2026-08-17",
+  "command": "uv run crew.py --name harness-live-scripted --stage storyboard",
+  "board": "copy of evals/harness/golden-scripted (four beats, paper-cutout, no panels)",
+  "outcome": "every specialist reached Gemini and failed; no roster, panel, sheet or blocking was written",
+  "error": "429: gemini-3.7-flash prepayment credits depleted",
+  "sensors_fired": [
+    {
+      "kind": "computational",
+      "name": "gemini 429",
+      "note": "The API answered. This was not a stub and not a local network timeout."
+    },
+    {
+      "kind": "harness",
+      "name": "skip-on-failure",
+      "note": "Nine members logged and stepped over; later members still ran."
+    },
+    {
+      "kind": "harness",
+      "name": "phase cursor stamped done on failure",
+      "note": "Before the fix, crew.done listed extract, panels, sheets, seams, lock with awaiting null, while beats still had no panels and no staging. Hashimoto: that cannot recur. crew.stage now reopens the first failed phase; make harness asserts it with a stub."
+    },
+    {
+      "kind": "computational",
+      "name": "next_stage",
+      "note": "CLI still printed waiting on: storyboard (derived from missing panels), disagreeing with the lying cursor."
+    }
+  ],
+  "sensors_not_fired": [
+    "stills.review",
+    "planner.review",
+    "critique lenses",
+    "CREW_STILL_BUDGET",
+    "CREW_GEMINI_BUDGET",
+    "fingerprints / STALE",
+    "GPU money wall"
+  ],
+  "assets_stage": "not run — storyboard never produced sheets or panels",
+  "character_sheet": "not drawn",
+  "set_sheet": "not drawn",
+  "panel": "not drawn"
+}

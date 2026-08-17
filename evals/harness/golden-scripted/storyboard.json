@@ -1,0 +1,38 @@
+{
+  "beats": [
+    {
+      "n": 1,
+      "scene": "A lily pond at dusk, wide, locked-off.",
+      "action": "A paper frog sits on a pad. He does not move.",
+      "source": "reference",
+      "seconds": 10.0
+    },
+    {
+      "n": 2,
+      "scene": "A lily pond at dusk, wide, locked-off.",
+      "action": "Continuing: the frog's mouth opens a fraction. Nothing else moves.",
+      "source": "reference",
+      "seconds": 5.0
+    },
+    {
+      "n": 3,
+      "scene": "Close on a turtle's eye, locked-off.",
+      "action": "The turtle blinks once, slowly.",
+      "source": "reference",
+      "seconds": 5.0
+    },
+    {
+      "n": 4,
+      "scene": "The pond from the bank, medium, locked-off.",
+      "action": "Both sit still. A ripple dies.",
+      "source": "reference",
+      "seconds": 10.0
+    }
+  ],
+  "concept": "a frog and a turtle at a pond, four beats, no panels yet",
+  "seconds": 10.0,
+  "seed": 1101,
+  "steps": 8,
+  "style_bible": "Layered paper cutout. Frog is moss-green, turtle is iron-grey. Pond is stacked blue tissue.",
+  "title": "golden-scripted"
+}
