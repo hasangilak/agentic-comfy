@@ -77,7 +77,7 @@ longer exists, and saying it trains the user to ration something that is not sca
 
 ```
 paperreel/config.py     every tunable + the measurement behind it; the prompt scaffold
-paperreel/board.py      the board document and ALL derived state
+paperreel/board.py      the board document and ALL derived state (`picture_kinds` is the unhashed parallel to `pictures_for`)
 paperreel/comfy.py      ComfyUI HTTP/WS client + the H3 graph builder
 paperreel/pipeline.py   Modal app lifecycle + chained batch rendering (CLI path)
 paperreel/render.py     the same, with per-beat telemetry and cancellation (studio path)
@@ -837,8 +837,12 @@ a reference cut, and a reel mixing cuts with continuations pays one checkpoint s
 boundary.
 
 The join is also *told to the model in words* — `OPEN_CUT` vs `OPEN_CONTINUATION` vs
-`OPEN_REFERENCE`/`CARRY_VIDEO`, plus `ARRIVE_ON_LAST` for a bridge. Getting the wording wrong
-does not fail; it produces a visible restart jolt at the seam. `config.py` documents each one.
+`OPEN_REFERENCE`/`CARRY_VIDEO`, plus `ARRIVE_ON_LAST` for a bridge. On ref2va those clauses
+sit inside MiniMax's six-part reference format (`subject_definitions` / `summary` /
+`retention_analysis` / `detailed_description` / `overall_soundscape` / `non_diegetic_music`)
+rather than a concatenation. Getting the wording wrong does not fail; it produces a visible
+restart jolt at the seam, or a character sheet as the opening frame. `config.py` documents
+each clause. Panels still never go to H3. The sheet region map is scaffold, not `STAGE_ROLE`.
 
 ### Staleness cascades
 

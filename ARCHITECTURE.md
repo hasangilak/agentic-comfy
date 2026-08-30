@@ -490,11 +490,7 @@ rather than the characters; the style bible goes into the video prompt as well, 
 that drifts mid-clip drifts toward that description rather than toward the model's own idea
 of a paper fox. Beat 1's still is the reference by default — pin your own to override it.
 
-A beat's video prompt is **the style bible, then its scene line, then its action**: what the
-production looks like, where this shot is, and what moves. The scene line is an input to the
-render, not a note to yourself — editing it on the node marks the beat stale, exactly like
-editing the action. Without it the model has only one still to infer the setting from, which
-is how a background quietly becomes a different place halfway through a clip.
+A beat's video prompt on the **keyframe** joins (chain, bridge, an asset cut with no identity sheets) is still **the style bible, then its scene line, then its action**: what the production looks like, where this shot is, and what moves. On the **reference** join (`ref2va`) it is MiniMax's six-part reference format — `subject_definitions`, `summary` (`[reference generation]`), `retention_analysis`, `detailed_description`, `overall_soundscape`, `non_diegetic_music` — because a mixed pack of stills, character sheets and a previous-clip video has to give every file one explicit role or H3 treats a sheet as the opening frame. The scene line is still an input to the render, not a note to yourself — editing it on the node marks the beat stale, exactly like editing the action. Without it the model has only one still to infer the setting from, which is how a background quietly becomes a different place halfway through a clip. Graphite storyboard panels still never go to H3. The four-section character-sheet region map lives in the unhashed scaffold, not in `STAGE_ROLE`.
 
 Every beat has its own persistent **upload** and **generate** controls, so all scene assets
 can be prepared before any video rendering starts. Dragging an image onto a frame works too,
