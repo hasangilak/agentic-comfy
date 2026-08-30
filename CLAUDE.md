@@ -356,8 +356,8 @@ one scene body serve a still, a reference picture and a design sheet.
 
 ### Storyboard panels
 
-A storyboard in the film sense is a sheet of rough panels — several drawings per shot (opening,
-midpoint, landing), showing framing,
+A storyboard in the film sense is a sheet of rough panels — one opening sketch per shot by
+default (`PANEL_SEQUENCE`; midpoint/landing existed to lock a nine-pose fill), showing framing,
 angle, and with arrows on the panel how the subject and camera move. `panels.py` is that pass.
 Written by Gemini into a per-beat `panel` field (free, one turn for the whole reel), drawn by
 `gemini-3.1-flash-lite-image` at 1K, and stitched into `reels/<slug>/storyboard_sheet.png`.
@@ -772,8 +772,8 @@ constants, `config.build_prompt`, `render._frames` and the canvas edge styling m
 
 **A long take stays on `reference`.** Chain and bridge cannot mix a keyframe latent with
 the nine image sockets, so `reference, chain, chain, bridge` is how later beats lose the
-sheets and the pose sequence. Successive `reference` beats of the same shot hold the
-previous clip as `<Video 1>` once poses exist. `chain` is only the pixel-exact last-frame
+sheets. Successive `reference` beats of the same shot hold the
+previous clip as `<Video 1>` once a still exists. `chain` is only the pixel-exact last-frame
 handoff.
 
 `chains()`, `uses_asset()`, `uses_refs()` in `board.py` are the predicates; use them rather
@@ -1182,7 +1182,7 @@ So what is NOT known is everything about the *conversations and the pictures*. S
 - **The cross-check's false-fail rate is unknown.** Three reviewers each told "pass a still that
   is right" will still find something. If they fail everything, the verdicts become noise and the
   bound to report-only is what stops that being expensive.
-- **`CREW_STILL_BUDGET` (72) is a guess and has never fired.** Counted in pose-frames, not beats: a reference cut draws up to nine stop-motion poses, so a per-beat cap of 24 ran out on the third scene.
+- **`CREW_STILL_BUDGET` (72) is a guess and has never fired.** Counted in pose-frames, not beats: auto draws 1–3 Gemini keyframes per reference cut (H3 interpolates); pin `PAPERREEL_STILL_SEQUENCE=9` restores the old fill.
 - **The script-writer's system prompt is 35 KB**, nearly all of it the brief, carried through
   every round of history where `develop.turn` pays for it once. No mitigation short of prompt
   caching; `max_rounds: 8` is the lever.

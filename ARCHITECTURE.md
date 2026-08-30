@@ -54,7 +54,8 @@ uv run crew.py --name <slug> --dry-run    # next phase's prompts, unsent
 ```
 
 `CREW_STILL_BUDGET` is **72 pose-frames**, not 24. Counted that way because a reference cut
-draws up to nine stop-motion poses; a per-beat cap of 24 ran out on the third scene.
+once filled nine sockets; auto now draws 1–3 keyframes (H3 interpolates) and the cap is
+unchanged until a real run replaces the guess.
 
 ### Live crew dry-run checklist
 
@@ -278,7 +279,9 @@ and where a take carries on unbroken, inside the rules of section 2. That used t
 with "beat 1 is a cut, everything after it chains", because a cut cost one image from a
 five-per-five-hours quota. Stills are ordinary API requests now, so the shape of the film can be
 decided by the shape of the story. A long take is successive `reference` beats — sheets and
-poses on every clip, previous clip held as `<Video 1>` — not a chain of keyframe hand-offs.
+an opening still on every clip, previous clip held as `<Video 1>` — not a chain of keyframe
+hand-offs. Extra Gemini poses are only the keyframes a 10s take or a lateral walk cannot
+invent from one still; H3 interpolates the rest.
 
 Anything with `title` and a `beats` array of `action` lines will import; everything else has a
 default.

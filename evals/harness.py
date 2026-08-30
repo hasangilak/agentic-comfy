@@ -12,8 +12,8 @@ boards, dry-runs the next phase's prompt without sending it, asserts that naming
 an envelope / act leaves fingerprints byte-identical, asserts the ref2va prompt is MiniMax's
 six-part format and the keyframe concatenation is unchanged, asserts Direct this shot's
 system prompt holds the H3 action rules and that building its user turn does not throw,
-restores a persisted render job, and asserts that an ungated stage whose every member 429s
-does not stamp phases done.
+asserts pose_need is 1/2/3 (pin 9 still fills), restores a persisted render job, and asserts
+that an ungated stage whose every member 429s does not stamp phases done.
 """
 
 from __future__ import annotations
@@ -393,6 +393,33 @@ def check_direct_prompt() -> None:
     print("ok    Direct this shot prompt and user turn")
 
 
+def check_pose_need() -> None:
+    """Gemini keyframes follow beat complexity; H3 interpolates the rest."""
+    if config.pose_need("The moth lifts a wing.", 5) != 1:
+        fail("quiet 5s beat should need one keyframe")
+    if config.pose_need("The moth lifts a wing.", 10) != 2:
+        fail("10s beat should need opening + landing")
+    travel = "she walks from the far left to the far right across the path"
+    if not config.is_travel(travel):
+        fail("travel fixture is not detected as travel")
+    if config.pose_need(travel, 5) != 3:
+        fail("travel beat should need three keyframes")
+    if config.pose_need(travel, 10) != 3:
+        fail("10s travel should stay three, not add a fourth")
+    if config.sequence_length(0, wanted=9) != 9:
+        fail("pin 9 should fill remaining sockets")
+    if config.sequence_length(2, wanted=9) != 7:
+        fail("pin 9 should leave room for reserved sheets")
+    if config.PANEL_SEQUENCE != 1:
+        fail(f"PANEL_SEQUENCE default is {config.PANEL_SEQUENCE}, expected 1")
+    board = load_fixture("golden-ready")
+    if board.sequence_count(1) != 2:
+        fail(f"golden-ready beat 1 is 10s: sequence_count={board.sequence_count(1)}, expected 2")
+    if board.sequence_count(2) != 1:
+        fail(f"golden-ready beat 2 is 5s: sequence_count={board.sequence_count(2)}, expected 1")
+    print("ok    pose_need is 1/2/3; pin 9 fills; golden-ready counts match")
+
+
 def check_gpu_ban() -> None:
     """The crew layer still cannot reach the GPU, including after this feature."""
     import ast
@@ -423,6 +450,7 @@ def main() -> int:
     check_brief_envelope()
     check_reference_prompt()
     check_direct_prompt()
+    check_pose_need()
     check_gpu_ban()
     check_jobs_persist()
     check_failed_phase_not_done()
