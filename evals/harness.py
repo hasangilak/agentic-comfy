@@ -11,11 +11,12 @@ Loads every skill (placeholders, tools, schemas), checks `next_stage` on three f
 boards, dry-runs the next phase's prompt without sending it, asserts that naming then clearing
 an envelope / act leaves fingerprints byte-identical, asserts the ref2va prompt is MiniMax's
 six-part format and the keyframe concatenation is unchanged, asserts Direct this shot's
-system prompt holds the H3 action rules and that building its user turn does not throw,
-asserts pose_need is 1/2/3 (pin 9 still fills), asserts writer copy no longer teaches a
-nine-pose fill, asserts character retention names the sheet note, restores a persisted
-render job, and asserts that an ungated stage whose every member 429s does not stamp phases
-done.
+system prompt holds the H3 action rules (density, freeze-leak, no dialogue-for-faces) and
+that building its user turn does not throw, asserts pose_need is 1/2/3 (pin 9 still fills),
+asserts writer copy (MEDIUM, brief, PLAN_SCHEMA, SHOT_GRAMMAR) still teaches the same packing
+floor and a locked-off camera, asserts character retention names the sheet note, restores a
+persisted render job, and asserts that an ungated stage whose every member 429s does not stamp
+phases done.
 """
 
 from __future__ import annotations
@@ -463,7 +464,17 @@ def check_writer_copy() -> None:
     continuity = skills.load("continuity")
     if "split at script" not in continuity.system:
         fail("continuity lost the split-at-script rule for a third gesture")
-    print("ok    writer copy is H3 pack; panels static; direct_shot on continuity and director")
+    writer = skills.load("script-writer")
+    for needle in ("another 5 s", "nothing changes"):
+        if needle not in writer.system:
+            fail(f"script-writer system missing {needle!r} (brief splice)")
+    storyboarder = skills.load("storyboarder")
+    if "not looking at the lens" not in storyboarder.system:
+        fail("storyboarder system missing look-at rule (SHOT_GRAMMAR splice)")
+    mise = skills.load("mise-en-scene")
+    if "not looking at the lens" not in mise.system:
+        fail("mise-en-scene lost the look-at blocking rule")
+    print("ok    writer copy is H3 pack; panels static; packing needles; direct_shot on continuity and director")
 
 
 def check_gpu_ban() -> None:

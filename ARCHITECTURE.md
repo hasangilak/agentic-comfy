@@ -217,8 +217,11 @@ line moved.
 **Direct this shot** sits next to revise on the action (the expanded scene and the canvas
 node). It has no note. MiniMax-H3 wants visible actions in playback order, one gesture that
 fits the 5 s or 10 s, and a named ending pose; a vague line ("the fox feels sad") or a packed
-one (three gestures, a pan, and a speech) is what the six-part wrapper cannot fix. The
-wrapper stays `build_prompt`'s — this only rewrites the director's action, never the scene
+one (three gestures, a pan, and a speech) is what the six-part wrapper cannot fix. A third
+expression is another 5 s beat at script, not a denser 10 s — this pass rewrites ONE line
+and drops the extra. Freeze clauses ("nothing changes") and A-to-B morphs ("the smile fades")
+are how a face never moves; the pause is a cut or the named ending pose after the move.
+The wrapper stays `build_prompt`'s — this only rewrites the director's action, never the scene
 (shared across a chain) and never `subject_definitions` / camera moves / dialogue into the
 line. Same transcript, same staleness as typing. Continuity and the director reach the same
 call as `direct_shot`; it is not a fourth crew member and is not run on every beat.
@@ -705,6 +708,16 @@ above talks ComfyUI, so it is unused.
   is, since `SECONDS_PER_FRAME` is fitted on the keyframe path and will read low; and whether
   the checkpoint swap at every shot boundary costs enough container time to matter. `asset` is
   the same cut on the old path, so an A/B is one join click and two renders.
+- **H3 packing rules in the brief and `H3_SHOT` are someone else's measurements.** They are
+  harvested from [phileiny/h3-storyboard-skill](https://github.com/phileiny/h3-storyboard-skill)
+  (MIT): a 7 s close-up holding nine expression beats stayed frozen (37–42 dB); the same
+  instructions split across three shots landed (22–23 dB). Their first write-up blamed a
+  `<d>` dialogue tag; the control was shot structure. We already split by construction —
+  one beat is one generation — and we cannot shoot 2–3 s, so the port is "another 5 s beat,
+  not a denser 10 s", freeze clauses out, morphs hidden or cut, look-at in frame, crop not
+  fractions. Those dB numbers are *theirs* (9:16 Ref2VA, 2026-08-26). Nothing here has been
+  re-measured on paper-cutout or clay on B200. Do not quote a quality gain. `make harness`
+  only checks that the copy is still in both places.
 - **A still drawn from several pictures is timed but not judged.** The plumbing is exercised end
   to end — the paths go over, the notes reach the prompt, the cap is honoured from both sides, a
   beat moved off the reference join is ignored — and a two-reference frame renders in 31.4 s

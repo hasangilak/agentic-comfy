@@ -1001,10 +1001,13 @@ conversational turn reading a board that changed for no reason it can see is the
 **Direct this shot** is the same structured call with no director note. `revise` does what
 the director asked; this rewrites the action so MiniMax-H3 can shoot it — visible moves in
 playback order, one gesture that fits the 5 s or 10 s, a named ending pose — without inventing
-camera moves, dialogue, or the six-part wrapper `build_prompt` already assembles. Scene is
+camera moves, dialogue, or the six-part wrapper `build_prompt` already assembles. A third
+gesture is another 5 s beat at script, not a denser take; this pass drops the extra. Scene is
 deliberately not in the rewrite: a shared scene line across a chain must not silently diverge.
 Continuity and the director reach the same call as `direct_shot`; it is not a fourth crew
-member and is not run on every beat.
+member and is not run on every beat. Packing, freeze-leak and morph rules live in `H3_SHOT`
+and brief section 8; `make harness` holds the needles. The measurements behind them are not
+ours — see ARCHITECTURE known gaps.
 
 `prompts/40s-stop-motion-script.md` is **the** specification of what a script for this pipeline
 has to be, and all three ways into a board are written against it: a human pastes it into an
@@ -1021,7 +1024,8 @@ back and asks the model to run section 11's self-check, rather than restating th
 ## Known gaps
 
 Listed in [ARCHITECTURE.md](ARCHITECTURE.md) under "Known gaps" — the CLI can still request 15 s beats, cross-scene
-consistency is unmeasured, the container may be over-provisioned at 8 cores / 128 GiB, and the
+consistency is unmeasured, the H3 packing rules in the brief are someone else's measurements,
+the container may be over-provisioned at 8 cores / 128 GiB, and the
 studio's per-step WebSocket progress has never been exercised against a live render.
 
 **A still drawn from more than one picture is timed, not judged.** The cap, the notes clause and
