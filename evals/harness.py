@@ -441,9 +441,12 @@ def check_writer_copy() -> None:
     brief = planner.template()
     if "fills up to nine image sockets" in brief:
         fail("brief still teaches filling nine sockets")
+    for needle in ("another 5 s", "nothing changes", "Dialogue does not make"):
+        if needle not in brief:
+            fail(f"brief missing {needle!r}")
     action = (planner.PLAN_SCHEMA["properties"]["beats"]["items"]["properties"]
                ["action"]["description"])
-    for needle in ("playback order", "ending pose"):
+    for needle in ("playback order", "ending pose", "another 5 s", "nothing changes"):
         if needle not in action:
             fail(f"PLAN_SCHEMA action missing {needle!r}")
     if "slow push in" in panels.SHOT_GRAMMAR or "pan left" in panels.SHOT_GRAMMAR:

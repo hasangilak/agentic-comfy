@@ -398,9 +398,22 @@ moves**, for a camera rig that does not pan, tilt, or zoom.
 - Write visible actions in playback order, not emotions ("steps out, straightens a cuff,
   walks past" — not "feels confident").
 - Name the single primary motion, its direction, and its speed. Name the ending pose
-  the clip has to arrive at and hold.
+  the clip has to arrive at and hold. That hold is also the tail — H3 often degrades in
+  the last 1.2–1.7 s — not a freeze instruction.
 - The amount of motion must fit the duration: 5 s is a single gesture; 10 s can breathe.
-  A line that packs three gestures into 5 s is how a clip feels rushed.
+  A line that packs three gestures into 5 s is how a clip feels rushed. A third expression
+  or gesture is another 5 s beat, not a denser 10 s. Split it (`add_beat`); do not pack
+  the face into a longer take. Direct this shot rewrites one line and will drop the extra
+  gestures rather than split the board.
+- Do not write that nothing changes, or that a face holds perfectly still. That freeze
+  leaks across the clip. The pause is a cut (a new beat), or the named ending pose after
+  the move.
+- Do not write a state changing into another ("the smile fades", "the brow releases").
+  H3 crossfades the two and the face reads like rubber. Hide the change — swap a paper
+  mouth while occluded, or cut — and open already on the new shape. Cutout swaps; clay
+  sculpts. Do not morph.
+- Do not shoot a contact-driven collision or the volume of a liquid. Cut to the aftermath.
+  Do not bind a stain to a puppet with on / around / through.
 - Name what stays perfectly still — except on **lateral travel**, where the set layers
   must slide opposite the walk. Write that pull ("the fence and soil slide right as the
   cats run left"). Do not write "the garden stays completely still" on a chase; that is
@@ -411,6 +424,8 @@ moves**, for a camera rig that does not pan, tilt, or zoom.
   organically, billows realistically*.
 - No cuts inside a beat. No camera moves (the rig stays locked; a background pull is not
   a pan). No new characters walking in mid-beat.
+- Dialogue does not make faces move. The film is silent; do not add a line to unlock a
+  performance.
 - On a same-shot continuation (`"reference"` after the opening beat, or `"chain"` /
   `"bridge"`), open with an explicit continuity phrase and pick up in the exact end-state of
   the previous beat. On a `"bridge"`, the sentence must also finish in the state its
