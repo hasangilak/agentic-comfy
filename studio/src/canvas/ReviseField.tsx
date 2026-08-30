@@ -4,6 +4,7 @@ import { videoPictures } from "../beat";
 import type { Beat, Job } from "../types";
 import { useDraft, useStudio } from "../useStudio";
 import { Button, inputClass } from "../ui";
+import { DirectButton, DirectReply } from "./DirectShot";
 import { PromptField } from "./Mentions";
 
 /**
@@ -29,6 +30,7 @@ export function ReviseField({
   title,
   hint,
   rows = "h-20",
+  direct = false,
 }: {
   beat: Beat;
   field: "scene" | "action";
@@ -37,6 +39,8 @@ export function ReviseField({
   title: string;
   hint: string;
   rows?: string;
+  /** Action only: one-click MiniMax-H3 direction, no note. Scene is shared across a chain. */
+  direct?: boolean;
 }) {
   const studio = useStudio();
   const board = studio.board!;
@@ -75,6 +79,7 @@ export function ReviseField({
     <div className="space-y-1">
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</span>
+        {direct ? <DirectButton beat={beat} flush={draft.flush} /> : null}
         <button
           onClick={() => setOpen((current) => !current)}
           className="ml-auto text-[10px] text-zinc-500 hover:text-warm"
@@ -99,6 +104,7 @@ export function ReviseField({
         placeholder={placeholder}
         title={title}
       />
+      {direct ? <DirectReply beat={beat} /> : null}
 
       {open ? (
         <div className="space-y-1 rounded border border-edge p-1.5">

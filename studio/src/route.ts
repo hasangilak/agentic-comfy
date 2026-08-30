@@ -124,11 +124,18 @@ export function stillsAllowed(board: Board): boolean {
 
 /**
  * Which stage a running job belongs to, so a rail row can say that something of its own is in
- * flight. `render` is the only kind that spends the GPU and the only one on `studio`.
+ * flight. `render` is the only kind that spends the GPU. BeatModal opens from every stage, so
+ * `revise` and `direct` (rewrites of a scene's lines) sit on all four lists.
  */
 export const STAGE_JOBS: Record<Stage, string[]> = {
-  script: ["develop", "plan", "chat", "revise", "caption", "crew", "agent"],
-  storyboard: ["panel_write", "panel_draw", "stage_draw", "stage_chat", "chat", "crew", "agent"],
-  assets: ["asset", "still_chat", "ref_draw", "ref_chat", "compose", "assemble", "crew", "agent"],
-  studio: ["render", "assemble", "chat", "crew", "agent"],
+  script: ["develop", "plan", "chat", "revise", "direct", "caption", "crew", "agent"],
+  storyboard: [
+    "panel_write", "panel_draw", "stage_draw", "stage_chat",
+    "chat", "revise", "direct", "crew", "agent",
+  ],
+  assets: [
+    "asset", "still_chat", "ref_draw", "ref_chat", "compose", "assemble",
+    "revise", "direct", "crew", "agent",
+  ],
+  studio: ["render", "assemble", "chat", "revise", "direct", "crew", "agent"],
 };

@@ -9,6 +9,7 @@ import { AddPicture, type AddPictureHandle } from "./AddPicture";
 import { Panel } from "./Panel";
 import { Poses } from "./Poses";
 import { CameraChips } from "./CameraChips";
+import { DirectButton, DirectReply } from "./DirectShot";
 
 /**
  * The four joins, in the order the button walks them: the free continuation, the one that also
@@ -604,6 +605,10 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
             scale. Beats in one continuous shot should carry the same line"
         />
 
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-zinc-500">action</span>
+          <DirectButton beat={beat} flush={action.flush} className="nodrag ml-auto" />
+        </div>
         <textarea
           className={`${inputClass} thin h-20 leading-relaxed`}
           value={action.draft}
@@ -611,6 +616,7 @@ export function SequenceNode({ data }: { data: { beat: Beat } }) {
           onBlur={action.flush}
           placeholder="what MOVES in this shot — the camera never moves"
         />
+        <DirectReply beat={beat} />
 
         <button
           onClick={cycleSource}

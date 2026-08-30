@@ -392,6 +392,8 @@ export interface Job {
     | "asset"
     | "still_chat"
     | "revise"
+    /** Rewrite one beat's action so MiniMax-H3 can shoot it. No director note. */
+    | "direct"
     /** Draw one reference picture. `detail.index` is null when it is a new one. */
     | "ref_draw"
     /** One turn about one reference picture, its redraw included. */

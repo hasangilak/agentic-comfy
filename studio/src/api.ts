@@ -176,6 +176,14 @@ export const api = {
     ),
 
   /**
+   * Rewrite this beat's action so MiniMax-H3 can shoot it. No note: `reviseBeat` is "do
+   * what the director said", and this is "make the line shootable". Marks the beat stale,
+   * like typing the change would.
+   */
+  directBeat: (slug: string, n: number) =>
+    post<{ job: Job }>(`/api/reels/${slug}/beats/${n}/direct`).then((r) => r.job),
+
+  /**
    * `source` says what the picture is for: "reference" makes it the composition this beat opens
    * on, alongside the reel's cast reference (the ordinary cut); "asset" makes it an exact opening
    * keyframe instead; "bridge" keeps the continuation and makes it the frame the clip has to

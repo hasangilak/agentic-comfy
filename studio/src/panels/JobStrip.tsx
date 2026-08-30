@@ -17,6 +17,7 @@ const LABELS: Record<string, string> = {
   plan: "writing the script",
   chat: "the director is thinking",
   revise: "rewriting the line",
+  direct: "directing the shot",
   caption: "writing the caption",
   panel_write: "writing the shots",
   panel_draw: "drawing a panel",

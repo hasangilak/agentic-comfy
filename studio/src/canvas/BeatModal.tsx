@@ -750,6 +750,7 @@ function Expanded({ board, beat }: { board: Board; beat: Beat }) {
                 title="only what moves. Appearance belongs in the style bible, and the camera
                   never moves"
                 hint="“slower, one movement only”, “make it read as continuing from the last shot”"
+                direct
               />
             </div>
 
