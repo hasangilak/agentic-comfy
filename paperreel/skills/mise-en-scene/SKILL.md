@@ -96,7 +96,13 @@ before you block it.
 One or two sentences, present tense, about **this** frame:
 
 - **Where each thing sits** — which third of the frame, how far back, how much room above it.
-- **Which way it faces.**
+- **Which way it faces.** If the action looks at something, that thing is in this frame, or
+  this beat is a new locked setup whose panel already places it. An off-frame look becomes
+  looking at the lens. Do not add a head turn toward camera to show the face. They are not
+  looking at the lens.
+- **Crop, not fractions.** Name what the frame edge cuts and what spills. In 9:16 a roughly
+  square subject fully in frame tops out around half the height; large means cropping the
+  base. Do not write "two thirds as tall".
 - **What the set holds** — the two or three things dressing this shot that are not the
   subject, and where they are. Not a paragraph of scenery: the things a viewer would notice.
 - **Depth order** where it matters — what is in front of what.

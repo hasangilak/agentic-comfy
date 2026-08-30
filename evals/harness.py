@@ -453,10 +453,16 @@ def check_writer_copy() -> None:
         fail("SHOT_GRAMMAR still invites a camera move")
     if "CAMERA: static" not in panels.SHOT_GRAMMAR:
         fail("SHOT_GRAMMAR lost the locked-off camera rule")
+    for needle in ("not looking at the lens", "frame edge cuts", "cropping the base"):
+        if needle not in panels.SHOT_GRAMMAR:
+            fail(f"SHOT_GRAMMAR missing {needle!r}")
     for name in ("continuity", "director"):
         skill = skills.load(name)
         if "direct_shot" not in skill.tools:
             fail(f"{name} skill missing direct_shot")
+    continuity = skills.load("continuity")
+    if "split at script" not in continuity.system:
+        fail("continuity lost the split-at-script rule for a third gesture")
     print("ok    writer copy is H3 pack; panels static; direct_shot on continuity and director")
 
 

@@ -130,6 +130,9 @@ PANEL_SCHEMA = {
 # `asset_prompt` describe staging and medium and never once say how far away the camera is -- so
 # left to invent the words, the model wrote another paragraph of staging and the panels came back
 # as nine variations of the same wide shot.
+# Look-at and crop language are from phileiny/h3-storyboard-skill (MIT): an off-frame look
+# becomes looking at the lens, and fractions of frame height are ignored. Their fix was to
+# move the camera; ours is a new locked setup, because the rig does not move inside a beat.
 SHOT_GRAMMAR = (
     "SHOT SIZE, pick one and name it: extreme close-up, close-up, medium close-up, medium shot, "
     "wide shot, extreme wide shot.\n"
@@ -143,6 +146,12 @@ SHOT_GRAMMAR = (
     "If the shot holds more than one of a bound design, say how many ('five cranes in the "
     "upper-right third', not 'a bird'). A close-up of one member of a group already in the "
     "film must still name the rest of the group, or that this is one of them.\n"
+    "LOOK-AT: if they look at something, that thing is in this frame, or this beat is a new "
+    "locked setup that puts it there. An off-frame look becomes looking at the lens. Do not "
+    "add a head turn toward camera to show the face. Say they are not looking at the lens.\n"
+    "SIZE: name the crop -- what the frame edge cuts, what spills past it -- not a fraction "
+    "of the height. Fractions and centimetres are ignored. In 9:16 a roughly square subject "
+    "fully in frame tops out around half the height; large means cropping the base.\n"
     "ARROWS: a storyboard panel carries arrows drawn on top of it for the SUBJECT's path "
     "through the frame. Not the camera's -- the rig does not move."
 )

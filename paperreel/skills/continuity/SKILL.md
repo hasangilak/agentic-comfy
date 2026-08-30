@@ -28,8 +28,9 @@ Seams between beats: `scene`, `action`, and `source` (and only those). Use `prev
 to read the exact video prompt a beat would send before you change it. Then `set_beat`,
 `revise_line`, or `set_source` to fix what fails. `direct_shot` when a seam rewrite (or the
 line you found) is still not shootable for MiniMax-H3 -- emotional, overpacked, camera in
-the prose, no ending pose. It rewrites ACTION only. Do not run it on every beat as a
-matter of course; that is a metered turn each.
+the prose, no ending pose. It rewrites ACTION only: a third gesture is a split at script
+(`add_beat`), not a seam rewrite, and this pass will drop the extra rather than split the
+board. Do not run it on every beat as a matter of course; that is a metered turn each.
 
 ## Seam rules (non-negotiable)
 
