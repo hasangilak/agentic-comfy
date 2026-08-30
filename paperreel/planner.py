@@ -81,15 +81,17 @@ PLAN_SCHEMA = {
                     "action": {
                         "type": "string",
                         "description": (
-                            "Motion only for a locked-off camera: one primary motion, its "
-                            "direction and speed, and what stays perfectly still. Do NOT "
-                            "restate materials, colours, markings, or construction -- those "
-                            "live in style_bible and reference pictures; restating them with "
-                            "drift invents a second puppet mid-clip. On a same-shot "
-                            "continuation (reference after the opening beat, or chain/bridge), "
-                            "open with a continuity phrase and pick up the exact end-state of "
-                            "the beat before; on bridge, finish in the state asset_prompt "
-                            "describes."
+                            "Motion only for a locked-off camera: visible actions in playback "
+                            "order, not emotions; one primary motion that fits the duration "
+                            "(5 s is a single gesture; 10 s can breathe) and a named ending "
+                            "pose the clip arrives at and holds. Do NOT add a pan, tilt, "
+                            "push, or dialogue. Do NOT restate materials, colours, markings, "
+                            "or construction -- those live in style_bible and reference "
+                            "pictures; restating them with drift invents a second puppet "
+                            "mid-clip. On a same-shot continuation (reference after the "
+                            "opening beat, or chain/bridge), open with a continuity phrase "
+                            "and pick up the exact end-state of the beat before; on bridge, "
+                            "finish in the state asset_prompt describes."
                         ),
                     },
                     "asset_prompt": {

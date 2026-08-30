@@ -211,7 +211,12 @@ MEDIUM = f"""Hard rules of the medium -- breaking these wastes the user's money:
 - No dialogue, no on-screen text, no watermarks.
 - The same character appears in every beat and must be described identically. The
   style_bible holds that description; reuse its exact wording in every asset_prompt.
-- An `action` describes only what MOVES. Appearance belongs in the style_bible.
+- An `action` describes only what MOVES. Appearance belongs in the style_bible. Write
+  visible actions in playback order, not emotions. One main action, maybe one reaction,
+  that fits the duration: 5 s is a single gesture; 10 s can breathe. Name the ending pose
+  the clip has to arrive at and hold. Camera angle is a chip on the beat, not words in
+  this line -- no pan, tilt, push, or cut. Physical sounds may sit beside the move that
+  creates them.
 - A `scene` is one line: where this beat happens and at what scale. It is rendered too --
   the video prompt is the style_bible, then the scene, then the action -- so it must never
   contain movement, and beats that belong to one continuous shot must carry the same line.
@@ -223,11 +228,11 @@ quick gesture and 10 for a beat that needs room to breathe.
 A beat's frames come from one of four places. This is the single most important choice on the
 board, because it decides what the beat is:
 - "reference": the default join, for a new shot AND for a long take. Its own generated still
-  is the composition the clip opens on, and the stills pass draws a stop-motion sequence of
-  poses that fill the remaining image sockets so the video model interpolates through the
-  action instead of inventing a mid-clip transform from one picture. Bound character sheets
-  ride those sockets too. The previous clip is attached as a reference video once those poses
-  exist (identity) or when carry is ticked (continuation). Up to {config.MAX_REF_IMAGES}
+  is the composition the clip opens on. Bound character sheets lock the puppets. MiniMax-H3
+  interpolates the action; extra Gemini poses are only the keyframes a 10s take (opening +
+  landing) or a lateral walk (opening / mid-slide / landing) cannot invent from one still.
+  Do not fill the nine image sockets. The previous clip is attached as a reference video once
+  that still exists (identity) or when carry is ticked (continuation). Up to {config.MAX_REF_IMAGES}
   pictures in total. A still is rendered on this machine and costs no money, but it does cost
   about 10-18 seconds per pose, and it needs the local image server to be running.
 - "chain": the previous beat's final frame as the FIRST frame, and no end frame -- pixel-exact
@@ -243,7 +248,7 @@ board, because it decides what the beat is:
   choose it when the first frame itself has to be exact, and leave it alone where the user has
   already set it.
 
-So choose "reference" for a new shot and for a long take that should keep the sheets and poses.
+So choose "reference" for a new shot and for a long take that should keep the sheets and the opening still.
 Choose "chain" only when the opening frame must be the previous clip's true last pixel, and
 "bridge" when that handoff must also land on a designed still. A continuation's `action` must
 read as the beat before it -- it starts from the pose that beat ended in and takes the movement

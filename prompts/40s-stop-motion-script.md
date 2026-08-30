@@ -130,9 +130,11 @@ picture on holding that still, and gives up an exact first frame it did not need
 that depends on one shape sitting in one exact place, a title-card-like composition. If you
 are not sure, write `"reference"`.
 
-The reference join fills up to nine image sockets. Pose generation and bound sheets occupy
-them; director uploads are extra. Nothing you write supplies an upload, so do not plan a
-beat around one. Mention it in one line if the concept really wants it.
+The default pack is the opening still, bound identity sheets, and only the extra Gemini
+keyframes a 10s take or a lateral walk cannot invent from one still. The join can hold up
+to nine pictures; filling them with poses crowds the sheets out. Nothing you write
+supplies an upload, so do not plan a beat around one. Mention it in one line if the
+concept really wants it.
 
 ### When to use `"chain"` or `"bridge"`
 
@@ -393,7 +395,12 @@ set under the same lamp — and change only the `MIDGROUND` pose and positions.
 One or two sentences. This drives the image-to-video model. It describes **only what
 moves**, for a camera rig that does not pan, tilt, or zoom.
 
-- Name the single primary motion, its direction, and its speed.
+- Write visible actions in playback order, not emotions ("steps out, straightens a cuff,
+  walks past" — not "feels confident").
+- Name the single primary motion, its direction, and its speed. Name the ending pose
+  the clip has to arrive at and hold.
+- The amount of motion must fit the duration: 5 s is a single gesture; 10 s can breathe.
+  A line that packs three gestures into 5 s is how a clip feels rushed.
 - Name what stays perfectly still — except on **lateral travel**, where the set layers
   must slide opposite the walk. Write that pull ("the fence and soil slide right as the
   cats run left"). Do not write "the garden stays completely still" on a chase; that is
