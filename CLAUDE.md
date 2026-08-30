@@ -1003,6 +1003,8 @@ the director asked; this rewrites the action so MiniMax-H3 can shoot it — visi
 playback order, one gesture that fits the 5 s or 10 s, a named ending pose — without inventing
 camera moves, dialogue, or the six-part wrapper `build_prompt` already assembles. Scene is
 deliberately not in the rewrite: a shared scene line across a chain must not silently diverge.
+Continuity and the director reach the same call as `direct_shot`; it is not a fourth crew
+member and is not run on every beat.
 
 `prompts/40s-stop-motion-script.md` is **the** specification of what a script for this pipeline
 has to be, and all three ways into a board are written against it: a human pastes it into an

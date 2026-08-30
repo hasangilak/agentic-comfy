@@ -12,8 +12,10 @@ boards, dry-runs the next phase's prompt without sending it, asserts that naming
 an envelope / act leaves fingerprints byte-identical, asserts the ref2va prompt is MiniMax's
 six-part format and the keyframe concatenation is unchanged, asserts Direct this shot's
 system prompt holds the H3 action rules and that building its user turn does not throw,
-asserts pose_need is 1/2/3 (pin 9 still fills), restores a persisted render job, and asserts
-that an ungated stage whose every member 429s does not stamp phases done.
+asserts pose_need is 1/2/3 (pin 9 still fills), asserts writer copy no longer teaches a
+nine-pose fill, asserts character retention names the sheet note, restores a persisted
+render job, and asserts that an ungated stage whose every member 429s does not stamp phases
+done.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from paperreel import agent, board as board_mod, config, crew, llm as llm_mod, runtime, skills
+from paperreel import agent, board as board_mod, config, crew, llm as llm_mod, panels, planner, runtime, skills
 
 
 FIXTURES = Path(__file__).resolve().parent / "harness"
@@ -329,6 +331,12 @@ def check_reference_prompt() -> None:
         fail("character sheet did not mint a Subject")
     if "turnaround" not in character:
         fail("character sheet missing region map")
+    retention = character.split("retention_analysis:", 1)[1].split(
+        "detailed_description:", 1)[0]
+    if "Vera" not in retention:
+        fail("character sheet note missing from retention_analysis")
+    if "Preserve" not in retention:
+        fail("character retention missing Preserve")
 
     carry = config.build_prompt(
         "The moth keeps walking.",
@@ -420,6 +428,32 @@ def check_pose_need() -> None:
     print("ok    pose_need is 1/2/3; pin 9 fills; golden-ready counts match")
 
 
+def check_writer_copy() -> None:
+    """Crew writers teach the H3 pack; panels stay locked-off; direct_shot is reachable."""
+    if "fill the remaining image sockets" in agent.MEDIUM:
+        fail("MEDIUM still teaches the nine-pose fill")
+    for needle in ("playback order", "ending pose", "interpolates"):
+        if needle not in agent.MEDIUM:
+            fail(f"MEDIUM missing {needle!r}")
+    brief = planner.template()
+    if "fills up to nine image sockets" in brief:
+        fail("brief still teaches filling nine sockets")
+    action = (planner.PLAN_SCHEMA["properties"]["beats"]["items"]["properties"]
+               ["action"]["description"])
+    for needle in ("playback order", "ending pose"):
+        if needle not in action:
+            fail(f"PLAN_SCHEMA action missing {needle!r}")
+    if "slow push in" in panels.SHOT_GRAMMAR or "pan left" in panels.SHOT_GRAMMAR:
+        fail("SHOT_GRAMMAR still invites a camera move")
+    if "CAMERA: static" not in panels.SHOT_GRAMMAR:
+        fail("SHOT_GRAMMAR lost the locked-off camera rule")
+    for name in ("continuity", "director"):
+        skill = skills.load(name)
+        if "direct_shot" not in skill.tools:
+            fail(f"{name} skill missing direct_shot")
+    print("ok    writer copy is H3 pack; panels static; direct_shot on continuity and director")
+
+
 def check_gpu_ban() -> None:
     """The crew layer still cannot reach the GPU, including after this feature."""
     import ast
@@ -451,6 +485,7 @@ def main() -> int:
     check_reference_prompt()
     check_direct_prompt()
     check_pose_need()
+    check_writer_copy()
     check_gpu_ban()
     check_jobs_persist()
     check_failed_phase_not_done()

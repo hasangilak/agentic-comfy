@@ -220,7 +220,8 @@ fits the 5 s or 10 s, and a named ending pose; a vague line ("the fox feels sad"
 one (three gestures, a pan, and a speech) is what the six-part wrapper cannot fix. The
 wrapper stays `build_prompt`'s — this only rewrites the director's action, never the scene
 (shared across a chain) and never `subject_definitions` / camera moves / dialogue into the
-line. Same transcript, same staleness as typing.
+line. Same transcript, same staleness as typing. Continuity and the director reach the same
+call as `direct_shot`; it is not a fourth crew member and is not run on every beat.
 
 ### Three ways to start a film
 
