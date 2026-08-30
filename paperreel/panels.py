@@ -1,7 +1,7 @@
 """Storyboard panels: the reel read as pictures before anything is paid for.
 
 A storyboard in the film sense is a sheet of rough panels -- one drawing per shot, showing the
-framing, the angle and, with arrows on the panel, how the subject and the camera move. It is drawn
+framing, the angle and, with arrows on the panel, how the subject moves. It is drawn
 cheap and read fast, and it exists so the sequence is judged *before* money goes out.
 
     panels.write(board)                 # one text turn writes N sketches per beat
@@ -25,8 +25,9 @@ that puts a picture on disk:
     nothing for a verdict to be about. A panel that is wrong is redrawn, or its shot grammar is
     edited by hand.
 
-Three sketches per beat (opening / midpoint / landing) so Nano Banana can lock a pose
-sequence to a composition that moves, not a single camera. Pencil still never goes to H3.
+One sketch per beat by default (the opening composition). Extra midpoint/landing frames
+existed to lock a nine-pose fill H3 no longer needs; `PANEL_SEQUENCE` still caps what is
+written. Pencil still never goes to H3.
 
 Two things about how a panel is drawn are `pictures.py`'s measured lessons, unchanged one level
 out, and both live in `config.py` next to the constants that act on them: **nothing conditions a
@@ -135,15 +136,15 @@ SHOT_GRAMMAR = (
     "ANGLE, pick one and name it: eye level, low angle (camera below the subject, it looms), high "
     "angle (camera above, the subject is small), overhead, or a dutch tilt when the moment is "
     "meant to feel wrong.\n"
-    "CAMERA MOVE, only when the beat needs one: static, slow push in, pull back, pan left or "
-    "right, tilt up or down. A locked-off static camera is the default of this film and needs no "
-    "excuse.\n"
+    "CAMERA: static, locked-off. Do not write a pan, push, pull, tilt, or orbit -- those moves "
+    "never reach the clip, but they do condition the still, and a tighter still is a false "
+    "preview of a locked take.\n"
     "WHERE THE SUBJECT IS: which third of the frame, facing which way, how much headroom. "
     "If the shot holds more than one of a bound design, say how many ('five cranes in the "
     "upper-right third', not 'a bird'). A close-up of one member of a group already in the "
     "film must still name the rest of the group, or that this is one of them.\n"
-    "ARROWS: a storyboard panel carries arrows drawn on top of it for movement. Say what they "
-    "point at -- the subject's path through the frame, or the camera's."
+    "ARROWS: a storyboard panel carries arrows drawn on top of it for the SUBJECT's path "
+    "through the frame. Not the camera's -- the rig does not move."
 )
 
 SYSTEM = (

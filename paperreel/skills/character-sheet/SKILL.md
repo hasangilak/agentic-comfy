@@ -16,11 +16,12 @@ a design sheet the video model can hold across every cut.
 ## Why this exists
 
 The film is not one video call. It is a chain of 5-second or 10-second clips, each a separate
-MiniMax-H3 generation, stitched together. On a cut the default join is `reference` (ref2va):
-up to nine pictures ride every sampling step, and the prompt names what each `<Picture N>` is
-for. A character sheet that is bound into a beat becomes one of those pictures -- an
-**appearance reference**, the same role MiniMax means by "the character's appearance follows
-reference images."
+MiniMax-H3 generation, stitched together. On a cut the default join is `reference` (ref2va): the opening still, identity sheets, and
+only the extra Gemini keyframes a 10s take or a lateral walk cannot invent from one still.
+Up to nine pictures can ride every sampling step; filling them with poses crowds the sheets
+out. The prompt names what each `<Picture N>` is for. A character sheet that is bound into a
+beat becomes one of those pictures -- an **appearance reference**, the same role MiniMax means
+by "the character's appearance follows reference images."
 
 A thin sheet, a heroic story pose, or a look that drifts from the style bible is how H3 invents
 a second puppet on the next cut. Your sheets are identity locks, not storyboards.

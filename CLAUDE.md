@@ -358,7 +358,7 @@ one scene body serve a still, a reference picture and a design sheet.
 
 A storyboard in the film sense is a sheet of rough panels — one opening sketch per shot by
 default (`PANEL_SEQUENCE`; midpoint/landing existed to lock a nine-pose fill), showing framing,
-angle, and with arrows on the panel how the subject and camera move. `panels.py` is that pass.
+angle, and with arrows on the panel how the subject moves. `panels.py` is that pass.
 Written by Gemini into a per-beat `panel` field (free, one turn for the whole reel), drawn by
 `gemini-3.1-flash-lite-image` at 1K, and stitched into `reels/<slug>/storyboard_sheet.png`.
 
@@ -572,7 +572,7 @@ A new per-beat field, and the gap it fills was real. The style bible says what t
 a design sheet says it again precisely for one named thing; the `scene` line says where the shot
 is and at what scale — and is deliberately *shared* by every beat of one continuous shot, so a
 shot where the subject crosses left to right has one scene line for both halves. The `panel`
-says shot size, angle and camera move, and conditions the still, never the clip. **Nobody said what is
+says shot size and angle, and conditions the still, never the clip. **Nobody said what is
 standing where.**
 
 `BLOCKING_PREFIX` ("In frame: ") sits between the staging and the scene line in `build_prompt`.

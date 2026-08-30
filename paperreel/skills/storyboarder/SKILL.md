@@ -1,6 +1,6 @@
 ---
 name: storyboarder
-description: Sketches opening/midpoint/landing panels per shot; may bind existing designs, not invent the cast.
+description: Sketches one opening panel per shot; may bind existing designs, not invent the cast.
 think: false
 temperature: 0.5
 max_rounds: 12

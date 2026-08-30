@@ -408,15 +408,16 @@ sheet, every binding to it, and rewrites every `@stage:` naming it into what it 
 
 ### The storyboard — seeing the whole film before drawing any of it
 
-Everything above is about pictures a render uses. A **panel** is the opposite: a rough grey sketch
-of one shot, drawn to be looked at and nothing else. It conditions nothing, no model is ever handed
-one, and drawing or deleting one changes no scene's state — which is what makes it safe to press on
-a reel that is already rendered and paid for.
+Everything above is about pictures a render uses. A **panel** is a rough grey sketch of one
+shot. It conditions the still as a composition sketch (`Board.still_pictures`) and is
+handed to H3 never. Drawing or deleting one changes no clip's fingerprint — which is what
+makes it safe to press on a reel that is already rendered and paid for.
 
 Two rows in the sidebar. **Write the shots** hands the whole script to the model in one turn
-and gets back a line per scene the board has never held: shot size, angle, camera move, where the
-subject sits in the frame, what the arrows point at. One turn for the reel rather than one per
-scene, because shot sizes only mean anything judged against each other — a model shown one beat
+and gets back a line per scene the board has never held: shot size, locked-off angle, where
+the subject sits in the frame, what the arrows point at (the subject's path, not the
+camera's). One turn for the reel rather than one per scene, because shot sizes only mean
+anything judged against each other — a model shown one beat
 cannot tell it has just written five wide shots in a row. Free. **Draw the panels** renders each
 line on Nano Banana 2 Lite at 1K, the cheapest of the three, and stitches the results into
 `reels/<slug>/storyboard_sheet.png` — three across, numbered, with each scene's length and join

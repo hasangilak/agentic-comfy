@@ -1182,7 +1182,7 @@ STAGE_CHAT_MEMORY = int(os.environ.get("PAPERREEL_STAGE_CHAT_MEMORY", "40"))
 # ## Storyboard panels: the reel read as pictures before anything is paid for
 #
 # A storyboard in the film sense is a sheet of rough panels -- one drawing per shot, showing the
-# framing, the angle and, with arrows on the panel, how the subject and the camera move. It is
+# framing, the angle and, with arrows on the panel, how the subject moves. It is
 # drawn cheap and read fast, and it exists so the sequence is judged before money goes out.
 #
 # Everything else in this file describes a picture that reaches a renderer. A panel reaches the
@@ -2107,12 +2107,18 @@ def _subject_definitions(refs: int, notes: list[str], kinds: list[str] | None, *
 def _retention_analysis(refs: int, notes: list[str], kinds: list[str] | None, *,
                         opens_on: bool, poses: int, ref_videos: int,
                         hold_video: bool) -> str:
-    """One MiniMax retention verb per label. Unhashed: derived from kinds, not from notes."""
+    """One MiniMax retention verb per label. Unhashed: STAGE_ROLE / REF_ROLE_* stay put.
+
+    Character and prop notes land on the fully_preserved line so H3 is told the named
+    features to keep (oval face, copper curls), which is the guide's "preserve X" rule
+    rather than "use the same woman". Fingerprints do not hash this section.
+    """
     lines: list[str] = []
     notes = _pad_notes(notes, refs)
     for index in range(1, refs + 1):
         tag = f"<Picture {index}>"
         kind = _kind_at(kinds, index)
+        said = " ".join((notes[index - 1] or "").split()).strip().rstrip(".")
         is_opening = (
             kind == REF_KIND_OPENING
             or (index == 1 and opens_on and poses <= 1)
@@ -2132,14 +2138,16 @@ def _retention_analysis(refs: int, notes: list[str], kinds: list[str] | None, *,
                 "second puppet."
             )
         elif kind == REF_KIND_CHARACTER:
+            retain = (f"Preserve {said}." if said else
+                      "retain identity, silhouette, markings, colours, materials and wardrobe.")
             lines.append(
-                f"{tag} (appears in [Shot 1]): fully_preserved - retain identity, silhouette, "
-                "markings, colours, materials and wardrobe."
+                f"{tag} (appears in [Shot 1]): fully_preserved - {retain}"
             )
         elif kind == REF_KIND_PROP:
+            retain = (f"Preserve {said}." if said else
+                      "retain the prop's shape, materials, colours and markings.")
             lines.append(
-                f"{tag} (appears in [Shot 1]): fully_preserved - retain the prop's shape, "
-                "materials, colours and markings."
+                f"{tag} (appears in [Shot 1]): fully_preserved - {retain}"
             )
         elif kind == REF_KIND_SET:
             lines.append(

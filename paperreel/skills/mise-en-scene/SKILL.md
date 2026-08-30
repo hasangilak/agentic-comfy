@@ -68,8 +68,8 @@ becomes one bird is a fail, not a closer camera.
   twilight". It is one line and it is deliberately *shared* by every beat of one continuous
   shot, so it cannot say that the character starts frame left and ends frame right.
 - The **action line** says only what MOVES.
-- The **storyboard panel** says the shot size and the camera move. It is a sketch
-  that conditions the still, never the clip.
+- The **storyboard panel** says the shot size and the locked-off angle. It is a sketch
+  that conditions the still, never the clip. Do not write a camera move on it.
 - The **camera** field is the locked-off angle (eye, low, high, overhead, dutch). Unlike
   the panel it reaches the still and the clip. Do not restate it in blocking.
 
