@@ -213,6 +213,14 @@ exactly that reason, and it marks the beat for re-rendering just as typing the c
 turn lands in the board's transcript too, so the next thing you say to the chat panel knows the
 line moved.
 
+**Direct this shot** sits next to revise on the action (the expanded scene and the canvas
+node). It has no note. MiniMax-H3 wants visible actions in playback order, one gesture that
+fits the 5 s or 10 s, and a named ending pose; a vague line ("the fox feels sad") or a packed
+one (three gestures, a pan, and a speech) is what the six-part wrapper cannot fix. The
+wrapper stays `build_prompt`'s — this only rewrites the director's action, never the scene
+(shared across a chain) and never `subject_definitions` / camera moves / dialogue into the
+line. Same transcript, same staleness as typing.
+
 ### Three ways to start a film
 
 **talk it through** is the default and the one that asks you anything. It puts the reel on disk

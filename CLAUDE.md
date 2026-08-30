@@ -90,7 +90,7 @@ paperreel/panels.py     the storyboard: a rough sketch per shot; reaches NO rend
 paperreel/planner.py    the authoring brief -> a script, then its own self-check
 paperreel/develop.py    the same brief WITH its interview: a script talked into existence
 paperreel/script.py     adopting a script written outside the studio
-paperreel/agent.py      the tool loop -> board operations; `revise`, one line at a time
+paperreel/agent.py      the tool loop -> board operations; `revise` and `direct`
 paperreel/llm.py        the LLM Protocol + provider registry; gemini.py is the one impl
 paperreel/skills.py     SKILL.md -> a system prompt and its settings, read off disk
 paperreel/runtime.py    the SECOND tool loop: prompt and toolbox handed in, not written above
@@ -855,7 +855,7 @@ selection downstream; a cut (or a reference beat not carrying motion) breaks the
 
 `jobs.Runner` is a single daemon worker thread with one queue — serial on purpose: one GPU
 container, ComfyUI runs one graph at a time, chaining is serial anyway. `api.py` registers
-handlers (`plan`, `chat`, `asset`, `still_chat`, `revise`, `ref_draw`, `ref_chat`, `stage_draw`,
+handlers (`plan`, `chat`, `asset`, `still_chat`, `revise`, `direct`, `ref_draw`, `ref_chat`, `stage_draw`,
 `stage_chat`, `caption`, `render`) and never blocks the request. `ref_draw` and `ref_chat` are two
 kinds rather than one for the same reason `asset` and `still_chat` are: ✦ must not spend a model
 turn. The `stage_*` pair are their own kinds for the reason those are: they address a reel-level
@@ -984,17 +984,25 @@ structure. Every one of those controls still works and each is a second *view* o
 endpoint, never a second copy — `ReferenceNote` is still exported from `SequenceNode` for
 `BeatModal`, which is unchanged and remains the full-screen scene.
 
-`agent.MEDIUM` is the one copy of the rules of the medium, shared by `SYSTEM` (the tool loop) and
+`agent.MEDIUM` is the one copy of the rules of the medium, shared by `SYSTEM` (the tool loop),
 `REVISE_SYSTEM` (`agent.revise`, job kind `revise`, `POST /api/reels/{slug}/beats/{n}/text`,
-behind **✎ revise** on the scene and action fields). Same reason `planner.py` hands over the whole
-brief rather than a précis: two prompts that write beats from two summaries of the same rules
-drift, and nothing fails when they do. `revise` is a structured call rather than a tool loop
-because the beat and the field are in the URL — what the chat agent spends a round working out.
-It is shown the beats either side, because a continuation's action has to read as continuing and
-a shared scene line is what says two beats are one shot; given the beat alone the model wrote
-both of those out. Its turn lands in the board's own transcript, not a per-field one: it is a
-story edit, and the next conversational turn reading a board that changed for no reason it can
-see is the drift `transcript()` exists to prevent.
+behind **✎ revise** on the scene and action fields), and `DIRECT_SYSTEM` (`agent.direct`, job
+kind `direct`, `POST /api/reels/{slug}/beats/{n}/direct`, behind **Direct this shot** on the
+action). Same reason `planner.py` hands over the whole brief rather than a précis: two prompts
+that write beats from two summaries of the same rules drift, and nothing fails when they do.
+`revise` is a structured call rather than a tool loop because the beat and the field are in
+the URL — what the chat agent spends a round working out. It is shown the beats either side,
+because a continuation's action has to read as continuing and a shared scene line is what says
+two beats are one shot; given the beat alone the model wrote both of those out. Its turn lands
+in the board's own transcript, not a per-field one: it is a story edit, and the next
+conversational turn reading a board that changed for no reason it can see is the drift
+`transcript()` exists to prevent.
+
+**Direct this shot** is the same structured call with no director note. `revise` does what
+the director asked; this rewrites the action so MiniMax-H3 can shoot it — visible moves in
+playback order, one gesture that fits the 5 s or 10 s, a named ending pose — without inventing
+camera moves, dialogue, or the six-part wrapper `build_prompt` already assembles. Scene is
+deliberately not in the rewrite: a shared scene line across a chain must not silently diverge.
 
 `prompts/40s-stop-motion-script.md` is **the** specification of what a script for this pipeline
 has to be, and all three ways into a board are written against it: a human pastes it into an

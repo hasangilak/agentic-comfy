@@ -10,8 +10,10 @@
 Loads every skill (placeholders, tools, schemas), checks `next_stage` on three fixture
 boards, dry-runs the next phase's prompt without sending it, asserts that naming then clearing
 an envelope / act leaves fingerprints byte-identical, asserts the ref2va prompt is MiniMax's
-six-part format and the keyframe concatenation is unchanged, restores a persisted render
-job, and asserts that an ungated stage whose every member 429s does not stamp phases done.
+six-part format and the keyframe concatenation is unchanged, asserts Direct this shot's
+system prompt holds the H3 action rules and that building its user turn does not throw,
+restores a persisted render job, and asserts that an ungated stage whose every member 429s
+does not stamp phases done.
 """
 
 from __future__ import annotations
@@ -354,6 +356,64 @@ def check_reference_prompt() -> None:
     print("ok    reference prompt is six-part; keyframe prompt is unchanged")
 
 
+def check_direct_prompt() -> None:
+    """Direct this shot holds the H3 action rules; building the user turn does not throw."""
+    text = agent.DIRECT_SYSTEM_TEMPLATE
+    for needle in (
+        "playback order",
+        "5 s",
+        "10 s",
+        "subject_definitions",
+        "overall_soundscape",
+        "non_diegetic_music",
+        "do not add a pan",
+        "The camera never pans",
+    ):
+        if needle not in text:
+            fail(f"DIRECT_SYSTEM_TEMPLATE missing {needle!r}")
+    board = load_fixture("golden-scripted")
+    beat = board.beat(1)
+    messages = agent._direct_messages(board, beat)
+    if len(messages) != 2:
+        fail(f"direct messages should be system + user, got {len(messages)}")
+    user = messages[1]["content"]
+    if "A paper frog sits on a pad" not in user:
+        fail("direct user turn lost the current action")
+    if "10s" not in user:
+        fail("direct user turn lost the beat duration")
+    agent.directable(board, 1)
+    beat["action"] = beat["scene"] = ""
+    beat.pop("blocking", None)
+    beat.pop("panel", None)
+    try:
+        agent.directable(board, 1)
+        fail("directable accepted a beat with nothing to direct from")
+    except agent.DirectError:
+        pass
+    print("ok    Direct this shot prompt and user turn")
+
+
+def check_gpu_ban() -> None:
+    """The crew layer still cannot reach the GPU, including after this feature."""
+    import ast
+
+    banned = {"render", "pipeline", "comfy", "modal"}
+    for rel in ("paperreel/tools.py", "paperreel/runtime.py", "paperreel/crew.py"):
+        tree = ast.parse((ROOT / rel).read_text())
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                names = [part for part in module.split(".") if part]
+                names += [alias.name.split(".")[0] for alias in node.names]
+            hit = banned & set(names)
+            if hit:
+                fail(f"{rel} imports {sorted(hit)} -- GPU ban broken")
+    print("ok    crew layer does not import the GPU")
+
+
 def main() -> int:
     check_skills()
     check_stages()
@@ -362,6 +422,8 @@ def main() -> int:
     check_compact_digest()
     check_brief_envelope()
     check_reference_prompt()
+    check_direct_prompt()
+    check_gpu_ban()
     check_jobs_persist()
     check_failed_phase_not_done()
     print("harness eval: all checks passed")
