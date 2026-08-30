@@ -387,8 +387,44 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
         lines.append(prompt)
         return "\n".join(lines), []
 
+    def direct_shot(context: Context, arguments: dict) -> Outcome:
+        """Rewrite one beat's ACTION so MiniMax-H3 can shoot it.
+
+        Wraps `agent.direct`: one structured call, no director note, the six-part wrapper
+        stays `build_prompt`'s. Continuity uses it when a seam rewrite left a line that
+        is still not shootable; the director can ask for it. Not every beat, every time --
+        that is a metered turn per beat in a loop.
+        """
+        board = context.need_board()
+        n = _beat_number(board, arguments)
+        try:
+            done = agent_mod.direct(board, n, log=context.hooks.log)
+        except agent_mod.DirectError as refused:
+            raise ToolRefused(str(refused)) from refused
+        context.hooks.changed()
+        if done["changed"]:
+            return (f"beat {n} action is now: {done['text']}",
+                    [{"op": "direct_shot", "n": n,
+                      "summary": f"directed beat {n} action"}])
+        return (f"beat {n} action was already shootable",
+                [{"op": "direct_shot", "n": n,
+                  "summary": f"beat {n} action unchanged"}])
+
     return [
         Tool(spec=borrowed(llm, "read_board"), run=read_board),
+        Tool(spec=llm.tool(
+            "direct_shot",
+            "Rewrite ONE beat's ACTION so MiniMax-H3 can shoot it: visible moves in "
+            "playback order, one gesture that fits the duration, a named ending pose. "
+            "No director note -- this is not revise_line. Do not invent a pan, "
+            "dialogue, or the six-part video-prompt wrapper. Use it when a line is "
+            "emotional, overpacked, or missing an ending pose; leave a shootable line "
+            "alone.",
+            {
+                "n": {"type": "integer", "description": "which beat, 1-based"},
+            },
+            ["n"],
+        ), run=direct_shot),
         Tool(spec=llm.tool(
             "preview_video_prompt",
             "Read the exact MiniMax-H3 video prompt one beat would send, plus the "
