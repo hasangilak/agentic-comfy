@@ -213,10 +213,10 @@ MEDIUM = f"""Hard rules of the medium -- breaking these wastes the user's money:
   style_bible holds that description; reuse its exact wording in every asset_prompt.
 - An `action` describes only what MOVES. Appearance belongs in the style_bible. Write
   visible actions in playback order, not emotions. One main action, maybe one reaction,
-  that fits the duration: 5 s is a single gesture; 10 s can breathe. Name the ending pose
-  the clip has to arrive at and hold. Camera angle is a chip on the beat, not words in
-  this line -- no pan, tilt, push, or cut. Physical sounds may sit beside the move that
-  creates them.
+  that fits the duration: 5 s is a single gesture; 10 s can breathe. A third expression
+  or gesture is another 5 s beat, not a denser 10 s. Name the ending pose the clip has
+  to arrive at and hold. Camera angle is a chip on the beat, not words in this line --
+  no pan, tilt, push, or cut. Physical sounds may sit beside the move that creates them.
 - A `scene` is one line: where this beat happens and at what scale. It is rendered too --
   the video prompt is the style_bible, then the scene, then the action -- so it must never
   contain movement, and beats that belong to one continuous shot must carry the same line.
@@ -851,6 +851,13 @@ def _revise_messages(board: board_mod.Board, beat: dict, field: str, message: st
 # pose -- without inventing camera moves, dialogue, or the six-part wrapper `build_prompt`
 # already assembles. Same structured call, same transcript, same neighbour context; a
 # canned revise-note would still be held to "do what I said", which is the wrong verb.
+#
+# Density, freeze-leak, morphs, collisions, and the tail hold are harvested from
+# phileiny/h3-storyboard-skill (MIT). Their 2026-08-26 Ref2VA 9:16 control isolated shot
+# structure, not a <d> dialogue tag -- the first write-up had changed both at once. We
+# stitch separate 5 s / 10 s generations, so their in-clip time-steal does not apply, and
+# this film has no dialogue anyway. Their dB table is not ours; paper-cutout / clay on
+# B200 is unmeasured. Do not paste eyelid recipes: cutout swaps a mouth, clay sculpts.
 
 
 class DirectError(RuntimeError):
@@ -873,12 +880,28 @@ elevator, straightens her cuff, and walks past" -- not "she feels confident".
 
 One main action, maybe one reaction. The amount of motion must fit this beat's
 duration: 5 s is a single gesture; 10 s can breathe. A line that packs three
-gestures, a speech, and a camera move into 5 s is how a clip feels rushed.
+gestures, a speech, and a camera move into 5 s is how a clip feels rushed. A third
+gesture is another 5 s beat, not a denser 10 s. This pass rewrites ONE line: keep
+the main action, maybe one reaction, and drop the rest. Splitting the board is the
+writer's job, not yours.
 
-Name the ending pose. The clip has to arrive somewhere and hold.
+Name the ending pose. The clip has to arrive somewhere and hold. That hold is also
+the tail -- H3 often degrades in the last 1.2-1.7 s -- not a freeze instruction.
+
+Do not write that nothing changes, or that a face holds perfectly still. That freeze
+leaks across the clip. The pause is a cut, or the named ending pose after the move.
+
+Do not write a state changing into another ("the smile fades", "the brow releases").
+H3 crossfades the two and the face reads like rubber. Hide the change -- swap a paper
+mouth while occluded, or cut -- and open already on the new shape. Cutout swaps;
+clay sculpts. Do not morph.
+
+Do not shoot a contact-driven collision or the volume of a liquid. Cut to the
+aftermath. Do not bind a stain to a puppet with on / around / through.
 
 Physical sounds may sit beside the move that creates them (a wing-click, a foot
-on paper). No spoken dialogue, no music, no on-screen text.
+on paper). No spoken dialogue, no music, no on-screen text. Dialogue does not make
+faces move; do not add a line to unlock a performance.
 
 Carry every specific the director already wrote. Tighten rather than pad -- extra
 words invent extra cuts. Return the current line unchanged when it is already

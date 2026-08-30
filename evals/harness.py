@@ -376,6 +376,9 @@ def check_direct_prompt() -> None:
         "non_diegetic_music",
         "do not add a pan",
         "The camera never pans",
+        "another 5 s",
+        "nothing changes",
+        "Dialogue does not make",
     ):
         if needle not in text:
             fail(f"DIRECT_SYSTEM_TEMPLATE missing {needle!r}")
@@ -432,7 +435,7 @@ def check_writer_copy() -> None:
     """Crew writers teach the H3 pack; panels stay locked-off; direct_shot is reachable."""
     if "fill the remaining image sockets" in agent.MEDIUM:
         fail("MEDIUM still teaches the nine-pose fill")
-    for needle in ("playback order", "ending pose", "interpolates"):
+    for needle in ("playback order", "ending pose", "interpolates", "another 5 s"):
         if needle not in agent.MEDIUM:
             fail(f"MEDIUM missing {needle!r}")
     brief = planner.template()
