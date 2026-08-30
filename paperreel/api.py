@@ -423,6 +423,20 @@ def handle_revise(job: Job, run: Runner) -> dict:
     return result
 
 
+def handle_direct(job: Job, run: Runner) -> dict:
+    """Rewrite one beat's action so MiniMax-H3 can shoot it.
+
+    Same queue as `revise`, and for the same reason: a conversation turn or a stills batch
+    may already be rewriting this beat. No note -- the system prompt is the instruction.
+    """
+    board = load(job.slug)
+    n = int(job.detail["beat"])
+    run.log(job, f"[gemini] beat {n} action: Direct this shot")
+    result = agent.direct(board, n, log=lambda line: run.log(job, line))
+    run.publish_board(board.slug)
+    return result
+
+
 def handle_compose(job: Job, run: Runner) -> dict:
     """Assemble beat n's still from bound sheets. Local, free, no Gemini."""
     board = load(job.slug)
@@ -529,6 +543,7 @@ for kind, handler in (
     ("plan", handle_plan), ("develop", handle_develop),
     ("chat", handle_chat), ("asset", handle_asset),
     ("still_chat", handle_still_chat), ("revise", handle_revise),
+    ("direct", handle_direct),
     ("ref_draw", handle_ref_draw), ("ref_chat", handle_ref_chat),
     ("stage_draw", handle_stage_draw), ("stage_chat", handle_stage_chat),
     ("panel_write", handle_panel_write), ("panel_draw", handle_panel_draw),
@@ -1106,6 +1121,25 @@ def revise_beat(slug: str, n: int, body: dict = Body(...)) -> dict:
     if not message:
         raise HTTPException(422, "say what should be different about it")
     job = runner.submit("revise", slug, {"beat": n, "field": field, "message": message})
+    return {"job": job.to_json()}
+
+
+@app.post("/api/reels/{slug}/beats/{n}/direct")
+def direct_beat(slug: str, n: int) -> dict:
+    """Rewrite this beat's action so MiniMax-H3 can shoot it.
+
+    No note: `revise` is "do what the director said", and this is "make the line
+    shootable". The six-part wrapper stays `build_prompt`'s; only the action moves.
+    Empty action is allowed when the scene, blocking, or panel can supply the shot.
+    """
+    board = load(slug)
+    try:
+        agent.directable(board, n)
+    except KeyError:
+        raise HTTPException(404, f"beat {n} not in {slug}")
+    except agent.DirectError as refused:
+        raise HTTPException(refused.status, str(refused))
+    job = runner.submit("direct", slug, {"beat": n})
     return {"job": job.to_json()}
 
 

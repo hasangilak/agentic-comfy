@@ -21,7 +21,7 @@ knowing before editing either. This one is the studio's chat panel: one system p
 toolbox, and a prompt order arrived at by watching it answer wrong. That one is the same loop
 with those three lifted out, so a `SKILL.md` plus a named set of tools makes an agent -- which
 is what `crew.py` runs three of. It borrows this module's code (`TOOLS`, `apply_ops`,
-`board_digest`, `generate_stills`, `revise`, `caption`) rather than reimplementing any of it,
+`board_digest`, `generate_stills`, `revise`, `direct`, `caption`) rather than reimplementing any of it,
 and this loop was deliberately NOT moved onto it: doing so would buy nothing a user can see
 and would put the most-exercised path in the product through untested code.
 """
@@ -192,11 +192,11 @@ TOOLS = [
     ),
 ]
 
-# The rules of the medium, in one copy, because two prompts now write beats: the tool loop
-# below and `revise`, which rewrites a single line at the director's dictation. A summary of
-# these rules living in the second prompt is how the two paths quietly start writing to
-# different specifications -- the same failure `planner.py` avoids by handing over the whole
-# brief rather than a précis of it.
+# The rules of the medium, in one copy, because three prompts now write beats: the tool loop
+# below, `revise` (a note about one line), and `direct` (make the action shootable for H3).
+# A summary of these rules living in a second prompt is how two paths quietly start writing
+# to different specifications -- the same failure `planner.py` avoids by handing over the
+# whole brief rather than a précis of it.
 MEDIUM = f"""Hard rules of the medium -- breaking these wastes the user's money:
 - The camera never pans, zooms or cuts inside a beat. One beat is one locked-off
   framing. Camera setups are unique across the reel (a chain/bridge continues the same
@@ -835,6 +835,180 @@ def _revise_messages(board: board_mod.Board, beat: dict, field: str, message: st
     )
     return [
         {"role": "system", "content": system_for(board, REVISE_SYSTEM_TEMPLATE)},
+        {"role": "user", "content": "\n\n".join(parts)},
+    ]
+
+
+# ## Directing one action for MiniMax-H3
+#
+# `revise` does what the director asked. This one has no note: it rewrites the ACTION so
+# H3 can shoot it -- playback order, one gesture that fits the duration, a named ending
+# pose -- without inventing camera moves, dialogue, or the six-part wrapper `build_prompt`
+# already assembles. Same structured call, same transcript, same neighbour context; a
+# canned revise-note would still be held to "do what I said", which is the wrong verb.
+
+
+class DirectError(RuntimeError):
+    """Nothing on this beat to direct from. `status` is the HTTP code the API answers with."""
+
+    def __init__(self, message: str, status: int = 422) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+H3_SHOT = """You are directing ONE beat's ACTION line for MiniMax-H3, not writing the
+video prompt. The six-part wrapper (subject_definitions, summary, retention_analysis,
+detailed_description, overall_soundscape, non_diegetic_music) is assembled around this
+line later. Do not write those headers, do not number shots, do not give a cut time,
+do not tag Image 1 / Video 1. Camera angle is a chip on the beat, not words in this
+line -- do not add a pan, tilt, push, orbit, or handheld move.
+
+Write visible actions in playback order, not emotions. "The woman steps out of the
+elevator, straightens her cuff, and walks past" -- not "she feels confident".
+
+One main action, maybe one reaction. The amount of motion must fit this beat's
+duration: 5 s is a single gesture; 10 s can breathe. A line that packs three
+gestures, a speech, and a camera move into 5 s is how a clip feels rushed.
+
+Name the ending pose. The clip has to arrive somewhere and hold.
+
+Physical sounds may sit beside the move that creates them (a wing-click, a foot
+on paper). No spoken dialogue, no music, no on-screen text.
+
+Carry every specific the director already wrote. Tighten rather than pad -- extra
+words invent extra cuts. Return the current line unchanged when it is already
+shootable.
+
+A continuation starts from the pose the beat before ended in and takes the
+movement onward. Do not reset the puppet.
+
+Use @-tokens for pictures that are wired on this beat. Do not invent Image N
+numbering; <Picture N> only when the list below actually wires that slot."""
+
+
+DIRECT_SYSTEM_TEMPLATE = f"""You are the story editor for a {{name}} Instagram Reel studio.
+You are directing ONE beat's ACTION so MiniMax-H3 can shoot it, and nothing else on the board.
+
+{MEDIUM}
+
+{H3_SHOT}
+
+What is not yours to overrule is the medium above -- a line that moves the camera or adds
+a second animating thing costs them a render to find out. Rendering video is not something
+you can do; it costs real money and only the director starts it.
+
+{config.MENTION_NOTE}"""
+
+
+def directable(board: board_mod.Board, n: int) -> dict:
+    """The beat `direct` may rewrite, or why it must not run.
+
+    Empty action is allowed when the scene, blocking, or panel can supply the shot -- that
+    is the whole point of directing from a sketch. A beat that has none of those is a blank
+    card, and inventing a gesture for it is writing the script.
+    """
+    beat = board.beat(n)
+    if not any(str(beat.get(key) or "").strip()
+               for key in ("action", "scene", "blocking", "panel")):
+        raise DirectError(
+            "write what moves first, or a scene / panel the shot can be directed from")
+    return beat
+
+
+def direct(board: board_mod.Board, n: int, *,
+           log: Callable[[str], None] = print) -> dict:
+    """Rewrite one beat's action so MiniMax-H3 can shoot it. Saves and returns what changed.
+
+    Same transcript as `revise`, and for the same reason: the next conversational turn has
+    to see why a line moved. The field is always action -- a shared scene line across a
+    chain must not silently diverge because one beat was directed.
+    """
+    beat = directable(board, n)
+    before = str(beat.get("action") or "").strip()
+    verdict = gemini.structured(
+        _direct_messages(board, beat), REVISE_SCHEMA,
+        # The same warmth `revise` uses: this writes prose, and a near-deterministic
+        # decode answers a second click with the same words, which reads as not having
+        # looked.
+        temperature=0.4,
+    )
+    proposed = " ".join(str(verdict.get("text") or "").split()).strip()
+    reply = " ".join(str(verdict.get("reply") or "").split()).strip()
+    kept, lost = config.guarded_text(before, proposed)
+    changed = kept != before
+    ops = apply_ops(board, [{"op": "set_beat", "n": n, "action": kept}]) if changed else []
+    if changed:
+        log(f"[gemini] beat {n} action -> {kept}")
+    if lost:
+        log(f"[gemini] beat {n} action: the rewrite dropped {', '.join(lost)}; "
+            "line left as it was")
+    if not reply:
+        reply = "Directed the action." if changed else "Nothing to change."
+    if lost:
+        reply += f" (This dropped {', '.join(lost)} -- the line was left as it was.)"
+    chat = board.data.setdefault("chat", [])
+    chat.append({"role": "user", "text": f"(action of beat {n}) Direct this shot",
+                 "selection": [n]})
+    chat.append({"role": "gemini", "text": reply, "ops": ops})
+    board.save()
+    return {"field": "action", "beat": n, "text": kept or before, "reply": reply,
+            "changed": changed, "ops": ops}
+
+
+def _direct_messages(board: board_mod.Board, beat: dict) -> list[dict]:
+    """The beat in its context, then the ask -- last, like everywhere else here.
+
+    Neighbours, join, duration, camera chip, wired picture roles: the action has to
+    read as continuing, fit the seconds, and not restate a chip or a <Picture N> the
+    wrapper will name. Given the action alone the model invented a pan and a second shot.
+    """
+    n = beat["n"]
+    source = board.source_for(beat)
+    seconds = board.seconds_for(beat)
+    camera = config.camera_label(board.camera_for(beat))
+    parts = [f"STYLE BIBLE: {board.identity()}"]
+    for neighbour, label in ((board.upstream(n), "THE BEAT BEFORE THIS ONE"),
+                             (next((b for b in board.ordered_beats() if b["n"] == n + 1), None),
+                              "THE BEAT AFTER THIS ONE")):
+        if neighbour is not None:
+            parts.append(
+                f'{label} (beat {neighbour["n"]}, frames from {board.source_for(neighbour)}):\n'
+                f'  scene: {neighbour.get("scene", "")}\n'
+                f'  action: {neighbour.get("action", "")}'
+            )
+    join = (
+        f'THE BEAT YOU ARE DIRECTING is beat {n}: {seconds:.0f}s, frames from {source}, '
+        f'camera {camera}'
+        + (", background pull" if board.is_travel(beat) else "")
+        + (". It continues the take before it, so the action starts from that ending pose."
+           if board_mod.chains(source) or board.carries_motion(beat) else ".")
+    )
+    parts.append(
+        f"{join}\n"
+        f'  scene (do not rewrite): {beat.get("scene") or ""}\n'
+        f'  blocking (do not rewrite): {beat.get("blocking") or ""}\n'
+        f'  panel (graphite, not a video reference): {beat.get("panel") or ""}\n'
+        f'  action, which is the line you ARE rewriting: {beat.get("action") or ""}'
+    )
+    pictures = board.pictures_for(n)
+    kinds = board.picture_kinds(n)
+    if pictures:
+        rows = []
+        for index, (_path, role) in enumerate(pictures, start=1):
+            kind = kinds[index - 1] if index <= len(kinds) else ""
+            label = f"{kind}, {role}" if kind else role
+            rows.append(f"  <Picture {index}>: {label}")
+        parts.append("Wired pictures, in the order the video prompt numbers them:\n"
+                     + "\n".join(rows))
+    else:
+        parts.append("Wired pictures: none (keyframe path, not ref2va).")
+    parts.append(
+        "Direct the ACTION for MiniMax-H3. Return JSON only: \"text\" is the whole "
+        "rewritten action line and nothing else, \"reply\" is your own sentence to the "
+        "director about what you changed."
+    )
+    return [
+        {"role": "system", "content": system_for(board, DIRECT_SYSTEM_TEMPLATE)},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
 
