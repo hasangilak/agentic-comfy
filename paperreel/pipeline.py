@@ -82,6 +82,9 @@ class Shot:
     # Lateral travel: a background pull. Carried so a board edit mid-batch cannot flip the
     # craft clause under a prompt already queued.
     travel: bool = False
+    # Parallel to `pictures` notes. Not hashed -- `FrameIds.refs` hashes the notes. Empty
+    # when the beat wires no pictures; `build_prompt` treats a missing list as the CLI path.
+    ref_kinds: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -280,7 +283,8 @@ def render_beats(
                                                    medium_key=shot.medium_key,
                                                    camera=shot.camera,
                                                    travel=shot.travel,
-                                                   mentions=shot.mentions or None),
+                                                   mentions=shot.mentions or None,
+                                                   ref_kinds=shot.ref_kinds or None),
                         length=length, steps=steps, seed=seed + n,
                         temperature=temperature,
                     ),
@@ -384,6 +388,7 @@ def render_reel(
             medium_key=view.medium(),
             camera=view.camera_for(beat),
             travel=view.is_travel(beat),
+            ref_kinds=view.picture_kinds(beat["n"]),
         )
         for index, (beat, source) in enumerate(zip(beats, resolved))
     ]

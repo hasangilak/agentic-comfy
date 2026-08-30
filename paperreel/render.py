@@ -252,6 +252,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                                 # the render is in flight must not renumber a token in a prompt
                                 # that has already been handed over.
                                 mentions=board.mentions(n, pictures),
+                                ref_kinds=board.picture_kinds(n) or None,
                             ),
                             length=frames[n], steps=steps, seed=board.seed_for(beat),
                             temperature=board.temperature(),

@@ -9,8 +9,9 @@
 
 Loads every skill (placeholders, tools, schemas), checks `next_stage` on three fixture
 boards, dry-runs the next phase's prompt without sending it, asserts that naming then clearing
-an envelope / act leaves fingerprints byte-identical, restores a persisted render job, and
-asserts that an ungated stage whose every member 429s does not stamp phases done.
+an envelope / act leaves fingerprints byte-identical, asserts the ref2va prompt is MiniMax's
+six-part format and the keyframe concatenation is unchanged, restores a persisted render
+job, and asserts that an ungated stage whose every member 429s does not stamp phases done.
 """
 
 from __future__ import annotations
@@ -245,6 +246,114 @@ def check_brief_envelope() -> None:
     print("ok    brief forks on envelope")
 
 
+def check_reference_prompt() -> None:
+    """ref2va is MiniMax's six-part format; keyframe joins stay the old concatenation."""
+    labels = (
+        "subject_definitions:",
+        "summary:",
+        "retention_analysis:",
+        "detailed_description:",
+        "overall_soundscape:",
+        "non_diegetic_music:",
+    )
+    cut = config.build_prompt(
+        "The moth lifts a wing.",
+        scene="a lamp post at dusk",
+    )
+    if config.OPEN_CUT not in cut:
+        fail("keyframe cut lost OPEN_CUT")
+    if "subject_definitions:" in cut:
+        fail("keyframe cut grew subject_definitions")
+    chain = config.build_prompt(
+        "The moth lifts a wing.",
+        scene="a lamp post at dusk",
+        continues=True,
+    )
+    if config.OPEN_CONTINUATION not in chain:
+        fail("keyframe chain lost OPEN_CONTINUATION")
+    if "subject_definitions:" in chain:
+        fail("keyframe chain grew subject_definitions")
+
+    ref = config.build_prompt(
+        "The moth lifts a wing.",
+        scene="a lamp post at dusk",
+        identity="a paper moth, ochre wings, one compound eye",
+        refs=2,
+        ref_notes=[
+            "the composition this shot opens on: its set, its framing",
+            "this reel's locked cast reference -- it fixes what the characters look like",
+        ],
+        opens_on=True,
+        ref_kinds=[config.REF_KIND_OPENING, config.REF_KIND_CAST],
+    )
+    for label in labels:
+        if label not in ref:
+            fail(f"reference prompt missing {label}")
+    if config.REF_SUMMARY_PREFIX not in ref:
+        fail("reference prompt missing [reference generation]")
+    if "opening composition" not in ref:
+        fail("reference prompt missing Picture 1 opening exception")
+    if "<Picture 1>" not in ref:
+        fail("reference prompt lost <Picture 1>")
+    if "Image 1" in ref:
+        fail("reference prompt used RunDiffusion Image N tags")
+    if "non_diegetic_music:\nN/A" not in ref:
+        fail("reference prompt missing non_diegetic_music: N/A")
+
+    weak = config.build_prompt(
+        "The moth lifts a wing.",
+        scene="a lamp post at dusk",
+        refs=1,
+        ref_notes=["the composition this shot opens on"],
+        opens_on=True,
+    )
+    if "subject_definitions:" not in weak:
+        fail("kinds-less reference prompt lost the six-part labels")
+    if "<Subject 1>" in weak:
+        fail("kinds-less reference prompt minted Subject IDs")
+
+    character = config.build_prompt(
+        "Vera raises the lantern.",
+        scene="the clearing at dusk",
+        refs=2,
+        ref_notes=[
+            "the composition this shot opens on",
+            "Vera, one of this reel's characters -- appearance reference only",
+        ],
+        opens_on=True,
+        ref_kinds=[config.REF_KIND_OPENING, config.REF_KIND_CHARACTER],
+    )
+    if "<Subject 1>" not in character:
+        fail("character sheet did not mint a Subject")
+    if "turnaround" not in character:
+        fail("character sheet missing region map")
+
+    carry = config.build_prompt(
+        "The moth keeps walking.",
+        scene="a lamp post at dusk",
+        refs=1,
+        ref_notes=["the composition this shot opens on"],
+        opens_on=True,
+        ref_videos=1,
+        hold_video=False,
+    )
+    if "voice" not in carry.lower() or "dialogue" not in carry.lower():
+        fail("carry video missing the no-voice rule")
+    if "+ audio reference" in carry:
+        fail("prompt claimed audio reference while REF_VIDEO_WITH_AUDIO is off")
+
+    muted = config.build_prompt(
+        "The moth lifts a wing.",
+        scene="a lamp post at dusk",
+        refs=1,
+        opens_on=True,
+        mute=True,
+    )
+    if "overall_soundscape:" in muted or "non_diegetic_music:" in muted:
+        fail("mute still emitted sound sections")
+    print("ok    reference prompt is six-part; keyframe prompt is unchanged")
+
+
 def main() -> int:
     check_skills()
     check_stages()
@@ -252,6 +361,7 @@ def main() -> int:
     check_fingerprints()
     check_compact_digest()
     check_brief_envelope()
+    check_reference_prompt()
     check_jobs_persist()
     check_failed_phase_not_done()
     print("harness eval: all checks passed")

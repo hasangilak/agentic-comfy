@@ -1101,6 +1101,23 @@ STAGE_ENVIRONMENT = "environment"
 STAGE_PROP = "prop"
 STAGE_KINDS = (STAGE_CHARACTER, STAGE_ENVIRONMENT, STAGE_PROP)
 
+# What each picture in `pictures_for` is, for the unhashed MiniMax reference scaffold.
+# Parallel to the notes, never instead of them -- `FrameIds.refs` hashes (file, note) pairs,
+# so rewriting STAGE_ROLE or REF_ROLE_* would mark every picture-wired beat stale. These
+# labels let `build_prompt` emit subject / retention lines without touching those strings.
+REF_KIND_OPENING = "opening"
+REF_KIND_POSE = "pose"
+REF_KIND_CAST = "cast"
+REF_KIND_CHARACTER = STAGE_CHARACTER
+REF_KIND_PROP = STAGE_PROP
+REF_KIND_SET = "set"
+REF_KIND_UPLOAD = "upload"
+REF_KIND_FROM_STAGE = {
+    STAGE_CHARACTER: REF_KIND_CHARACTER,
+    STAGE_PROP: REF_KIND_PROP,
+    STAGE_ENVIRONMENT: REF_KIND_SET,
+}
+
 # A soft ceiling on the whole bible, not on what one beat binds -- that is bounded by
 # MAX_REF_IMAGES already. It exists so a runaway loop cannot fill the reel directory with sheets,
 # and it is generous: a 40-second reel with more than a dozen designed things is not a reel.
@@ -1219,6 +1236,17 @@ PANEL_STYLE_SUFFIX = panel_style()
 # NOT change. Callers supply the beat's scene and action, the board's identity paragraph,
 # and which kind of join this beat opens on; this assembles the rest.
 #
+# Two shapes, because MiniMax trains two. The keyframe path (chain / bridge / a plain
+# asset cut) is still a concatenation: OPEN_CUT or OPEN_CONTINUATION, then bible, staging,
+# blocking, scene, action, craft, audio, Avoid. That path is byte-identical to what it was.
+#
+# The reference path (ref2va: refs or a reference video) is MiniMax's six-part reference
+# format: subject_definitions, summary, retention_analysis, detailed_description,
+# overall_soundscape, non_diegetic_music. Combined identity+storyboard sheets on
+# RunDiffusion open ON THE SHEET for half a second unless every picture is given one
+# role and told it is not a start frame. Fingerprints do not hash the scaffold, so this
+# does not mark existing clips stale; STAGE_ROLE / REF_ROLE_* stay put for that reason.
+#
 # The join is the part that matters most, because the same first frame means two opposite
 # things. On a cut it is the deliberate opening composition of a new shot. On a
 # continuation it is a freeze lifted out of the middle of a take that is already moving.
@@ -1248,11 +1276,12 @@ OPEN_CONTINUATION = (
 # the model reads nine supplied images as nine shots and cuts between them -- which is the one
 # thing this production never does. Formatted with the <Picture i> tag list at build time.
 OPEN_REFERENCE = (
-    "No first frame is provided. Instead {tags} are supplied as design references: they fix "
+    "No first frame is provided. Instead {tags} {verb} supplied as design references: they fix "
     "what the characters, the set and the materials look like, and nothing else. Reproduce "
     "every subject that appears in them exactly -- same shapes, markings, colours, "
-    "proportions, {surface} and palette. The references are not shots: do not "
-    "show them, do not cut between them, do not pan across them, do not morph the camera "
+    "proportions, {surface} and palette. The references are not shots and not a start "
+    "frame: do not show them, do not display them as the opening frame of the clip, do not "
+    "cut between them, do not pan across them, do not morph the camera "
     "toward any of them, do not grow or shrink a character to match another picture's size, "
     "and do not put more than one version of a character on screen. A "
     "character shown in a reference is the SAME single character that performs the action "
@@ -1341,6 +1370,43 @@ HOLD_VIDEO = (
 # cast in the finished set ends up rendered as-is AND acted out a second time by the same
 # puppet. Only pictures with a note appear here; the rest are covered by the paragraph above.
 REFERENCE_ROLES = "What each reference is for: {roles} "
+# MiniMax's official reference-generation labels. Used only on the ref2va path; the
+# keyframe scaffold stays a concatenation so chain / bridge prompts stay byte-identical.
+# The six names are what the text encoder is trained to organise a mixed image+video pack
+# with. RunDiffusion's beginner `Image 1` wording is their UI, not the model -- tags stay
+# `<Picture N>` / `<Video 1>`.
+REF_SUMMARY_PREFIX = "[reference generation]"
+# Aric Vale / architecture-team sheets on RunDiffusion open ON THE SHEET for ~0.5 s, then
+# dissolve into the first cinematic frame, unless the prompt maps regions and says the
+# sheet is not a start frame. Our character sheets are identity-only (no storyboard half),
+# so the map names the four CHAR_SHEET_LAYOUT sections as look, not as shots. Unhashed:
+# the hashed note is still STAGE_ROLE.
+SHEET_REGIONS = (
+    "A character model sheet is one image with four labeled sections: (1) the turnaround "
+    "defines identity, silhouette and wardrobe; (2) the expressions are available faces, "
+    "not shots to cut to; (3) the head details lock the face; (4) the palette locks colour. "
+    "Do not display the sheet, do not cut between its cells, do not treat those cells as "
+    "shots, and do not copy any printed labels into the film. "
+)
+# Previous-clip audio is not a voice reference -- REF_VIDEO_WITH_AUDIO is off, and this
+# production has no dialogue. Named anyway: H3 will take vocal timbre from a video with
+# sound unless told not to, which is how leftover speech from the last beat leaks in.
+VIDEO_NO_VOICE = (
+    "Do not take voice, dialogue, speech, or music from {tag}. "
+)
+CAMERA_IDEA_LOCK = (
+    "One main camera idea: static, locked-off -- no pan, tilt, push, pull, or cut. "
+)
+CAMERA_IDEA_TRAVEL = (
+    "One main camera idea: the rig stays locked; locomotion is a background pull, not a pan. "
+)
+SHOT_ENDING = (
+    "End on the landing of that action, same framing, camera still locked. "
+)
+# Medium.audio is still "Audio: …, no music, no speech." on the keyframe path. The reference
+# scaffold splits that into overall_soundscape + non_diegetic_music: N/A, so this strips
+# the wrapper the labeled sections replace.
+_AUDIO_BAN_RE = re.compile(r",?\s*no music,?\s*no speech\.?\s*$", re.IGNORECASE)
 # H3 takes a last frame as well as a first, and this is what has to be said when both are
 # supplied. Without it the model treats the second image as another shot to cut to, and the
 # clip arrives there early and then sits still -- or worse, jumps. Said this way, the two
@@ -1851,6 +1917,347 @@ MENTION_NOTE = (
 )
 
 
+def _soundscape(audio: str) -> str:
+    """Medium.audio as an overall_soundscape line: drop the wrapper the labeled section replaces."""
+    text = (audio or "").strip()
+    if text.lower().startswith("audio:"):
+        text = text[6:].strip()
+    text = _AUDIO_BAN_RE.sub("", text).strip().rstrip(".")
+    return (text + ".") if text else ""
+
+
+def _slot_name(note: str) -> str:
+    """Leading name from a hashed role string. STAGE_ROLE and named notes put it first."""
+    text = " ".join((note or "").split()).strip()
+    if not text:
+        return ""
+    if ", " in text:
+        return text.split(", ", 1)[0].strip()
+    if " -- " in text:
+        return text.split(" -- ", 1)[0].strip()
+    return text.split(".", 1)[0].strip()
+
+
+def _kind_at(kinds: list[str] | None, index: int) -> str:
+    """1-based picture index -> kind, or '' when the caller omitted kinds."""
+    if not kinds or index < 1 or index > len(kinds):
+        return ""
+    return kinds[index - 1]
+
+
+def _pad_notes(notes: list[str], count: int) -> list[str]:
+    notes = list(notes or [])
+    if len(notes) < count:
+        notes.extend([""] * (count - len(notes)))
+    return notes[:count]
+
+
+def _normalize_kinds(kinds: list[str] | None, count: int) -> list[str] | None:
+    """None means the CLI path: no Subject IDs. A list is padded to `count`."""
+    if kinds is None or count <= 0:
+        return None if kinds is None else []
+    padded = list(kinds)
+    if len(padded) < count:
+        padded.extend([""] * (count - len(padded)))
+    return padded[:count]
+
+
+def _design_ref_paragraphs(refs: int, *, poses: int, opens_on: bool, travel: bool,
+                            surface: str) -> list[str]:
+    """OPEN_REFERENCE / SEQUENCE covering the pictures that are not the opening still.
+
+    Picture 1 on a cut is the opening composition; treating it as one more design sheet is
+    how RunDiffusion's combined sheets flash on screen for the first half-second.
+    """
+    if refs <= 0:
+        return []
+    lines: list[str] = []
+    if poses > 1:
+        sequence = OPEN_REFERENCE_SEQUENCE_TRAVEL if travel else OPEN_REFERENCE_SEQUENCE
+        lines.append(sequence.format(
+            tags=reference_tags(min(poses, refs)), first="<Picture 1>"))
+        rest = refs - min(poses, refs)
+        if rest > 0:
+            count = rest
+            lines.append(OPEN_REFERENCE.format(
+                tags=reference_tags(rest, start=poses + 1), surface=surface,
+                verb="is" if count == 1 else "are"))
+        return lines
+    if opens_on and refs > 1:
+        count = refs - 1
+        lines.append(OPEN_REFERENCE.format(
+            tags=reference_tags(refs - 1, start=2), surface=surface,
+            verb="is" if count == 1 else "are"))
+    elif not opens_on:
+        lines.append(OPEN_REFERENCE.format(
+            tags=reference_tags(refs), surface=surface,
+            verb="is" if refs == 1 else "are"))
+    return lines
+
+
+def _subject_definitions(refs: int, notes: list[str], kinds: list[str] | None, *,
+                         opens_on: bool, poses: int, ref_videos: int, hold_video: bool,
+                         travel: bool, surface: str) -> str:
+    """Picture vs subject, every role named. MiniMax: the picture is the file, the subject
+    is the reusable thing taken from it.
+    """
+    lines = _design_ref_paragraphs(
+        refs, poses=poses, opens_on=opens_on, travel=travel, surface=surface)
+    notes = _pad_notes(notes, refs)
+    has_character = False
+    if kinds is not None:
+        subject_i = 0
+        for index, (kind, note) in enumerate(zip(kinds, notes), start=1):
+            tag = f"<Picture {index}>"
+            said = " ".join((note or "").split()).strip().rstrip(".")
+            if kind == REF_KIND_OPENING or (index == 1 and opens_on and poses <= 1
+                                            and kind in ("", REF_KIND_OPENING)):
+                lines.append(
+                    f"{tag} is this shot's own opening composition, not a design sheet and "
+                    "not a start-frame latent. Begin the clip toward it. Do not display any "
+                    "other picture as a frame."
+                )
+                if said:
+                    lines.append(f"{tag} is {said}.")
+            elif kind == REF_KIND_POSE:
+                if said:
+                    lines.append(f"{tag} is {said}.")
+            elif kind in (REF_KIND_CHARACTER, REF_KIND_PROP, REF_KIND_SET):
+                subject_i += 1
+                name = _slot_name(note) or f"subject {subject_i}"
+                role = "location" if kind == REF_KIND_SET else "identity"
+                lines.append(
+                    f"<Subject {subject_i}> is {name}, whose {role} comes from {tag}."
+                )
+                if said:
+                    lines.append(f"{tag} is {said}.")
+                if kind == REF_KIND_CHARACTER:
+                    has_character = True
+            elif kind == REF_KIND_CAST:
+                lines.append(
+                    f"{tag} is this reel's locked cast reference: it fixes what the characters "
+                    "and the materials look like, and it is NOT this shot's setting or "
+                    "framing. Do not display it as a frame."
+                )
+                if said:
+                    lines.append(f"{tag} is {said}.")
+            elif said:
+                lines.append(f"{tag} is {said}.")
+            elif kind == REF_KIND_UPLOAD:
+                lines.append(f"{tag} is a director-supplied reference for this shot.")
+    else:
+        if opens_on and refs > 0 and poses <= 1:
+            lines.append(
+                "<Picture 1> is this shot's own opening composition, not a design sheet and "
+                "not a start-frame latent. Begin the clip toward it. Do not display any "
+                "other picture as a frame."
+            )
+        roles = reference_roles(notes)
+        if roles:
+            lines.append(roles)
+    if has_character:
+        lines.append(SHEET_REGIONS)
+    if ref_videos > 0:
+        if hold_video:
+            lines.append(
+                "<Video 1> locks identity, materials, motion and the set from the previous "
+                "clip. This shot still begins on its own opening composition. Do not replay "
+                "it, do not cut to it, and do not re-establish the scene from it."
+            )
+        else:
+            lines.append(
+                "<Video 1> provides motion and pacing from the previous take. Do not replay "
+                "it, do not cut to it, and do not copy its subjects as extra characters."
+            )
+        lines.append(VIDEO_NO_VOICE.format(tag="<Video 1>"))
+    return " ".join(line.strip() for line in lines if line and line.strip())
+
+
+def _retention_analysis(refs: int, notes: list[str], kinds: list[str] | None, *,
+                        opens_on: bool, poses: int, ref_videos: int,
+                        hold_video: bool) -> str:
+    """One MiniMax retention verb per label. Unhashed: derived from kinds, not from notes."""
+    lines: list[str] = []
+    notes = _pad_notes(notes, refs)
+    for index in range(1, refs + 1):
+        tag = f"<Picture {index}>"
+        kind = _kind_at(kinds, index)
+        is_opening = (
+            kind == REF_KIND_OPENING
+            or (index == 1 and opens_on and poses <= 1)
+            or (index == 1 and poses > 1)
+        )
+        is_pose = kind == REF_KIND_POSE or (poses > 1 and 1 < index <= poses)
+        if is_opening and not is_pose:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): fully_preserved - retain framing, subject "
+                "sizes, set dressing and lighting at the opening; interpolate the action "
+                "from there."
+            )
+        elif is_pose:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): attribute_transfer - transfer this pose of "
+                "the same locked-off take; do not treat it as a different camera or a "
+                "second puppet."
+            )
+        elif kind == REF_KIND_CHARACTER:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): fully_preserved - retain identity, silhouette, "
+                "markings, colours, materials and wardrobe."
+            )
+        elif kind == REF_KIND_PROP:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): fully_preserved - retain the prop's shape, "
+                "materials, colours and markings."
+            )
+        elif kind == REF_KIND_SET:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): fully_preserved - retain the set's layout and "
+                "dressing; it is empty of characters."
+            )
+        elif kind == REF_KIND_CAST:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): fully_preserved identity, weak_reference for "
+                "that camera - retain what the characters and materials look like; ignore "
+                "that picture's framing."
+            )
+        elif kind == REF_KIND_UPLOAD:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): partially_preserved - take what the role "
+                "names; do not treat the picture as a second shot."
+            )
+        else:
+            lines.append(
+                f"{tag} (appears in [Shot 1]): fully_preserved - retain the subject it shows."
+            )
+    if ref_videos > 0:
+        if hold_video:
+            lines.append(
+                "<Video 1>: fully_preserved identity - retain characters, materials, motion "
+                "and set; do not copy the clip or its voice."
+            )
+        else:
+            lines.append(
+                "<Video 1> (motion and pacing): attribute_transfer - transfer motion and "
+                "pacing without copying its visual subjects or voice."
+            )
+    return "\n".join(lines)
+
+
+def _reference_summary(*, look: Medium, opens_on: bool, poses: int, refs: int,
+                       ref_videos: int, hold_video: bool, kinds: list[str] | None,
+                       notes: list[str]) -> str:
+    bits = [REF_SUMMARY_PREFIX, f"Create a {look.name} clip."]
+    if ref_videos > 0 and not hold_video:
+        bits.append("Continue from the moment <Video 1> ends.")
+    elif opens_on and refs > 0:
+        bits.append("Begin from <Picture 1>.")
+    elif refs > 0:
+        bits.append("Compose the opening from the scene line.")
+    names: list[str] = []
+    if kinds is not None:
+        for kind, note in zip(kinds, _pad_notes(notes, refs)):
+            if kind in (REF_KIND_CHARACTER, REF_KIND_PROP, REF_KIND_SET):
+                name = _slot_name(note)
+                if name:
+                    names.append(name)
+    if names:
+        bits.append("Named subjects: " + ", ".join(names) + ".")
+    bits.append("Design references fix appearance only and are not shots.")
+    if ref_videos > 0 and hold_video:
+        bits.append("<Video 1> locks identity from the previous clip, not voice.")
+    elif ref_videos > 0:
+        bits.append("<Video 1> provides motion and pacing, not voice.")
+    if poses > 1:
+        bits.append("Interpolate through the stop-motion poses in order.")
+    bits.append("One locked-off take.")
+    return " ".join(bits)
+
+
+def _opening_instructions(*, refs: int, opens_on: bool, poses: int, ref_videos: int,
+                          hold_video: bool) -> list[str]:
+    """Where this shot begins. Same precedence `build_prompt` used before the six-part split."""
+    parts: list[str] = []
+    if ref_videos > 0 and not hold_video:
+        parts.append(CARRY_VIDEO.format(tag="<Video 1>"))
+    elif ref_videos > 0 and hold_video:
+        parts.append(HOLD_VIDEO.format(tag="<Video 1>"))
+        if opens_on and refs > 0 and poses <= 1:
+            parts.append(OPEN_REFERENCE_STILL.format(tag="<Picture 1>"))
+    elif opens_on and refs > 0 and poses <= 1:
+        parts.append(OPEN_REFERENCE_STILL.format(tag="<Picture 1>"))
+    elif refs > 0 and poses <= 1:
+        parts.append(COMPOSE_OPENING)
+    return parts
+
+
+def _detailed_description(*, look: Medium, opening: str, identity: str, staging: str,
+                          blocking: str, scene: str, action: str, travel: bool,
+                          refs: int, opens_on: bool, poses: int, ref_videos: int,
+                          hold_video: bool) -> str:
+    """Guide order: visual direction, then one [Shot 1] in playback order. Not padded.
+
+    The official 350-500 word target is for a 15 s multi-shot montage. A 5 s or 10 s
+    locked-off beat that invents extra words invents extra cuts.
+    """
+    visual = opening
+    if identity:
+        visual += IDENTITY_PREFIX + identity.rstrip(".") + ". "
+    shot: list[str] = _opening_instructions(
+        refs=refs, opens_on=opens_on, poses=poses, ref_videos=ref_videos,
+        hold_video=hold_video,
+    )
+    if staging:
+        shot.append(STAGING_PREFIX + staging + ". ")
+    if blocking:
+        shot.append(BLOCKING_PREFIX + blocking + ". ")
+    if scene:
+        shot.append(SCENE_PREFIX + scene + ". ")
+    if action:
+        shot.append(action + ". ")
+    shot.append(CAMERA_IDEA_TRAVEL if travel else CAMERA_IDEA_LOCK)
+    shot.append(SHOT_ENDING)
+    shot.append(craft_for(look, travel))
+    return visual.rstrip() + "\n\n[Shot 1] " + "".join(shot)
+
+
+def _reference_prompt(*, look: Medium, opening: str, action: str, scene: str,
+                      identity: str, staging: str, blocking: str, mute: bool,
+                      refs: int, ref_notes: list[str], ref_kinds: list[str] | None,
+                      ref_videos: int, opens_on: bool, poses: int, hold_video: bool,
+                      travel: bool) -> str:
+    """MiniMax six-part reference format. Keyframe joins never call this."""
+    notes = _pad_notes(ref_notes, refs)
+    kinds = _normalize_kinds(ref_kinds, refs)
+    sections = [
+        ("subject_definitions", _subject_definitions(
+            refs, notes, kinds, opens_on=opens_on, poses=poses,
+            ref_videos=ref_videos, hold_video=hold_video, travel=travel,
+            surface=look.surface)),
+        ("summary", _reference_summary(
+            look=look, opens_on=opens_on, poses=poses, refs=refs,
+            ref_videos=ref_videos, hold_video=hold_video, kinds=kinds,
+            notes=notes)),
+        ("retention_analysis", _retention_analysis(
+            refs, notes, kinds, opens_on=opens_on, poses=poses,
+            ref_videos=ref_videos, hold_video=hold_video)),
+        ("detailed_description", _detailed_description(
+            look=look, opening=opening, identity=identity, staging=staging,
+            blocking=blocking, scene=scene, action=action, travel=travel,
+            refs=refs, opens_on=opens_on, poses=poses, ref_videos=ref_videos,
+            hold_video=hold_video)),
+    ]
+    if not mute:
+        sections.append(("overall_soundscape", _soundscape(look.audio)))
+        sections.append(("non_diegetic_music", "N/A"))
+    text = "\n\n".join(
+        f"{name}:\n{body.strip()}" for name, body in sections if body and body.strip()
+    )
+    if look.avoid:
+        text += "\n\n" + AVOID_PREFIX + look.avoid.rstrip(".") + "."
+    return text
+
+
 def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: str = "",
                  continues: bool = False, lands: bool = False, refs: int = 0,
                  ref_notes: list[str] | None = None, ref_videos: int = 0,
@@ -1858,7 +2265,8 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
                  medium_key: str | None = None,
                  mentions: dict[str, tuple[int | None, str]] | None = None,
                  poses: int = 0, hold_video: bool = False,
-                 camera: str | None = None, travel: bool | None = None) -> str:
+                 camera: str | None = None, travel: bool | None = None,
+                 ref_kinds: list[str] | None = None) -> str:
     """Assemble the instruction for one beat.
 
     `identity` is the board's style bible -- what the characters and the set look like,
@@ -1926,65 +2334,44 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     studio, CLI, and whatever comes next -- gets it by construction rather than by remembering.
     None means no expansion, which is what `reel.py` (no board, so nothing to resolve against)
     passes and why its prompts are byte-identical to what they always were.
+
+    `ref_kinds` is parallel to `ref_notes`, same length, same order: opening / pose / cast /
+    character / prop / set / upload. It is not hashed -- the notes are. None skips Subject
+    IDs (the CLI path); a list lets the six-part scaffold name `<Subject N>` and pick a
+    retention verb per picture. See `Board.picture_kinds`.
     """
     look = medium(medium_key)
     action = expand_mentions(action, mentions)
     scene = expand_mentions(scene, mentions)
-    ref_notes = [expand_mentions(note, mentions) for note in (ref_notes or [])] or None
+    ref_notes = [expand_mentions(note, mentions) for note in (ref_notes or [])]
     poses = max(0, int(poses or 0))
     if travel is None:
         travel = is_travel(action)
     opening = look.shot + camera_clause(camera)
-    if refs > 0 or ref_videos > 0:
-        parts = [opening]
-        if refs > 0:
-            if poses > 1:
-                # The sequence is this shot, in order. Remaining pictures (sheets, uploads)
-                # still get the design-reference paragraph, which is what they always were.
-                sequence = (OPEN_REFERENCE_SEQUENCE_TRAVEL if travel
-                            else OPEN_REFERENCE_SEQUENCE)
-                parts.append(sequence.format(
-                    tags=reference_tags(min(poses, refs)), first="<Picture 1>"))
-                rest = refs - min(poses, refs)
-                if rest > 0:
-                    parts.append(OPEN_REFERENCE.format(
-                        tags=reference_tags(rest, start=poses + 1), surface=look.surface))
-            else:
-                parts.append(OPEN_REFERENCE.format(tags=reference_tags(refs),
-                                                   surface=look.surface))
-            # Straight after the paragraph that says what a reference IS, because these are
-            # the exceptions to it: which picture is the cast, which is only the set, which
-            # prop, which pose.
-            roles = reference_roles(list(ref_notes or []))
-            if roles:
-                parts.append(REFERENCE_ROLES.format(roles=roles))
-        # A carried clip and an opening still used to be mutually exclusive -- two answers
-        # to where the shot opens. HOLD_VIDEO is a third job for the same socket: identity
-        # from the previous take, while the still (or the pose sequence) still says where
-        # THIS shot begins. CARRY_VIDEO remains exclusive with COMPOSE_OPENING; it is not
-        # exclusive with a sequence whose first pose is that continuation.
-        if ref_videos > 0 and not hold_video:
-            parts.append(CARRY_VIDEO.format(tag="<Video 1>"))
-        elif ref_videos > 0 and hold_video:
-            parts.append(HOLD_VIDEO.format(tag="<Video 1>"))
-            if opens_on and refs > 0 and poses <= 1:
-                parts.append(OPEN_REFERENCE_STILL.format(tag="<Picture 1>"))
-        elif opens_on and refs > 0 and poses <= 1:
-            parts.append(OPEN_REFERENCE_STILL.format(tag="<Picture 1>"))
-        elif refs > 0 and poses <= 1:
-            parts.append(COMPOSE_OPENING)
-    else:
-        parts = [opening, OPEN_CONTINUATION if continues else OPEN_CUT]
-        if lands:
-            parts.append(ARRIVE_ON_LAST)
     identity = " ".join(identity.split())
+    staging = " ".join(expand_mentions(staging, mentions).split()).strip().rstrip(".")
+    blocking = " ".join(expand_mentions(blocking, mentions).split()).strip().rstrip(".")
+    scene = " ".join(scene.split()).strip().rstrip(".")
+    action = action.strip().rstrip(".")
+    if refs > 0 or ref_videos > 0:
+        # MiniMax six-part reference format. The keyframe concatenation below is left
+        # alone so chain / bridge prompts stay byte-identical.
+        return _reference_prompt(
+            look=look, opening=opening, action=action, scene=scene,
+            identity=identity, staging=staging, blocking=blocking, mute=mute,
+            refs=refs, ref_notes=ref_notes, ref_kinds=ref_kinds,
+            ref_videos=ref_videos, opens_on=opens_on, poses=poses,
+            hold_video=hold_video, travel=travel,
+        )
+    parts = [opening, OPEN_CONTINUATION if continues else OPEN_CUT]
+    if lands:
+        parts.append(ARRIVE_ON_LAST)
     if identity:
         parts.append(IDENTITY_PREFIX + identity.rstrip(".") + ". ")
     # Straight after the style bible, because it is the same claim about more specific things:
     # the bible says what the production looks like, these say what two named things in it look
     # like. Before the scene line, so "Scene: the clearing at dusk" is read against a clearing
     # that has already been described rather than one the model has just invented.
-    staging = " ".join(expand_mentions(staging, mentions).split()).strip().rstrip(".")
     if staging:
         parts.append(STAGING_PREFIX + staging + ". ")
     # Between the designs and the scene line, because it is the answer to a question those two
@@ -1992,13 +2379,10 @@ def build_prompt(action: str, *, scene: str = "", mute: bool = False, identity: 
     # and at what scale; neither says where in THIS frame anything stands, and left unsaid the
     # model re-blocks the set every beat. Before the scene line rather than after, so a reader
     # has the set in mind before being told what is standing in it.
-    blocking = " ".join(expand_mentions(blocking, mentions).split()).strip().rstrip(".")
     if blocking:
         parts.append(BLOCKING_PREFIX + blocking + ". ")
-    scene = " ".join(scene.split()).strip().rstrip(".")
     if scene:
         parts.append(SCENE_PREFIX + scene + ". ")
-    action = action.strip().rstrip(".")
     if action:
         parts.append(action + ".")
     parts.append(craft_for(look, travel))

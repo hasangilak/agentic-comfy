@@ -360,6 +360,7 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             mentions=board.mentions(n, pictures),
             camera=board.camera_for(beat),
             travel=board.is_travel(beat),
+            ref_kinds=board.picture_kinds(n) or None,
         )
         lines = [
             f"beat {n} join={source}"
@@ -372,9 +373,12 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
             "references:",
         ]
         if pictures:
+            kinds = board.picture_kinds(n)
             for index, (path, role) in enumerate(pictures, start=1):
                 on_disk = "on disk" if path.is_file() else "MISSING"
-                lines.append(f"  <Picture {index}> ({on_disk}): {role}")
+                kind = kinds[index - 1] if index <= len(kinds) else ""
+                label = f"{on_disk}, {kind}" if kind else on_disk
+                lines.append(f"  <Picture {index}> ({label}): {role}")
         else:
             lines.append("  (none -- keyframe path, not ref2va)")
         if hold:

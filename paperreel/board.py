@@ -906,6 +906,22 @@ class Board:
                 continue
         return found
 
+    def _staging_slots(self, n: int, *, for_still: bool) -> list[tuple[Path, str, str]]:
+        """Bound design sheets as (path, role, kind). See `staging_pictures`."""
+        del for_still  # truncation is the caller's; the flag documents which render this is for
+        found = []
+        for entry in self.bound_staging(n):
+            path = self.stage_path(str(entry.get("id")))
+            if path.is_file():
+                kind = self.stage_kind(entry)
+                found.append((path, self.stage_role(entry),
+                              kind == config.STAGE_ENVIRONMENT, kind))
+        found.sort(key=lambda item: item[2])
+        return [
+            (path, role, config.REF_KIND_FROM_STAGE.get(kind, config.REF_KIND_CHARACTER))
+            for path, role, _is_set, kind in found
+        ]
+
     def staging_pictures(self, n: int, *, for_still: bool) -> list[tuple[Path, str]]:
         """The bound design sheets that go into THIS render as images, with their roles.
 
@@ -921,18 +937,7 @@ class Board:
         A sheet with no file on disk is skipped here and picked up as text by `staging_text`, so
         writing the bible is useful before a single sheet has been drawn.
         """
-        found = []
-        for entry in self.bound_staging(n):
-            path = self.stage_path(str(entry.get("id")))
-            if path.is_file():
-                found.append((path, self.stage_role(entry),
-                              self.stage_kind(entry) == config.STAGE_ENVIRONMENT))
-        # Characters and props before sets on both renders, so a tight cap keeps the puppets.
-        # The still's four-slot cap is why this exists (`for_still`); the video's nine can
-        # still bite when leftover poses or a hand-edited board overflow, and dropping a
-        # character there is the same failure. Bind order inside each group is preserved.
-        found.sort(key=lambda item: item[2])
-        return [(path, role) for path, role, _is_set in found]
+        return [(path, role) for path, role, _kind in self._staging_slots(n, for_still=for_still)]
 
     def staging_text(self, n: int, shown: list[tuple[Path, str]]) -> str:
         """What the bound sheets say, for the ones this render was NOT handed as pictures.
@@ -1441,6 +1446,28 @@ class Board:
             return False
         return not self.ref_paths(beat["n"])
 
+    def _auto_slots(self, n: int) -> list[tuple[Path, str, str]]:
+        """Automatic picture slots as (path, role, kind). See `auto_pictures`."""
+        if not self.opens_on_still(self.beat(n)):
+            return []
+        poses = self.pose_paths(n)[:self.sequence_count(n)]
+        if not poses:
+            return []
+        found: list[tuple[Path, str, str]] = []
+        total = len(poses)
+        beat = self.beat(n)
+        travel = self.is_travel(beat)
+        action = (beat.get("action") or "").strip()
+        for index, path in enumerate(poses, start=1):
+            kind = config.REF_KIND_OPENING if index == 1 else config.REF_KIND_POSE
+            found.append((path, config.pose_role(index, total, travel=travel, action=action),
+                          kind))
+        if total == 1 and not self.still_identity_sheets(n):
+            cast = self.reference_for(n)
+            if cast is not None:
+                found.append((cast, config.REF_ROLE_CAST, config.REF_KIND_CAST))
+        return found
+
     def auto_pictures(self, n: int) -> list[tuple[Path, str]]:
         """The reference pictures that wire themselves, in <Picture i> order, with their roles.
 
@@ -1462,23 +1489,7 @@ class Board:
         `reference_for` returns None on the beat whose own still IS the reference, so beat 1
         never gets the same file twice even on the single-still path.
         """
-        if not self.opens_on_still(self.beat(n)):
-            return []
-        poses = self.pose_paths(n)[:self.sequence_count(n)]
-        if not poses:
-            return []
-        found: list[tuple[Path, str]] = []
-        total = len(poses)
-        beat = self.beat(n)
-        travel = self.is_travel(beat)
-        action = (beat.get("action") or "").strip()
-        for index, path in enumerate(poses, start=1):
-            found.append((path, config.pose_role(index, total, travel=travel, action=action)))
-        if total == 1 and not self.still_identity_sheets(n):
-            cast = self.reference_for(n)
-            if cast is not None:
-                found.append((cast, config.REF_ROLE_CAST))
-        return found
+        return [(path, role) for path, role, _kind in self._auto_slots(n)]
 
     def pictures_for(self, n: int) -> list[tuple[Path, str]]:
         """Everything this beat is conditioned on, in <Picture i> order, paired with its role.
@@ -1511,14 +1522,31 @@ class Board:
         is handed to H3 never -- a graphite sketch in a video reference slot is how the clip
         becomes a drawing.
         """
+        return [(path, role) for path, role, _kind in self._picture_slots(n)]
+
+    def picture_kinds(self, n: int) -> list[str]:
+        """What each of `pictures_for` is, in the same order.
+
+        Parallel to the notes, not hashed: `FrameIds.refs` hashes (file, note) pairs, and these
+        labels exist so `build_prompt` can emit MiniMax subject / retention lines without rewriting
+        the hashed role strings. Empty when the beat wires no pictures.
+        """
+        return [kind for _path, _role, kind in self._picture_slots(n)]
+
+    def _picture_slots(self, n: int) -> list[tuple[Path, str, str]]:
+        """(path, role, kind) in <Picture i> order, truncated at the model's cap.
+
+        One walk for `pictures_for` and `picture_kinds`, so the two lists cannot slip.
+        """
         beat = self.beat(n)
         if not self.wires_refs(beat):
             return []
         uploaded = (list(zip(self.ref_paths(n), self.ref_prompts(n)))
                     if uses_refs(self.source_for(beat)) else [])
-        return (
-            self.auto_pictures(n) + self.staging_pictures(n, for_still=False) + uploaded
-        )[:config.MAX_REF_IMAGES]
+        slots = self._auto_slots(n) + self._staging_slots(n, for_still=False)
+        for path, note in uploaded:
+            slots.append((path, note, config.REF_KIND_UPLOAD))
+        return slots[:config.MAX_REF_IMAGES]
 
     def still_identity_sheets(self, n: int) -> list[tuple[Path, str]]:
         """Bound character and prop sheets on disk, in binding order.
