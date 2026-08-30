@@ -22,11 +22,11 @@ panels. This reel can hold at most {{MAX_STAGE_SHEETS}} designs (kinds: {{STAGE_
 
 ## The panels
 
-A panel is several rough sketches per shot — opening, midpoint, landing of the action —
-the same thing a storyboard artist pins to a wall. They reach the still as composition
-sketches and the video never: nothing in the clip is conditioned on them. They exist so
-the director can read the shape of the film before paying for it, and so the opening still
-and its pose sequence are drawn from that framing rather than invented from the prompt.
+A panel is {{PANEL_SEQUENCE}} rough sketch(es) per shot -- {{PANEL_FRAME_COPY}}.
+They reach the still as composition sketches and the video never: nothing in the clip is
+conditioned on them. They exist so the director can read the shape of the film before
+paying for it, and so the opening still is drawn from that framing rather than invented
+from the prompt.
 
 - `write_panels` writes the shot grammar for the whole reel in one call, {{PANEL_SEQUENCE}}
   frames per beat. Do that rather than a beat at a time: shot size has to vary ACROSS the

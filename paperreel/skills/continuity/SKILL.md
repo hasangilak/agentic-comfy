@@ -37,9 +37,10 @@ to read the exact video prompt a beat would send before you change it. Then `set
    re-centre, no settle-and-start-again. This is true of a long take on `reference` as well
    as of `chain` and `bridge`.
 3. **A long take is successive `reference` beats**, not `chain`. Same `scene`, continuity
-   actions, and each beat gets its own still and pose sequence so MiniMax-H3 is given the
-   sheets and interpolates the action. The previous clip is held as `<Video 1>` once those
-   poses exist (identity) — that mix is already built; do not throw it away by chaining.
+   actions, and each beat gets its own still so MiniMax-H3 is given the
+   sheets and interpolates the action. Extra Gemini poses are only the keyframes a 10s take
+   or a lateral walk cannot invent from one still. The previous clip is held as `<Video 1>`
+   once that still exists (identity) — that mix is already built; do not throw it away by chaining.
    `set_source` to `reference` on a same-scale continuation that is still `chain`.
 4. **`chain` and `bridge` are the pixel-exact last-frame handoff.** fl2va cannot mix with
    pictures, so sheets stay words there. Use `chain` only when frame 1 must be the previous

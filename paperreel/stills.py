@@ -197,7 +197,8 @@ def wanted(board: board_mod.Board, requested: list[int] | None) -> list[int]:
     and the join does not move, so there is nothing left to protect it from. Carrying the
     previous clip as <Video 1> used to be the one remaining refusal -- that clip was the
     opening, so a still would never have been used. The still and the video now sit together
-    (nine image sockets plus one video), so a carrying beat is generated like any other cut.
+    (keyframes plus sheets plus one video), so a carrying beat is generated like any other cut.
+    How many keyframes is `sequence_count`: H3 interpolates, Gemini supplies one to three.
     """
     from . import crew as crew_mod
 

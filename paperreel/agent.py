@@ -532,7 +532,7 @@ def generate_stills(board: board_mod.Board, arguments: dict, *,
 
     Guarded by exactly the same rules as the canvas button, from the same place: a board whose
     stills are the user's own work is off limits. A reference cut is generated like any other
-    -- its still (and its pose sequence) are what the clip is conditioned on.
+    -- its still (and any extra keyframes that beat needs) are what the clip is conditioned on.
     """
     requested = arguments.get("beats")
     beats = [int(n) for n in requested if isinstance(n, (int, float, str)) and str(n).isdigit()] \

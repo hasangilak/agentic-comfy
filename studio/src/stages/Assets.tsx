@@ -25,6 +25,19 @@ import { Button, inputClass } from "../ui";
 import { StagePage, WaitingOn } from "./parts";
 import { stillsAllowed } from "../route";
 
+function poseWhy(beat: Beat): string {
+  if (beat.travel) {
+    return `travel: ${beat.pose_count} poses so H3 can interpolate the set pull`;
+  }
+  if (beat.pose_count >= 9) {
+    return `Drawing this scene fills ${beat.pose_count} image sockets with successive poses of the action, so the video model interpolates through them.`;
+  }
+  if (beat.pose_count > 1) {
+    return `${beat.seconds}s landing pose — H3 interpolates between opening and landing`;
+  }
+  return "H3 interpolates this action from one still";
+}
+
 /**
  * Stage three: the still every shot opens on, and what each one is drawn from.
  *
@@ -551,7 +564,7 @@ function Still({
       {(beat.poses?.length ?? 0) > 1 ? (
         <div className="space-y-1.5">
           <p className="text-[10px] uppercase tracking-wide text-zinc-500">
-            {beat.poses.length} of {beat.pose_count} stop-motion poses · H3 interpolates through these
+            {beat.poses.length} of {beat.pose_count} keyframes · H3 interpolates through these
           </p>
           <div className="flex gap-1 overflow-x-auto">
             {beat.poses.map((url, at) => (
@@ -567,11 +580,9 @@ function Still({
             ))}
           </div>
         </div>
-      ) : beat.pose_count > 1 && beat.source === "reference" ? (
+      ) : beat.source === "reference" ? (
         <p className="text-[10px] leading-relaxed text-zinc-400">
-          Drawing this scene fills {beat.pose_count} image sockets with successive poses of the
-          action, so the video model interpolates through them instead of inventing a mid-clip
-          transform from one still.
+          {poseWhy(beat)}
         </p>
       ) : null}
 

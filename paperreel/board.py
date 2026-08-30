@@ -268,17 +268,23 @@ class Board:
     def sequence_count(self, n: int) -> int:
         """How many poses asset generation should draw for this beat.
 
-        Beats that actually reach H3 as pictures (`wires_refs`) fill the nine image sockets
-        the node has, less director uploads -- those have no words fallback. Staging sheets
-        do not reserve a socket: a pose sequence IS the cast in motion, and a sheet that
-        does not fit stays as `staging_text`. Chain and bridge still get one -- extra poses
-        would reach no renderer there. An asset cut that binds identity sheets is ref2va,
-        so it gets the stack too. Existing boards with a shorter sequence keep that count
-        on disk until they are generated again.
+        Beats that actually reach H3 as pictures (`wires_refs`) get as many Gemini
+        keyframes as `pose_need` (or a `STILL_SEQUENCE` pin), less director uploads and
+        identity sheets on disk -- those have no words fallback. H3 interpolates the
+        rest; filling nine sockets crowded the sheets out of the pack. Chain and bridge
+        still get one -- extra poses would reach no renderer there. An asset cut that
+        binds identity sheets is ref2va, so it gets the same count. What is already on
+        disk is a different question: `_auto_slots` hands H3 every pose file, so an older
+        nine-pose board keeps the fingerprint it rendered with until someone generates
+        again (`_clear_extra_poses` deletes past `keep`).
         """
         if not self.wires_refs(self.beat(n)):
             return 1
-        return config.sequence_length(len(self.ref_paths(n)))
+        beat = self.beat(n)
+        reserved = len(self.ref_paths(n)) + len(self.still_identity_sheets(n))
+        wanted = (config.STILL_SEQUENCE if config.STILL_SEQUENCE > 0
+                  else config.pose_need(beat.get("action") or "", self.seconds_for(beat)))
+        return config.sequence_length(reserved, wanted=wanted)
 
     def previous_last_pose(self, n: int) -> Path | None:
         """The last pose (or still) already on disk in this take, walking back if needed.
@@ -1450,7 +1456,7 @@ class Board:
         """Automatic picture slots as (path, role, kind). See `auto_pictures`."""
         if not self.opens_on_still(self.beat(n)):
             return []
-        poses = self.pose_paths(n)[:self.sequence_count(n)]
+        poses = self.pose_paths(n)
         if not poses:
             return []
         found: list[tuple[Path, str, str]] = []
@@ -1475,16 +1481,11 @@ class Board:
         the reel's locked cast reference only when this beat binds no character or prop sheet.
         A turnaround is the puppet; beat 1's composed wide is a camera, and sending both is
         the stills lesson (`still_pictures`) applied to H3 -- the wide pulls every later clip
-        back to that two-shot. On a beat whose asset pass drew a stop-motion sequence, the
-        poses themselves take those slots -- they ARE the cast, in motion -- and the extra
-        cast still is dropped so the nine sockets fill with the sequence rather than crowding
-        it out. Together with `sequence_count` that is how a quiet cut uses all nine.
-
-        Poses on disk are capped to `sequence_count`. Uploads reserved a slot at generate
-        time; sheets did not. Sheets ride after the poses in `pictures_for` and truncate,
-        becoming words. The cap is what stops a generate that used to leave room for sheets
-        from keeping stale in-betweens after a bind -- `_clear_extra_poses` deletes past
-        `keep`.
+        back to that two-shot. Extra poses on disk (an older fill of the nine sockets) stay
+        in this list until the next generate, so a paid clip does not go stale over a default
+        that now asks Gemini for one to three keyframes rather than nine. Sheets ride after
+        the poses and truncate if the pack is still full; `sequence_count` reserves them so
+        a new generate leaves them room.
 
         `reference_for` returns None on the beat whose own still IS the reference, so beat 1
         never gets the same file twice even on the single-still path.
@@ -2322,8 +2323,11 @@ class Board:
                 "hold_video": self.holds_upstream(beat) and not self.carries_motion(beat),
                 # The clip that was actually sent, once it has been.
                 "carry_clip": self.media_url(self.carry_path(n)),
-                # Stop-motion poses this beat drew, opening still first. Length 1 on every
+                # Stop-motion poses this beat drew, opening still first. Length 1 on a
                 # board that has a still and has not been generated since sequences existed.
+                # pose_count is the next generate target (1–3 from duration/travel), not
+                # how many files are on disk -- extras stay until the next ✦ so paid clips
+                # keep their fingerprint.
                 "poses": [self.media_url(path) for path in poses],
                 "pose_count": self.sequence_count(n),
                 # The previous shot's last pose, when it exists -- extra continuity for the

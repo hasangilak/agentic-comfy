@@ -84,8 +84,8 @@ must feed that, not fight it.
   `chain` / `bridge`), the action opens with an explicit continuity phrase and continues from
   the previous beat's end-state.
 - **Joins are a consistency tool.** A long take is successive `reference` beats — same
-  `scene`, continuity actions — so each clip is given the sheets and the pose sequence, and
-  the previous clip is held as `<Video 1>` once poses exist. Prefer that over `chain`. `chain`
+  `scene`, continuity actions — so each clip is given the sheets and an opening still, and
+  the previous clip is held as `<Video 1>` once that still exists. Prefer that over `chain`. `chain`
   is the pixel-exact last-frame handoff (no pictures); `bridge` is that handoff plus a
   designed landing. `asset` only when the opening frame itself must land pixel-exact. Never
   leave three pure `chain` beats in a row. No shot may run past 20 seconds total.

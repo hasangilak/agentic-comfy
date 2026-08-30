@@ -383,7 +383,7 @@ def render_reel(
                 and len(view.pose_paths(beat["n"])) > 1
                 and beat.get("ref_video") != board_mod.CARRY_UPSTREAM
             ),
-            poses=len(view.pose_paths(beat["n"])[:view.sequence_count(beat["n"])]),
+            poses=len(view.pose_paths(beat["n"])),
             blocking=beat.get("blocking", ""),
             medium_key=view.medium(),
             camera=view.camera_for(beat),

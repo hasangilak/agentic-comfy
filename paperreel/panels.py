@@ -61,8 +61,10 @@ _FRAME = {
         "phase": {
             "type": "string",
             "description": (
-                "Where in this beat's action this sketch sits: opening, midpoint, or landing. "
-                f"A beat has exactly {config.PANEL_SEQUENCE} frames."
+                "Where in this beat's action this sketch sits"
+                + (": opening, midpoint, or landing. "
+                   if config.PANEL_SEQUENCE > 1 else " (the opening). ")
+                + f"A beat has exactly {config.PANEL_SEQUENCE} frames."
             ),
         },
         "panel": {
@@ -70,9 +72,11 @@ _FRAME = {
             "description": (
                 "One or two sentences describing this sketch: the shot size, the camera angle, "
                 "where the subject sits in the frame and which way it faces, what the arrows "
-                "on the panel point at, and -- for midpoint and landing -- how far the action "
-                "has moved since the previous frame. Same setup as the opening. Written to be "
-                "DRAWN, not read as notes."
+                "on the panel point at"
+                + (", and -- for midpoint and landing -- how far the action "
+                   "has moved since the previous frame. Same setup as the opening. "
+                   if config.PANEL_SEQUENCE > 1 else ". ")
+                + "Written to be DRAWN, not read as notes."
             ),
         },
     },
@@ -110,8 +114,9 @@ PANEL_SCHEMA = {
                         "items": _FRAME,
                         "description": (
                             f"Exactly {config.PANEL_SEQUENCE} sketches of this beat in order: "
-                            "opening, then through the action, then the landing. Same shot "
-                            "size, same angle, same camera. Only the pose advances."
+                            f"{config.panel_frame_copy()}. Same shot "
+                            "size, same angle, same camera."
+                            + (" Only the pose advances." if config.PANEL_SEQUENCE > 1 else "")
                         ),
                     },
                 },
@@ -149,11 +154,12 @@ SYSTEM = (
     "drawing whose whole job is to let a director check the sequence before anything is rendered: "
     "framing, angle, where the subject sits, which way things move. Texture, colour, material and "
     "lighting are somebody else's problem and belong in no panel description you write.\n\n"
-    f"EACH BEAT GETS EXACTLY {config.PANEL_SEQUENCE} SKETCHES: opening, midpoint, landing of "
-    "that beat's action. They are the same locked-off setup -- same shot size, same angle, same "
-    "camera -- with the subject further through the movement. Stop-motion is a bunch of images "
-    "in motion; one camera does not lock a ten-second transform.\n\n"
-    "What you add is the thing the script does not have. Every beat already says what happens and "
+    f"EACH BEAT GETS EXACTLY {config.PANEL_SEQUENCE} SKETCH"
+    f"{'ES' if config.PANEL_SEQUENCE != 1 else ''}: {config.panel_frame_copy()}. "
+    "They are the same locked-off setup -- same shot size, same angle, same camera"
+    + (" -- with the subject further through the movement.\n\n"
+       if config.PANEL_SEQUENCE > 1 else ".\n\n")
+    + "What you add is the thing the script does not have. Every beat already says what happens and "
     "what it is made of; none of them say how far away the camera is or what it is looking up or "
     "down at. That is your entire contribution, so name it explicitly in every panel:\n\n"
     f"{SHOT_GRAMMAR}\n\n"
@@ -243,7 +249,7 @@ def _messages(board: board_mod.Board, beats: list[int]) -> list[dict]:
         + _digest(board, beats),
         "Answer with one entry per beat in `panels`, using the beat numbers exactly as they are "
         f"above. Each entry's `frames` is exactly {config.PANEL_SEQUENCE} sketches of that beat "
-        "(opening, midpoint, landing). Each entry's `camera` is the locked-off angle -- copy "
+        f"({config.panel_frame_copy()}). Each entry's `camera` is the locked-off angle -- copy "
         "ANGLE IS ALREADY CHOSEN when it is on the beat line, and copy the previous beat's "
         "camera on a chain or bridge.",
     ]

@@ -199,8 +199,9 @@ export interface Beat {
   carry_clip: string | null;
   /**
    * Stop-motion poses this scene drew, opening still first. Length 1 on a board that has a
-   * still and has not been generated since sequences existed. `pose_count` is how many asset
-   * generation should draw, which can be more than `poses.length` before the run.
+   * still and has not been generated since sequences existed. `pose_count` is how many
+   * Gemini keyframes asset generation should draw (1–3 from duration/travel, or a pin),
+   * which can be more than `poses.length` before the run.
    */
   poses: string[];
   pose_count: number;
@@ -369,7 +370,7 @@ export interface Board {
    * as well as into its clip. The image server may report a lower one.
    */
   max_still_refs: number;
-  /** Graphite sketches written per beat: opening, midpoint, landing. */
+  /** Graphite sketches written per beat. Default 1: the opening composition. */
   panel_sequence: number;
 }
 

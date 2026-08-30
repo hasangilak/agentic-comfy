@@ -90,7 +90,7 @@ def normalise(data: dict) -> dict:
             # appear, including there -- an explicit `asset` is a script asking for the exact
             # keyframe and must not be overwritten by the default. Later beats used to default
             # to chain because a still was rationed; they default to reference now so a long
-            # take keeps the sheets and the pose sequence on every clip. An explicit chain or
+            # take keeps the sheets and the opening still on every clip. An explicit chain or
             # bridge is still the pixel-exact last-frame handoff.
             "source": (
                 source if source in (board_mod.SOURCE_REFERENCE, board_mod.SOURCE_ASSET)

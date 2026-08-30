@@ -206,9 +206,8 @@ def _design(board: board_mod.Board, arguments: dict, key: str = "id") -> dict:
 def _pose_cost(board: board_mod.Board, beats: list[int]) -> int:
     """How many Gemini frames generating these beats would spend.
 
-    Reference cuts draw a stop-motion sequence, so a beat is no longer one still. The crew
-    budget is counted in those frames, not in beats, or nine poses on scene 3 would look like
-    one and blow the cap on a later retry.
+    Reference cuts draw 1–3 Gemini keyframes (H3 interpolates the rest), so a beat is no
+    longer always one still. The crew budget is counted in those frames, not in beats.
     """
     return sum(board.sequence_count(n) for n in beats)
 
@@ -217,8 +216,8 @@ def _fit_stills(board: board_mod.Board, wanted: list[int], room: int) -> list[in
     """Take beats from the front until the next one would not fit the remaining budget.
 
     An empty result with a non-empty ask means even the first beat is larger than `room` --
-    the caller should still take that one, or the tool could never start a nine-pose scene
-    once a few retries had spent the rest.
+    the caller should still take that one, or the tool could never start a travel beat once
+    a few retries had spent the rest.
     """
     taken: list[int] = []
     spent = 0
@@ -340,7 +339,7 @@ def _shared(llm: llm_mod.LLM) -> list[Tool]:
         hold = board.holds_upstream(beat)
         carry = board.carries_motion(beat)
         opens_on = board.opens_on_still(beat)
-        poses = board.pose_paths(n)[:board.sequence_count(n)]
+        poses = board.pose_paths(n)
         prompt = config.build_prompt(
             beat.get("action", ""),
             scene=beat.get("scene", ""),
@@ -743,8 +742,8 @@ def _storyboard_tools(llm: llm_mod.LLM) -> list[Tool]:
             "write_panels",
             "Write the shot grammar -- size, angle, camera move, where the subject sits, what "
             "the arrows point at -- for these beats, or for the whole reel when no beats are "
-            f"given. Each beat gets {config.PANEL_SEQUENCE} sketches (opening, midpoint, "
-            "landing of the action). One call covers them all on purpose: shot sizes have to "
+            f"given. Each beat gets {config.PANEL_SEQUENCE} sketches "
+            f"({config.panel_frame_copy()}). One call covers them all on purpose: shot sizes have to "
             "vary ACROSS the film, which a model shown one beat at a time cannot do.",
             {"beats": {"type": "array", "items": {"type": "integer"},
                        "description": "which beats, 1-based; omit for all of them"}},
@@ -772,7 +771,7 @@ def _asset_tools(llm: llm_mod.LLM) -> list[Tool]:
         board whose stills are the director's own work is off limits. What is added here is
         the count: a round cap bounds turns, and an agent rejecting and re-rendering its own
         stills is bounded by nothing else. Counted in pose frames, because a reference cut
-        draws up to nine of them.
+        draws one to three of them.
         """
         return _run_generate_stills(context, arguments)
 

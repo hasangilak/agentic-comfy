@@ -100,9 +100,9 @@ diorama. Each beat's `source` field says where its frames come from, and there a
 values you will use:
 
 - **`"reference"` — the default join.** Its own still is generated from its `asset_prompt`
-  and becomes the composition the clip opens on. Bound character sheets and a stop-motion
-  pose sequence fill MiniMax-H3's remaining image sockets, so the video model interpolates
-  the action instead of inventing a mid-clip transform from one picture. Beat 1 is always
+  and becomes the composition the clip opens on. Bound character sheets lock identity.
+  MiniMax-H3 interpolates the action; extra Gemini poses are only the keyframes a 10s take
+  or a lateral walk cannot invent from one still. Beat 1 is always
   `"reference"`. A later beat of the **same shot** is also `"reference"`: identical `scene`
   text, a continuity-phrased `action`, and once poses exist the previous clip is held as
   `<Video 1>` (identity). That is how a long take keeps the puppets. It is not a pixel-exact
@@ -191,15 +191,16 @@ these scripts fail.
 
 The reason is how the studio works. Each beat is a node the director can walk between
 `chain`, `bridge` and `reference` while editing. A long take on `"reference"` generates a
-still and a pose sequence for every beat. If a beat is still `"chain"` and it drifts, the
-fix is to promote it to `"reference"` (sheets and poses) or to a `"bridge"` (pixel-exact
+still (and the few extra keyframes that beat needs) for every beat. If a beat is still
+`"chain"` and it drifts, the
+fix is to promote it to `"reference"` (sheets and still) or to a `"bridge"` (pixel-exact
 landing). Both need the prompt already written. A beat with an empty `asset_prompt` is a
 dead end.
 
 So write the prompt for every beat, and set `source` independently:
 
 - On a `"reference"` beat (or an `"asset"` one), the `asset_prompt` describes the **opening
-  frame of this beat** — the first pose of its sequence. On a later beat of the same shot
+  frame of this beat**. On a later beat of the same shot
   that is still `"reference"`, keep camera, set and light identical to the beat before;
   only pose and position of what moved may differ.
 - On a `"chain"` beat, the `asset_prompt` describes **the frame that beat begins on, which

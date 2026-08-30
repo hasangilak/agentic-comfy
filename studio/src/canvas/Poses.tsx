@@ -5,8 +5,9 @@ import { useStudio } from "../useStudio";
  * The stop-motion poses this clip interpolates through: film-medium stills, opening first.
  *
  * Not the graphite panels. Those condition the still and never reach H3; these ARE what H3
- * is handed, up to nine, and a 240px card that only showed the opening still made a five-pose
- * stack read as one reference. Judged on Assets -- the canvas is the chain, not the still.
+ * is handed, as keyframes H3 interpolates through. A 240px card that only showed the opening
+ * still made a three-pose stack read as one reference. Judged on Assets -- the canvas is the
+ * chain, not the still.
  *
  * Absent until there is more than the opening frame, so a board that never grew a sequence
  * looks exactly as it did.

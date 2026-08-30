@@ -512,8 +512,8 @@ def _clear_extra_poses(board: board_mod.Board, n: int, keep: int) -> None:
     """Drop pose files past `keep`, so a shorter sequence cannot leave a gap-free longer one.
 
     `pose_paths` stops at the first missing file, but a regenerate that drew 6 after a previous
-    9 would otherwise keep posing 7..9 on disk -- and `pictures_for` would hand H3 those stale
-    in-betweens.
+    9 would otherwise keep poses 7..9 on disk. Render still sends whatever is on disk so a
+    paid clip does not go stale; this runs on generate, which is when extras disappear.
     """
     for index in range(max(1, keep) + 1, config.MAX_REF_IMAGES + 1):
         board.pose_path(n, index).unlink(missing_ok=True)

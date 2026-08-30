@@ -311,20 +311,18 @@ MAX_REF_FILES = 12
 # On a beat with only its opening still, that still fills <Picture 1>. <Picture 2> is the
 # reel's locked cast reference only when this beat binds no character or prop sheet -- a
 # turnaround is the puppet, beat 1's composed wide is a camera, and sending both pulled
-# later clips back to that two-shot. On a beat whose asset pass drew a stop-motion sequence,
-# the poses themselves take those slots (they ARE the cast, in motion) and fill the nine
-# sockets, less director uploads. Staging sheets ride after and truncate -- a sheet that
-# does not fit is told in words. An asset cut that binds identity sheets is the same list
-# on ref2va (still as Picture 1, then the rest of the sequence): fl2va has no socket for a
-# turnaround, and extra poses would otherwise reach no renderer.
+# later clips back to that two-shot. Extra Gemini poses are keyframes H3 interpolates
+# through, not a fill of the nine sockets: filling them crowded the identity sheets out
+# of the pack (they became staging_text) which is the opposite of the lock they exist for.
+# An asset cut that binds identity sheets is the same list on ref2va (still as Picture 1,
+# then any extra poses, then sheets): fl2va has no socket for a turnaround.
 # `Board.pictures_for` is where the order is decided; the roles below are the words each
 # auto-wired slot is described to the model with.
 #
-# The still plus the cast (or the still plus its in-betweens) are the reason this join is the
-# default at all: one opening composition drifts towards its own reading of the style bible
-# over ten seconds, and a transform with only that one picture drops the puppet mid-clip.
-# The sequence is what a keyframe cut never had -- the action, held, through every sampling
-# step. The previous clip as <Video 1> sits next to that, not instead of it.
+# One still plus the sheets is the usual pack: H3 interpolates the action. A 10s take
+# adds a landing pose because 243 frames is the window a puppet can drop mid-clip; a
+# lateral walk adds a mid-slide because one still plus "walk left" produced a treadmill.
+# The previous clip as <Video 1> sits next to that, not instead of it.
 REF_ROLE_OPENING = (
     "the composition this shot opens on: its set, its framing, its subject scale and its "
     "lighting are the ones this whole clip holds"
@@ -385,16 +383,19 @@ REF_IMAGE_SIZE = "match"
 # The node trims what it gets down onto the 17k+5 frame grid itself and needs at least 5
 # frames, so 3 s (72 frames at 24 fps) lands at 56 frames after its own trim.
 REF_VIDEO_SECONDS = 3.0
-# How many stop-motion poses asset generation draws per beat that wires pictures. Zero
-# means fill the nine image sockets less director uploads. Staging sheets do not claim a
-# socket -- the poses ARE the cast in motion; a sheet that does not fit is told in words.
-# Pin a number to explore; nine is the node's own cap (Papercut's too).
+# How many Gemini keyframes asset generation draws per beat that wires pictures. Zero
+# (the default) is auto from `pose_need`: H3 interpolates, so Gemini only supplies the
+# poses the model cannot invent -- one for a quiet 5s beat, two for a 10s take, three
+# for a lateral walk. A positive pin is that count. Nine restores the old fill of
+# remaining sockets, which crowds identity sheets out of the pack. Uploads and identity
+# sheets on disk are reserved either way; a sheet that does not fit is told in words.
 STILL_SEQUENCE = int(os.environ.get("PAPERREEL_STILL_SEQUENCE", "0"))
-# Graphite sketches per beat: opening, midpoint, landing of the action. They condition the
-# still (so Nano Banana can lock a pose sequence to a composition that moves), never H3.
-# One was a single camera; three is a stop-motion board. Cap at the node's nine.
+# Graphite sketches per beat. They condition the still (so Nano Banana can lock the
+# opening composition), never H3 -- a sketch in a video slot is how the clip becomes a
+# drawing. One is enough once H3 interpolates the action; three was a stop-motion board
+# for a nine-pose fill. Cap at the node's nine.
 PANEL_SEQUENCE = max(1, min(
-    int(os.environ.get("PAPERREEL_PANEL_SEQUENCE", "3")),
+    int(os.environ.get("PAPERREEL_PANEL_SEQUENCE", "1")),
     MAX_REF_IMAGES,
 ))
 # The clip's own soundtrack, paired to the video as `ref_video_audio_N`. Off by default:
@@ -464,11 +465,11 @@ AGENT_MAX_ROUNDS = int(os.environ.get("PAPERREEL_AGENT_MAX_ROUNDS", "8"))
 # search-and-replace through every module that writes a prompt.
 LLM_PROVIDER = os.environ.get("PAPERREEL_LLM_PROVIDER", "gemini")
 # How many stills one crew run may render before the tool starts refusing. Counted in pose
-# frames, not beats: a reference cut draws up to nine stop-motion poses, so a per-beat cap of
-# 24 would run out on the third scene. AGENT_MAX_ROUNDS bounds turns, not money, and
-# `generate_stills` is the one tool in the crew's toolbox that spends any. Seventy-two is a
-# guess sized to an eight-beat reel drawn once -- not a measurement, and the first real run
-# is what should replace this number.
+# frames, not beats: a travel beat draws three keyframes, a 10s take two, a quiet 5s one.
+# AGENT_MAX_ROUNDS bounds turns, not money, and `generate_stills` is the one tool in the
+# crew's toolbox that spends any. Seventy-two is a guess sized when a reference cut filled
+# nine sockets -- not a measurement, and the first real run is what should replace this
+# number.
 CREW_STILL_BUDGET = int(os.environ.get("PAPERREEL_CREW_STILL_BUDGET", "72"))
 # Model rounds across one crew run, counted in runtime.run. AGENT_MAX_ROUNDS is per agent;
 # a storyboard cast is nine members and each can take its own cap, so the still budget is
@@ -1614,17 +1615,46 @@ def snap_seconds(value: float | int | str) -> float:
     return min(BEAT_LENGTHS, key=lambda option: abs(option - wanted))
 
 
-def sequence_length(reserved: int) -> int:
+def pose_need(action: str, seconds: float | int) -> int:
+    """How many Gemini keyframes this beat needs before H3 interpolates the rest.
+
+    MiniMax H3 on ref2va interpolates through supplied poses. Filling nine sockets was
+    Gemini pre-drawing those in-betweens, which crowded identity sheets out of the pack.
+    One still is the guide case. Two cases we have actually measured need more: a 10s
+    take (243 frames, puppet drop mid-transform) gets opening + landing; lateral travel
+    gets opening / mid-slide / landing because one still plus "walk left" produced a
+    treadmill. Extra characters do not add poses -- those are sheets.
+    """
+    if is_travel(action):
+        return 3
+    try:
+        length = float(seconds)
+    except (TypeError, ValueError):
+        length = BEAT_LENGTHS[-1]
+    if length >= BEAT_LENGTHS[-1]:
+        return 2
+    return 1
+
+
+def sequence_length(reserved: int, wanted: int | None = None) -> int:
     """How many stop-motion poses a beat should draw, given slots already spoken for.
 
-    `reserved` is director uploads -- pictures with no words fallback. Staging sheets are
-    not reserved: they ride after the poses in `pictures_for` and truncate, becoming
-    `staging_text`. Zero `STILL_SEQUENCE` fills whatever of the nine is left, so the video
-    model is handed a full set rather than one still and eight empty sockets.
+    `reserved` is director uploads plus identity sheets on disk -- pictures with no
+    words fallback. `wanted` is the generate target: `pose_need` when `STILL_SEQUENCE`
+    is 0 (auto), a positive pin otherwise. Nine (or any pin at the node's cap) restores
+    the old fill of remaining sockets.
     """
     room = max(1, MAX_REF_IMAGES - max(0, reserved))
-    wanted = STILL_SEQUENCE or MAX_REF_IMAGES
-    return max(1, min(wanted, room, MAX_REF_IMAGES))
+    if wanted is None:
+        wanted = STILL_SEQUENCE or MAX_REF_IMAGES
+    return max(1, min(int(wanted), room, MAX_REF_IMAGES))
+
+
+def panel_frame_copy() -> str:
+    """What the PANEL_SEQUENCE sketches of a beat are, in words the writer is told."""
+    if PANEL_SEQUENCE <= 1:
+        return "one opening sketch of that beat's action"
+    return "opening, then through the action, then the landing"
 
 
 def pose_phase(index: int, total: int, action: str) -> str:
@@ -1692,9 +1722,10 @@ def _travel_phase(index: int, total: int, said: str, way: str) -> str:
 def panel_phase(index: int, total: int) -> str:
     """Where in the beat this graphite frame sits: opening, midpoint, or landing.
 
-    Three is the stop-motion board (first / middle / last of the action). A single panel is
-    still the opening. In between those, only the ends are named and the rest are counted,
-    so a four-panel board does not invent a second midpoint.
+    Default is one opening sketch — H3 interpolates the action. Three is the old
+    stop-motion board that locked a nine-pose fill. In between those, only the ends
+    are named and the rest are counted, so a four-panel board does not invent a
+    second midpoint.
     """
     if index <= 1:
         return "opening"

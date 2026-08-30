@@ -161,7 +161,7 @@ def render(board: board_mod.Board, beats: list[int], job: Job, runner: Runner,
                     # told about the pictures it was given.
                     opens_on = bool(pictures) and pictures[0][0] == board.asset_path(n)
                     hold_video = bool(carry) and not board.carries_motion(board.beat(n))
-                    poses = len(board.pose_paths(n)[:board.sequence_count(n)])
+                    poses = len(board.pose_paths(n))
                     join = JOIN_LOG[sources[n]]
                     if pictures or carry:
                         # Pictures mean ref2va, even on an asset cut that bound identity sheets.
